@@ -1,0 +1,2 @@
+# palantir
+Palantir ontology practice
