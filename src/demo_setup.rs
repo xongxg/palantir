@@ -1,8 +1,12 @@
 //! Shared demo data — used by all examples.
 //!
-//! Provides a single `build_repos()` that fires the standard set of Commands
-//! (8 employees, 15 transactions, high-value flag) and returns populated
-//! repositories + EventBus, ready for any example to query or visualise.
+//! Provides a single `build_repos()` that loads employees + transactions from
+//! CSV files in `data/`, fires the corresponding Commands, and returns
+//! populated repositories + EventBus ready for any example to query or visualise.
+//!
+//! Data files:
+//!   data/employees.csv     — id, name, department, salary, level
+//!   data/transactions.csv  — id, employee_id, amount, category
 
 use crate::application::commands::{
     FileTransactionCommand, FlagHighValueCommand, HireEmployeeCommand,
@@ -13,13 +17,16 @@ use crate::infrastructure::persistence::in_memory::{
     InMemoryEmployeeRepo, InMemoryTransactionRepo,
 };
 
+const EMPLOYEES_CSV:    &str = "data/employees.csv";
+const TRANSACTIONS_CSV: &str = "data/transactions.csv";
+
 pub struct DemoRepos {
     pub emp_repo:  InMemoryEmployeeRepo,
     pub tx_repo:   InMemoryTransactionRepo,
     pub event_bus: EventBus,
 }
 
-/// Build and return populated in-memory repositories.
+/// Build and return populated in-memory repositories loaded from CSV files.
 ///
 /// Fires commands silently (no stdout), so each example can render output
 /// in whatever style it prefers.
@@ -28,48 +35,39 @@ pub fn build_repos() -> DemoRepos {
     let mut tx_repo   = InMemoryTransactionRepo::default();
     let mut event_bus = EventBus::default();
 
-    for (id, name, dept, salary, level) in [
-        ("e1", "Alice Chen",   "Engineering",  120_000.0, "Senior"),
-        ("e2", "Bob Martinez", "Engineering",   95_000.0, "Mid"),
-        ("e3", "Carol White",  "Sales",          85_000.0, "Senior"),
-        ("e4", "David Kim",    "Sales",           72_000.0, "Mid"),
-        ("e5", "Eva Patel",    "Marketing",      90_000.0, "Senior"),
-        ("e6", "Frank Lee",    "Marketing",      68_000.0, "Junior"),
-        ("e7", "Grace Nguyen", "Engineering",   145_000.0, "Staff"),
-        ("e8", "Henry Brown",  "Operations",     78_000.0, "Mid"),
-    ] {
+    // ── Employees ────────────────────────────────────────────────────────────
+    let emp_csv = std::fs::read_to_string(EMPLOYEES_CSV)
+        .unwrap_or_else(|e| panic!("Cannot read {EMPLOYEES_CSV}: {e}"));
+
+    for line in emp_csv.lines().skip(1) {
+        let c: Vec<&str> = line.splitn(5, ',').collect();
+        if c.len() < 5 { continue; }
         hire_employee(
             HireEmployeeCommand {
-                id: id.into(), name: name.into(),
-                department: dept.into(), salary,
-                level: level.into(),
+                id:         c[0].trim().into(),
+                name:       c[1].trim().into(),
+                department: c[2].trim().into(),
+                salary:     c[3].trim().parse().unwrap_or(0.0),
+                level:      c[4].trim().into(),
             },
             &mut emp_repo,
             &mut event_bus,
         ).expect("hire_employee failed");
     }
 
-    for (id, emp_id, amount, category) in [
-        ("t01", "e1", 1_200.0, "Software"),
-        ("t02", "e1",   350.0, "Travel"),
-        ("t03", "e2",   800.0, "Hardware"),
-        ("t04", "e3", 2_500.0, "Client Entertainment"),
-        ("t05", "e3",   450.0, "Office Supplies"),
-        ("t06", "e4",   600.0, "Travel"),
-        ("t07", "e5", 3_100.0, "Marketing Campaign"),
-        ("t08", "e5",   200.0, "Office Supplies"),
-        ("t09", "e6",   950.0, "Marketing Campaign"),
-        ("t10", "e7", 5_000.0, "Software"),
-        ("t11", "e7",   120.0, "Office Supplies"),
-        ("t12", "e8",   700.0, "Equipment"),
-        ("t13", "e8",   430.0, "Travel"),
-        ("t14", "e2",   525.0, "Training"),
-        ("t15", "e4",   180.0, "Travel"),
-    ] {
+    // ── Transactions ─────────────────────────────────────────────────────────
+    let tx_csv = std::fs::read_to_string(TRANSACTIONS_CSV)
+        .unwrap_or_else(|e| panic!("Cannot read {TRANSACTIONS_CSV}: {e}"));
+
+    for line in tx_csv.lines().skip(1) {
+        let c: Vec<&str> = line.splitn(4, ',').collect();
+        if c.len() < 4 { continue; }
         file_transaction(
             FileTransactionCommand {
-                id: id.into(), employee_id: emp_id.into(),
-                amount, category: category.into(),
+                id:          c[0].trim().into(),
+                employee_id: c[1].trim().into(),
+                amount:      c[2].trim().parse().unwrap_or(0.0),
+                category:    c[3].trim().into(),
             },
             &mut tx_repo,
             &mut event_bus,
