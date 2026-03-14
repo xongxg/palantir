@@ -24,12 +24,13 @@ use palantir::{
     },
     domain::{
         order::{OrderEvent, OrderState},
-        order_v1::{OrderEventV1, RawEvent, UpcastChain},
+        order_v1::{load_legacy_csv, RawEvent, UpcastChain},
     },
     infrastructure::event_store::EventStore,
 };
 
-const CSV: &str = "data/timeseries/order_events.csv";
+const CSV:        &str = "data/timeseries/order_events.csv";
+const LEGACY_CSV: &str = "data/legacy/order_events_v1.csv";
 
 fn main() {
     banner("ADVANCED EVENT SOURCING  —  Concurrency · Upcasting · Read Model Export");
@@ -119,23 +120,8 @@ fn main() {
     println!("  New code needs customer_id.  We upcast on read — stored data unchanged.");
     println!();
 
-    // Simulate a batch of V1 events loaded from legacy storage
-    let legacy_events: Vec<(String, RawEvent)> = vec![
-        ("2024-02-01T09:00:00".into(), RawEvent::V1(OrderEventV1::OrderPlaced {
-            order_id: "o99".to_string(),
-            amount:   450.0,
-        })),
-        ("2024-02-01T09:05:00".into(), RawEvent::V1(OrderEventV1::PaymentReceived {
-            order_id: "o99".to_string(),
-            amount:   450.0,
-        })),
-        ("2024-02-03T08:00:00".into(), RawEvent::V2(OrderEvent::ItemShipped {
-            order_id: "o99".to_string(),
-        })),
-        ("2024-02-05T14:00:00".into(), RawEvent::V2(OrderEvent::OrderDelivered {
-            order_id: "o99".to_string(),
-        })),
-    ];
+    // Load versioned events from data file (mix of V1 legacy + V2 current)
+    let legacy_events = load_legacy_csv(LEGACY_CSV).expect("legacy CSV load failed");
 
     println!("  Raw events from legacy store:");
     println!("  {:<20}  {:<12}  {:<22}",

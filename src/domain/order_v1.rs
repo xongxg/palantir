@@ -97,3 +97,49 @@ impl UpcastChain {
         }
     }
 }
+
+// ─── CSV loader ───────────────────────────────────────────────────────────────
+
+/// Load versioned (legacy + current) events from a CSV file.
+///
+/// CSV columns: occurred_at, schema_version, event_type, order_id, amount
+///
+/// schema_version = 1 → RawEvent::V1(OrderEventV1)
+/// schema_version = 2 → RawEvent::V2(OrderEvent)
+pub fn load_legacy_csv(path: &str) -> Result<Vec<(String, RawEvent)>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Cannot read {}: {}", path, e))?;
+
+    let mut events = Vec::new();
+    for line in content.lines().skip(1) {
+        let cols: Vec<&str> = line.splitn(5, ',').collect();
+        if cols.len() < 5 { continue; }
+
+        let occurred_at  = cols[0].trim().to_string();
+        let schema_ver: u32 = cols[1].trim().parse().unwrap_or(2);
+        let event_type   = cols[2].trim();
+        let order_id     = cols[3].trim().to_string();
+        let amount: f64  = cols[4].trim().parse().unwrap_or(0.0);
+
+        let raw = match schema_ver {
+            1 => match event_type {
+                "OrderPlaced"     => RawEvent::V1(OrderEventV1::OrderPlaced { order_id, amount }),
+                "PaymentReceived" => RawEvent::V1(OrderEventV1::PaymentReceived { order_id, amount }),
+                "ItemShipped"     => RawEvent::V1(OrderEventV1::ItemShipped { order_id }),
+                "OrderDelivered"  => RawEvent::V1(OrderEventV1::OrderDelivered { order_id }),
+                _ => continue,
+            },
+            _ => match event_type {
+                "OrderPlaced"     => RawEvent::V2(OrderEvent::OrderPlaced {
+                    order_id, customer_id: String::new(), amount,
+                }),
+                "PaymentReceived" => RawEvent::V2(OrderEvent::PaymentReceived { order_id, amount }),
+                "ItemShipped"     => RawEvent::V2(OrderEvent::ItemShipped { order_id }),
+                "OrderDelivered"  => RawEvent::V2(OrderEvent::OrderDelivered { order_id }),
+                _ => continue,
+            },
+        };
+        events.push((occurred_at, raw));
+    }
+    Ok(events)
+}

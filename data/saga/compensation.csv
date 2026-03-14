@@ -1,0 +1,4 @@
+bc,aggregate_id,event_type,customer_id,amount,reason,occurred_at
+Customer,o31,OrderPlaced,cu6,1200.0,,2024-03-02T10:00:00
+Customer,o31,PaymentReceived,,1200.0,,2024-03-02T10:15:00
+Procurement,po-002,POCancelled,,,out of stock,2024-03-02T14:00:00

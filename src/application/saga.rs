@@ -369,3 +369,84 @@ impl SagaOrchestrator {
         out
     }
 }
+
+// ─── CSV loader ───────────────────────────────────────────────────────────────
+
+/// Load a saga scenario from a CSV file.
+///
+/// CSV columns: bc, aggregate_id, event_type, customer_id, amount, reason, occurred_at
+///
+/// Each row is one external input event (not a reaction — reactions are emitted
+/// by the saga orchestrator automatically).
+///
+/// bc = "Customer"    → BcEvent::Order(...)
+/// bc = "Procurement" → BcEvent::Procurement(...)
+pub fn load_saga_csv(path: &str) -> Result<Vec<(String, BcEvent)>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Cannot read {}: {}", path, e))?;
+
+    let mut events = Vec::new();
+    for line in content.lines().skip(1) {
+        let cols: Vec<&str> = line.splitn(7, ',').collect();
+        if cols.len() < 7 { continue; }
+
+        let bc          = cols[0].trim();
+        let agg_id      = cols[1].trim().to_string();
+        let event_type  = cols[2].trim();
+        let customer_id = cols[3].trim().to_string();
+        let amount: f64 = cols[4].trim().parse().unwrap_or(0.0);
+        let reason      = cols[5].trim().to_string();
+        let occurred_at = cols[6].trim().to_string();
+
+        let ev = match (bc, event_type) {
+            ("Customer", "OrderPlaced") => BcEvent::Order(OrderEvent::OrderPlaced {
+                order_id: agg_id, customer_id, amount,
+            }),
+            ("Customer", "PaymentReceived") => BcEvent::Order(OrderEvent::PaymentReceived {
+                order_id: agg_id, amount,
+            }),
+            ("Customer", "OrderDelivered") => BcEvent::Order(OrderEvent::OrderDelivered {
+                order_id: agg_id,
+            }),
+            ("Customer", "OrderCancelled") => BcEvent::Order(OrderEvent::OrderCancelled {
+                order_id: agg_id, reason,
+            }),
+            ("Procurement", "POCreated") => BcEvent::Procurement(ProcurementEvent::POCreated {
+                po_id: agg_id, order_id: customer_id, vendor_id: reason, amount,
+            }),
+            ("Procurement", "POApproved") => BcEvent::Procurement(ProcurementEvent::POApproved {
+                po_id: agg_id,
+            }),
+            ("Procurement", "POCancelled") => BcEvent::Procurement(ProcurementEvent::POCancelled {
+                po_id: agg_id, reason,
+            }),
+            ("Procurement", "POFulfilled") => BcEvent::Procurement(ProcurementEvent::POFulfilled {
+                po_id: agg_id,
+            }),
+            _ => continue,
+        };
+        events.push((occurred_at, ev));
+    }
+    Ok(events)
+}
+
+// ─── Time-travel query loader ─────────────────────────────────────────────────
+
+/// Load time-travel query specs from a CSV file.
+/// CSV columns: order_id, until_time, description
+pub fn load_time_travel_csv(path: &str) -> Result<Vec<(String, String, String)>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Cannot read {}: {}", path, e))?;
+
+    let mut queries = Vec::new();
+    for line in content.lines().skip(1) {
+        let cols: Vec<&str> = line.splitn(3, ',').collect();
+        if cols.len() < 3 { continue; }
+        queries.push((
+            cols[0].trim().to_string(),
+            cols[1].trim().to_string(),
+            cols[2].trim().to_string(),
+        ));
+    }
+    Ok(queries)
+}

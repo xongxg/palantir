@@ -1,0 +1,5 @@
+bc,aggregate_id,event_type,customer_id,amount,reason,occurred_at
+Customer,o30,OrderPlaced,cu5,800.0,,2024-03-01T09:00:00
+Customer,o30,PaymentReceived,,800.0,,2024-03-01T09:30:00
+Procurement,po-001,POApproved,,,,2024-03-01T11:00:00
+Customer,o30,OrderDelivered,,,,2024-03-03T16:00:00

@@ -1638,3 +1638,70 @@ Customer.OrderDelivered   →  Procurement.POFulfilled      (forward)
 7. Event Versioning Registry
 8. Anti-Corruption Layer (ACL)
 
+---
+
+### **You** · 2026-03-14 (later)
+
+能不能python脚本解析的时候换rust
+
+---
+
+### **Claude**
+
+收到，记入永久记忆：优先使用 Rust 处理脚本和工具类任务，不用 Python。
+
+---
+
+### **You**
+
+也不想安装 python，麻烦
+
+---
+
+### **Claude**
+
+更新记忆：机器上没装 Python，也不打算装。以后脚本任务统一用 `src/bin/` 里的 Rust binary，`cargo run --bin xxx` 搞定。
+
+---
+
+### **You**
+
+example 里面有很多手动的数据，能否直接在 data 目录下给出公用的初始化数据，不用在程序里面手动初始化了
+
+---
+
+### **Claude**
+
+将三个 example 的硬编码数据提取到 `data/` 目录，并在库里写对应的 Rust CSV loader。
+
+**新增数据文件：**
+
+```
+data/legacy/order_events_v1.csv       ← example 09 Act 2 (V1 upcasting)
+data/saga/happy_path.csv              ← example 10 Act 1 (happy path)
+data/saga/compensation.csv            ← example 10 Act 2 (compensation)
+data/timeseries/time_travel_queries.csv ← example 07 Act 5a (time-travel)
+```
+
+**新增 Rust loader（在库里，不是脚本）：**
+
+- `domain::order_v1::load_legacy_csv(path)` — 解析 `schema_version` 列，自动构造 `RawEvent::V1` 或 `RawEvent::V2`
+- `application::saga::load_saga_csv(path)` — 解析 `bc` 列，构造 `BcEvent::Order` 或 `BcEvent::Procurement`
+- `application::saga::load_time_travel_csv(path)` — 返回 `Vec<(order_id, until_time, description)>`
+
+**修改的 examples：**
+
+- `07_event_sourcing.rs` — time-travel 查询从 `time_travel_queries.csv` 加载，删除硬编码 `queries` 数组
+- `09_advanced_es.rs` — legacy events 从 `order_events_v1.csv` 加载，删除硬编码 `vec![...]`
+- `10_policy_saga.rs` — 两个 saga 场景从 CSV 加载，删除所有硬编码 `OrderPlaced`/`PaymentReceived` 等构造
+
+Examples 现在只负责"加载 + 运行"，数据全部在 `data/` 管理，改场景直接改 CSV。
+
+---
+
+### **You**
+
+good
+
+---
+

@@ -1,0 +1,5 @@
+occurred_at,schema_version,event_type,order_id,amount
+2024-02-01T09:00:00,1,OrderPlaced,o99,450.0
+2024-02-01T09:05:00,1,PaymentReceived,o99,450.0
+2024-02-03T08:00:00,2,ItemShipped,o99,0.0
+2024-02-05T14:00:00,2,OrderDelivered,o99,0.0

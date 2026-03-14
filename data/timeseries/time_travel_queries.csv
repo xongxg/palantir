@@ -1,0 +1,7 @@
+order_id,until_time,description
+o01,2024-01-02T09:18:00,after Placed before PaymentReceived
+o01,2024-01-03T00:00:00,after Paid before Shipped
+o01,2024-01-07T00:00:00,fully Delivered
+o04,2024-01-04T00:00:00,after Placed before Payment
+o21,2024-01-08T10:15:00,after Placed before Cancelled
+o21,2024-01-08T11:00:00,fully Cancelled

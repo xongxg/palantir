@@ -8,11 +8,11 @@
       "properties": {"orders": 2}
     },
     {
-      "id": "cu2",
+      "id": "cu4",
       "type": "Customer",
       "ddd_concept": "Aggregate Root",
-      "label": "cu2",
-      "properties": {"orders": 2}
+      "label": "cu4",
+      "properties": {"orders": 1}
     },
     {
       "id": "cu3",
@@ -22,25 +22,11 @@
       "properties": {"orders": 1}
     },
     {
-      "id": "cu4",
+      "id": "cu2",
       "type": "Customer",
       "ddd_concept": "Aggregate Root",
-      "label": "cu4",
-      "properties": {"orders": 1}
-    },
-    {
-      "id": "o21",
-      "type": "Order",
-      "ddd_concept": "Entity",
-      "label": "o21",
-      "properties": {"status": "Cancelled", "amount": 320, "version": 2}
-    },
-    {
-      "id": "o14",
-      "type": "Order",
-      "ddd_concept": "Entity",
-      "label": "o14",
-      "properties": {"status": "Delivered", "amount": 999, "version": 4}
+      "label": "cu2",
+      "properties": {"orders": 2}
     },
     {
       "id": "o22",
@@ -50,6 +36,13 @@
       "properties": {"status": "Delivered", "amount": 580, "version": 4}
     },
     {
+      "id": "o14",
+      "type": "Order",
+      "ddd_concept": "Entity",
+      "label": "o14",
+      "properties": {"status": "Delivered", "amount": 999, "version": 4}
+    },
+    {
       "id": "o01",
       "type": "Order",
       "ddd_concept": "Entity",
@@ -57,11 +50,11 @@
       "properties": {"status": "Delivered", "amount": 999, "version": 4}
     },
     {
-      "id": "o09",
+      "id": "o21",
       "type": "Order",
       "ddd_concept": "Entity",
-      "label": "o09",
-      "properties": {"status": "Delivered", "amount": 237, "version": 4}
+      "label": "o21",
+      "properties": {"status": "Cancelled", "amount": 320, "version": 2}
     },
     {
       "id": "o04",
@@ -70,22 +63,29 @@
       "label": "o04",
       "properties": {"status": "Delivered", "amount": 147, "version": 4}
     },
+    {
+      "id": "o09",
+      "type": "Order",
+      "ddd_concept": "Entity",
+      "label": "o09",
+      "properties": {"status": "Delivered", "amount": 237, "version": 4}
+    },
     {"id": "status:Delivered", "type": "status", "ddd_concept": "Value Object", "label": "Delivered", "properties": {}},
     {"id": "status:Cancelled", "type": "status", "ddd_concept": "Value Object", "label": "Cancelled", "properties": {}}
   ],
   "relationships": [
-    {"from": "cu2", "from_type": "Customer", "to": "o21", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o21", "from_type": "Order", "to": "status:Cancelled", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu3", "from_type": "Customer", "to": "o14", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o14", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
     {"from": "cu4", "from_type": "Customer", "to": "o22", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
     {"from": "o22", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
+    {"from": "cu3", "from_type": "Customer", "to": "o14", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
+    {"from": "o14", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
     {"from": "cu1", "from_type": "Customer", "to": "o01", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
     {"from": "o01", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu1", "from_type": "Customer", "to": "o09", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o09", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
+    {"from": "cu2", "from_type": "Customer", "to": "o21", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
+    {"from": "o21", "from_type": "Order", "to": "status:Cancelled", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
     {"from": "cu2", "from_type": "Customer", "to": "o04", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o04", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"}
+    {"from": "o04", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
+    {"from": "cu1", "from_type": "Customer", "to": "o09", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
+    {"from": "o09", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"}
   ],
   "bounded_contexts": [
     {

@@ -24,9 +24,12 @@
 //!   Policy    = stateless reactive rule (one SagaLink = one Policy)
 //!   Saga      = stateful multi-step process with correlation ID + compensation
 
-use palantir::application::saga::{BcEvent, SagaOrchestrator, SAGA_LINKS};
+use palantir::application::saga::{load_saga_csv, BcEvent, SagaOrchestrator, SAGA_LINKS};
 use palantir::domain::order::OrderEvent;
 use palantir::domain::procurement::ProcurementEvent;
+
+const HAPPY_CSV:        &str = "data/saga/happy_path.csv";
+const COMPENSATION_CSV: &str = "data/saga/compensation.csv";
 
 fn main() {
     banner("POLICY / SAGA  —  Cross-BC Business Process Coordination");
@@ -63,26 +66,11 @@ fn main() {
     section("ACT 1 — HAPPY PATH  (Order o30 → complete fulfillment)");
 
     let mut orch = SagaOrchestrator::new();
+    let happy_events = load_saga_csv(HAPPY_CSV).expect("happy_path.csv load failed");
 
-    // External events are fed one by one. Reactions (policy outputs) are
-    // returned by process() and driven immediately — mimicking an async bus.
-    drive(&mut orch, 0, "2024-03-01T09:00:00", BcEvent::Order(OrderEvent::OrderPlaced {
-        order_id:    "o30".to_string(),
-        customer_id: "cu5".to_string(),
-        amount:      800.0,
-    }));
-    drive(&mut orch, 0, "2024-03-01T09:30:00", BcEvent::Order(OrderEvent::PaymentReceived {
-        order_id: "o30".to_string(),
-        amount:   800.0,
-    }));
-    // ── External: procurement officer approves the PO ─────────────────────────
-    drive(&mut orch, 0, "2024-03-01T11:00:00", BcEvent::Procurement(ProcurementEvent::POApproved {
-        po_id: "po-001".to_string(),
-    }));
-    // ── External: delivery system confirms receipt ─────────────────────────────
-    drive(&mut orch, 0, "2024-03-03T16:00:00", BcEvent::Order(OrderEvent::OrderDelivered {
-        order_id: "o30".to_string(),
-    }));
+    for (ts, event) in happy_events {
+        drive(&mut orch, 0, &ts, event);
+    }
 
     println!();
     print_saga_state(&orch, "o30");
@@ -93,20 +81,11 @@ fn main() {
     // ══════════════════════════════════════════════════════════════════════════
     section("ACT 2 — COMPENSATION PATH  (Order o31 → PO cancelled → rollback)");
 
-    drive(&mut orch, 0, "2024-03-02T10:00:00", BcEvent::Order(OrderEvent::OrderPlaced {
-        order_id:    "o31".to_string(),
-        customer_id: "cu6".to_string(),
-        amount:      1200.0,
-    }));
-    drive(&mut orch, 0, "2024-03-02T10:15:00", BcEvent::Order(OrderEvent::PaymentReceived {
-        order_id: "o31".to_string(),
-        amount:   1200.0,
-    }));
-    // ── External: vendor cannot supply the goods ───────────────────────────────
-    drive(&mut orch, 0, "2024-03-02T14:00:00", BcEvent::Procurement(ProcurementEvent::POCancelled {
-        po_id:  "po-002".to_string(),
-        reason: "out of stock".to_string(),
-    }));
+    let comp_events = load_saga_csv(COMPENSATION_CSV).expect("compensation.csv load failed");
+
+    for (ts, event) in comp_events {
+        drive(&mut orch, 0, &ts, event);
+    }
 
     println!();
     print_saga_state(&orch, "o31");

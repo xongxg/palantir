@@ -19,16 +19,20 @@
 //!          Snapshot — snapshot current state → append new event → rebuild from snapshot+delta
 
 use palantir::{
-    application::event_sourcing::{
-        load_csv_into_store, load_csv_sorted,
-        OrderStatusProjection, RevenueByDayProjection, CustomerOrdersProjection,
-        snapshot_all, time_travel,
+    application::{
+        event_sourcing::{
+            load_csv_into_store, load_csv_sorted,
+            OrderStatusProjection, RevenueByDayProjection, CustomerOrdersProjection,
+            snapshot_all, time_travel,
+        },
+        saga::load_time_travel_csv,
     },
     domain::order::OrderStatus,
     infrastructure::event_store::{EventStore, SnapshotStore},
 };
 
-const CSV: &str = "data/timeseries/order_events.csv";
+const CSV:        &str = "data/timeseries/order_events.csv";
+const TRAVEL_CSV: &str = "data/timeseries/time_travel_queries.csv";
 
 fn main() {
     banner("EVENT SOURCING  —  Order Lifecycle Domain");
@@ -204,19 +208,12 @@ fn main() {
     println!("  Method: load events where occurred_at ≤ T, then replay.");
     println!();
 
-    let queries: &[(&str, &str)] = &[
-        ("o01", "2024-01-02T09:18:00"),   // after Placed, before PaymentReceived
-        ("o01", "2024-01-03T00:00:00"),   // after Paid, before Shipped
-        ("o01", "2024-01-07T00:00:00"),   // fully Delivered
-        ("o04", "2024-01-04T00:00:00"),   // after Placed, before Payment
-        ("o21", "2024-01-08T10:15:00"),   // after Placed, before Cancelled
-        ("o21", "2024-01-08T11:00:00"),   // fully Cancelled
-    ];
+    let queries = load_time_travel_csv(TRAVEL_CSV).expect("time_travel_queries.csv load failed");
 
     println!("  {:<6}  {:<22}  {:<5}  {:<12}  {}",
         "order", "at time", "evts", "status", "notes");
     println!("  {}", "─".repeat(68));
-    for (order_id, until) in queries {
+    for (order_id, until, _desc) in &queries {
         let (state, count) = time_travel(&store, order_id, until);
         let note = match state.status {
             OrderStatus::Draft     => "no events yet",
