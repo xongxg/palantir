@@ -1,0 +1,13 @@
+id,milestone_id,name,status,priority
+tsk1,ms1,Draft ADR,Completed,High
+tsk2,ms1,Review ADR,Completed,Medium
+tsk3,ms2,Setup CI,Active,High
+tsk4,ms2,Write Tests,Active,Medium
+tsk5,ms2,Deploy Staging,Pending,High
+tsk6,ms4,User Interviews,Completed,High
+tsk7,ms4,Affinity Map,Completed,Medium
+tsk8,ms5,Build APIs,Active,High
+tsk9,ms5,Build UI,Active,Medium
+tsk10,ms10,Define Models,Completed,High
+tsk11,ms11,Write ETL,Active,High
+tsk12,ms11,QA ETL,Pending,Medium

@@ -1,0 +1,9 @@
+id,vendor_id,department_id,value,status,type
+c1,v1,d1,120000,Active,Annual
+c2,v2,d1,250000,Active,Multi-year
+c3,v3,d2,45000,Active,Annual
+c4,v1,d4,30000,Active,Annual
+c5,v4,d5,95000,Active,Annual
+c6,v5,d2,80000,Review,Annual
+c7,v3,d6,25000,Active,Annual
+c8,v2,d1,180000,Expired,Multi-year

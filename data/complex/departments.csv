@@ -1,0 +1,7 @@
+id,name,division_id,budget,status
+d1,Engineering,div1,2000000,Active
+d2,Product,div1,800000,Active
+d3,Sales,div2,1200000,Active
+d4,Marketing,div2,600000,Active
+d5,Logistics,div3,500000,Active
+d6,Support,div3,300000,Review

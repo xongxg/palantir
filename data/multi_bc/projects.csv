@@ -1,0 +1,8 @@
+id,name,status,priority,budget
+pr1,Platform Migration,Active,High,500000
+pr2,CRM Redesign,Active,Medium,200000
+pr3,APAC Expansion,Planning,High,350000
+pr4,Brand Refresh,Active,Medium,150000
+pr5,Logistics Automation,Active,High,280000
+pr6,Support Portal,On Hold,Low,80000
+pr7,Data Warehouse,Active,High,420000

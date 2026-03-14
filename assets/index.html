@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Palantir Ontology Visualizer</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    #header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 48px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      z-index: 100;
+    }
+
+    #header h1 { font-size: 14px; font-weight: 600; color: #f0883e; letter-spacing: 1px; }
+    #stats { font-size: 12px; color: #8b949e; }
+
+    #controls {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { background: #30363d; }
+    button.active { background: #388bfd33; border-color: #388bfd66; }
+
+    #canvas { position: fixed; top: 48px; left: 0; right: 0; bottom: 0; }
+    svg { width: 100%; height: 100%; }
+
+    /* Legend */
+    #legend {
+      position: fixed;
+      top: 60px; right: 12px;
+      background: #161b22dd;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 11px;
+      z-index: 50;
+      min-width: 170px;
+    }
+    #legend h3 {
+      font-size: 10px; color: #8b949e;
+      margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: #c9d1d9; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-swatch { width: 14px; height: 10px; border-radius: 3px; flex-shrink: 0; opacity: 0.5; border: 1px solid; }
+    .legend-line { width: 24px; height: 2px; flex-shrink: 0; }
+    .legend-sep { border-top: 1px solid #30363d; margin: 6px 0; }
+
+    /* Tooltip */
+    #tooltip {
+      position: fixed;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 200;
+      max-width: 280px;
+    }
+    .tt-title { font-weight: 600; color: #f0883e; margin-bottom: 4px; }
+    .tt-bc    { font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+                text-transform: uppercase; margin-bottom: 2px; }
+    .tt-type  { color: #8b949e; font-size: 11px; margin-bottom: 6px; }
+    .tt-prop  { color: #c9d1d9; font-size: 11px; line-height: 1.6; }
+    .tt-prop span { color: #8b949e; }
+
+    /* Links */
+    .link { fill: none; stroke-width: 1.5px; }
+    .link-HAS        { stroke: #388bfd; stroke-opacity: 0.55; }
+    .link-BELONGS_TO { stroke: #3fb950; stroke-dasharray: 4 3; stroke-opacity: 0.35; }
+    .link-LINKED_TO  { stroke: #d29922; stroke-opacity: 0.5; }
+    .link-SIMILAR_TO { stroke: #bc8cff; stroke-dasharray: 2 4; stroke-opacity: 0.35; }
+
+    /* BC hulls */
+    .bc-hull { fill-opacity: 0.06; stroke-width: 1.5; stroke-opacity: 0.35;
+               stroke-dasharray: 5 3; }
+    .bc-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; pointer-events: none; fill-opacity: 0.7;
+    }
+
+    /* Nodes */
+    .node circle { stroke-width: 1.5px; cursor: grab; }
+    .node circle:active { cursor: grabbing; }
+    .node text {
+      font-size: 9px; pointer-events: none;
+      fill: #c9d1d9; text-anchor: middle; dominant-baseline: central;
+    }
+    .node.highlighted circle { stroke-width: 3px; filter: drop-shadow(0 0 6px currentColor); }
+    .node.dimmed circle { opacity: 0.12; }
+    .node.dimmed text  { opacity: 0.12; }
+    .link.dimmed { opacity: 0.04; }
+    .bc-hull.dimmed { opacity: 0.3; }
+
+    marker path { fill-opacity: 0.6; }
+
+    #info-panel {
+      position: fixed; bottom: 12px; left: 12px;
+      background: #161b22cc; border: 1px solid #30363d;
+      border-radius: 8px; padding: 8px 12px;
+      font-size: 11px; color: #8b949e; z-index: 50;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>PALANTIR  ONTOLOGY  VISUALIZER</h1>
+  <span id="stats">Loading…</span>
+  <div id="controls">
+    <button id="btn-reset">Reset Zoom</button>
+    <button id="btn-freeze">Freeze</button>
+    <button id="btn-labels">Labels: Off</button>
+    <button id="btn-hulls" class="active">BC Hulls: On</button>
+    <button id="btn-belongs">BELONGS_TO: On</button>
+  </div>
+</div>
+
+<div id="canvas"><svg id="graph"></svg></div>
+
+<div id="legend">
+  <h3>DDD Concept</h3>
+  <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>Aggregate Root</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>Entity</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>Value Object</div>
+  <div class="legend-sep"></div>
+  <h3>Bounded Context</h3>
+  <div id="bc-legend"></div>
+  <div class="legend-sep"></div>
+  <h3>Relationship</h3>
+  <div class="legend-item">
+    <div class="legend-line" style="background:#388bfd"></div>HAS
+  </div>
+  <div class="legend-item">
+    <div class="legend-line" style="background:repeating-linear-gradient(90deg,#3fb950 0,#3fb950 4px,transparent 4px,transparent 7px)"></div>BELONGS_TO
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="info-panel">
+  Scroll to zoom · Drag to pan · Click node to highlight neighbors · Drag to reposition
+</div>
+
+<script>
+// ── Palette ────────────────────────────────────────────────────────────────
+const DDD_COLOR = {
+  "Aggregate Root": "#f85149",
+  "Entity":         "#388bfd",
+  "Value Object":   "#3fb950",
+  "Domain Service": "#d29922",
+};
+const dddColor  = d => DDD_COLOR[d] ?? "#bc8cff";
+const nodeRadius = d => d.ddd_concept === "Aggregate Root" ? 13 : d.ddd_concept === "Value Object" ? 6 : 9;
+
+// BC colours: warm amber, cool blue, rose, green
+const BC_PALETTE = ["#f0883e","#388bfd","#f85149","#3fb950","#bc8cff","#d29922","#58a6ff"];
+
+// ── Main ────────────────────────────────────────────────────────────────────
+async function main() {
+  const data = await fetch("/ontology_graph.json").then(r => r.json());
+
+  // Stats
+  const s = data.summary ?? {};
+  document.getElementById("stats").textContent =
+    `${s.total_entities ?? data.entities.length} entities · ` +
+    `${s.total_relationships ?? data.relationships.length} relationships · ` +
+    `${s.bounded_contexts ?? (data.bounded_contexts?.length ?? 0)} bounded contexts`;
+
+  // BC metadata
+  const bcs = data.bounded_contexts ?? [];
+  const bcColorMap = {};  // bc.name → color
+  bcs.forEach((bc, i) => { bcColorMap[bc.name] = BC_PALETTE[i % BC_PALETTE.length]; });
+
+  // Map entity → bc name
+  const entityBc = {};
+  bcs.forEach(bc => {
+    bc.entity_types.forEach(t => { entityBc[t] = bc.name; });
+  });
+
+  // BC legend
+  const bcLegend = document.getElementById("bc-legend");
+  bcs.forEach(bc => {
+    const div = document.createElement("div");
+    div.className = "legend-item";
+    div.innerHTML = `<div class="legend-swatch" style="background:${bcColorMap[bc.name]};border-color:${bcColorMap[bc.name]}"></div>${bc.name}`;
+    bcLegend.appendChild(div);
+  });
+
+  // Node → bc color helper
+  const nodeBcColor = d => bcColorMap[entityBc[d.type]] ?? "#555";
+
+  // Build links
+  const nodeById = {};
+  data.entities.forEach(e => nodeById[e.id] = e);
+  const links = data.relationships.map(r => ({
+    source: r.from, target: r.to, kind: r.kind, raw: r,
+  })).filter(l => nodeById[l.source] && nodeById[l.target]);
+
+  // ── SVG ──────────────────────────────────────────────────────────────────
+  const svg = d3.select("#graph");
+  const width  = () => svg.node().clientWidth;
+  const height = () => svg.node().clientHeight;
+
+  const defs = svg.append("defs");
+  ["HAS","BELONGS_TO","LINKED_TO","SIMILAR_TO"].forEach(kind => {
+    const col = { HAS:"#388bfd",BELONGS_TO:"#3fb950",LINKED_TO:"#d29922",SIMILAR_TO:"#bc8cff" }[kind];
+    defs.append("marker")
+      .attr("id", `arrow-${kind}`)
+      .attr("viewBox", "0 -4 8 8").attr("refX", 20).attr("refY", 0)
+      .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
+      .append("path").attr("d", "M0,-4L8,0L0,4").attr("fill", col);
+  });
+
+  const g = svg.append("g");
+
+  // Zoom
+  const zoom = d3.zoom().scaleExtent([0.04, 5])
+    .on("zoom", e => g.attr("transform", e.transform));
+  svg.call(zoom);
+
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    svg.transition().duration(500).call(
+      zoom.transform, d3.zoomIdentity.translate(width()/2, height()/2).scale(0.55));
+  });
+
+  // ── Simulation ───────────────────────────────────────────────────────────
+  // Gravity: pull BC members toward their BC centroid
+  const bcCentroids = {};
+  bcs.forEach((bc, i) => {
+    const angle = (i / bcs.length) * 2 * Math.PI;
+    bcCentroids[bc.name] = {
+      x: Math.cos(angle) * 280,
+      y: Math.sin(angle) * 180,
+    };
+  });
+
+  const sim = d3.forceSimulation(data.entities)
+    .force("link",    d3.forceLink(links).id(d => d.id).distance(d => d.kind === "BELONGS_TO" ? 80 : 55).strength(d => d.kind === "BELONGS_TO" ? 0.08 : 0.5))
+    .force("charge",  d3.forceManyBody().strength(-180))
+    .force("collide", d3.forceCollide(d => nodeRadius(d) + 5))
+    .force("bcX", d3.forceX(d => (bcCentroids[entityBc[d.type]] ?? {x:0}).x).strength(0.18))
+    .force("bcY", d3.forceY(d => (bcCentroids[entityBc[d.type]] ?? {y:0}).y).strength(0.18));
+
+  // ── BC hulls layer (behind links) ────────────────────────────────────────
+  const hullLayer = g.append("g").attr("class", "hulls");
+
+  const hullPaths = hullLayer.selectAll("path.bc-hull")
+    .data(bcs)
+    .join("path")
+      .attr("class", "bc-hull")
+      .attr("fill",   bc => bcColorMap[bc.name])
+      .attr("stroke", bc => bcColorMap[bc.name]);
+
+  const hullLabels = hullLayer.selectAll("text.bc-label")
+    .data(bcs)
+    .join("text")
+      .attr("class", "bc-label")
+      .attr("fill",  bc => bcColorMap[bc.name])
+      .text(bc => bc.name);
+
+  // ── Links ────────────────────────────────────────────────────────────────
+  const linkLayer = g.append("g").attr("class", "links");
+  const hasSel = linkLayer.selectAll("line.has-link")
+    .data(links.filter(l => l.kind === "HAS"))
+    .join("line").attr("class", "link link-HAS")
+    .attr("marker-end", "url(#arrow-HAS)");
+
+  const btSel = linkLayer.selectAll("line.bt-link")
+    .data(links.filter(l => l.kind === "BELONGS_TO"))
+    .join("line").attr("class", "link link-BELONGS_TO")
+    .attr("marker-end", "url(#arrow-BELONGS_TO)");
+
+  // ── Nodes ────────────────────────────────────────────────────────────────
+  const nodeSel = g.append("g").attr("class", "nodes")
+    .selectAll("g")
+    .data(data.entities)
+    .join("g").attr("class", "node")
+    .call(d3.drag()
+      .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); if (!frozen) { d.fx = null; d.fy = null; } })
+    );
+
+  nodeSel.append("circle")
+    .attr("r",      d => nodeRadius(d))
+    .attr("fill",   d => dddColor(d.ddd_concept) + "2a")
+    .attr("stroke", d => dddColor(d.ddd_concept));
+
+  // BC ring: outer thin ring coloured by BC
+  nodeSel.append("circle")
+    .attr("r",      d => nodeRadius(d) + 2.5)
+    .attr("fill",   "none")
+    .attr("stroke", d => nodeBcColor(d))
+    .attr("stroke-width", 1)
+    .attr("stroke-opacity", 0.5)
+    .attr("pointer-events", "none");
+
+  const labelText = nodeSel.append("text")
+    .attr("dy", d => nodeRadius(d) + 10)
+    .style("opacity", 0)
+    .text(d => d.label?.split(" ")[0] ?? d.type ?? d.id);
+
+  // ── Hull update helper ───────────────────────────────────────────────────
+  const PAD = 28;
+  function updateHulls() {
+    hullPaths.each(function(bc) {
+      const pts = data.entities
+        .filter(e => bc.entity_types.includes(e.type) && e.x !== undefined)
+        .flatMap(e => {
+          const r = nodeRadius(e) + PAD;
+          return [[e.x - r, e.y - r],[e.x + r, e.y - r],
+                  [e.x + r, e.y + r],[e.x - r, e.y + r]];
+        });
+      if (pts.length < 3) return;
+      const hull = d3.polygonHull(pts);
+      if (!hull) return;
+      d3.select(this).attr("d", "M" + hull.map(p => p.join(",")).join("L") + "Z");
+    });
+
+    hullLabels.each(function(bc) {
+      const pts = data.entities
+        .filter(e => bc.entity_types.includes(e.type) && e.x !== undefined);
+      if (!pts.length) return;
+      const minY = d3.min(pts, e => e.y) - PAD - 14;
+      const cx   = d3.mean(pts, e => e.x);
+      d3.select(this).attr("x", cx).attr("y", minY).attr("text-anchor", "middle");
+    });
+  }
+
+  // ── Tick ─────────────────────────────────────────────────────────────────
+  sim.on("tick", () => {
+    hasSel.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    btSel.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+         .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
+    updateHulls();
+  });
+
+  // Initial zoom after simulation settles
+  svg.call(zoom.transform, d3.zoomIdentity.translate(width()/2, height()/2).scale(0.55));
+
+  // ── Tooltip ───────────────────────────────────────────────────────────────
+  const tooltip = document.getElementById("tooltip");
+  function showTip(event, d) {
+    const bc    = entityBc[d.type] ?? "—";
+    const col   = bcColorMap[bc] ?? "#8b949e";
+    const props = d.properties ?? {};
+    const rows  = Object.entries(props).map(([k,v]) => `<span>${k}:</span> ${v}`).join("<br>");
+    tooltip.innerHTML = `
+      <div class="tt-bc" style="color:${col}">⬡ ${bc}</div>
+      <div class="tt-title">${d.label ?? d.id}</div>
+      <div class="tt-type">${d.type}  ·  ${d.ddd_concept}</div>
+      <div class="tt-prop">${rows}</div>`;
+    tooltip.style.opacity = "1";
+    moveTip(event);
+  }
+  function moveTip(e) {
+    const x = e.clientX + 14, y = e.clientY - 10;
+    tooltip.style.left = (x + 290 > window.innerWidth ? x - 308 : x) + "px";
+    tooltip.style.top  = y + "px";
+  }
+  nodeSel.on("mouseenter", showTip).on("mousemove", moveTip)
+         .on("mouseleave", () => { tooltip.style.opacity = "0"; });
+
+  // ── Click to highlight ────────────────────────────────────────────────────
+  let selected = null;
+  function allLinks() { return [...hasSel, ...btSel]; }
+
+  nodeSel.on("click", (event, d) => {
+    event.stopPropagation();
+    if (selected === d.id) {
+      selected = null;
+      nodeSel.classed("highlighted", false).classed("dimmed", false);
+      hasSel.classed("dimmed", false); btSel.classed("dimmed", false);
+      hullPaths.classed("dimmed", false);
+      return;
+    }
+    selected = d.id;
+    const conn = new Set([d.id]);
+    links.forEach(l => {
+      const s = typeof l.source === "object" ? l.source.id : l.source;
+      const t = typeof l.target === "object" ? l.target.id : l.target;
+      if (s === d.id) conn.add(t);
+      if (t === d.id) conn.add(s);
+    });
+    const connTypes = new Set([...conn].map(id => nodeById[id]?.type));
+    nodeSel.classed("highlighted", n => n.id === d.id).classed("dimmed", n => !conn.has(n.id));
+    hasSel.classed("dimmed", l => {
+      const s = typeof l.source === "object" ? l.source.id : l.source;
+      const t = typeof l.target === "object" ? l.target.id : l.target;
+      return s !== d.id && t !== d.id;
+    });
+    btSel.classed("dimmed", l => {
+      const s = typeof l.source === "object" ? l.source.id : l.source;
+      const t = typeof l.target === "object" ? l.target.id : l.target;
+      return s !== d.id && t !== d.id;
+    });
+    hullPaths.classed("dimmed", bc => !bc.entity_types.some(t => connTypes.has(t)));
+  });
+
+  svg.on("click", () => {
+    selected = null;
+    nodeSel.classed("highlighted", false).classed("dimmed", false);
+    hasSel.classed("dimmed", false); btSel.classed("dimmed", false);
+    hullPaths.classed("dimmed", false);
+  });
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  let frozen = false;
+  document.getElementById("btn-freeze").addEventListener("click", function() {
+    frozen = !frozen;
+    this.textContent = frozen ? "Unfreeze" : "Freeze";
+    this.classList.toggle("active", frozen);
+    if (frozen) {
+      sim.stop();
+      data.entities.forEach(d => { d.fx = d.x; d.fy = d.y; });
+    } else {
+      data.entities.forEach(d => { d.fx = null; d.fy = null; });
+      sim.alphaTarget(0.1).restart();
+      setTimeout(() => sim.alphaTarget(0), 1500);
+    }
+  });
+
+  let labelsOn = false;
+  document.getElementById("btn-labels").addEventListener("click", function() {
+    labelsOn = !labelsOn;
+    this.textContent = `Labels: ${labelsOn ? "On" : "Off"}`;
+    this.classList.toggle("active", labelsOn);
+    labelText.style("opacity", labelsOn ? 1 : 0);
+  });
+
+  let hullsOn = true;
+  document.getElementById("btn-hulls").addEventListener("click", function() {
+    hullsOn = !hullsOn;
+    this.textContent = `BC Hulls: ${hullsOn ? "On" : "Off"}`;
+    this.classList.toggle("active", hullsOn);
+    hullLayer.style("display", hullsOn ? null : "none");
+  });
+
+  let belongsOn = true;
+  document.getElementById("btn-belongs").addEventListener("click", function() {
+    belongsOn = !belongsOn;
+    this.textContent = `BELONGS_TO: ${belongsOn ? "On" : "Off"}`;
+    this.classList.toggle("active", belongsOn);
+    btSel.style("display", belongsOn ? null : "none");
+  });
+}
+
+main().catch(err => {
+  document.getElementById("stats").textContent = "Error loading: " + err.message;
+  console.error(err);
+});
+</script>
+</body>
+</html>

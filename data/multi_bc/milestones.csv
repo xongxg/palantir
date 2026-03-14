@@ -1,0 +1,13 @@
+id,project_id,name,status,priority
+ms1,pr1,Architecture Design,Completed,High
+ms2,pr1,Implementation,Active,High
+ms3,pr1,Testing,Pending,Medium
+ms4,pr2,UX Research,Completed,Medium
+ms5,pr2,Development,Active,High
+ms6,pr3,Market Analysis,Active,High
+ms7,pr3,Launch Plan,Pending,Medium
+ms8,pr5,Procurement,Completed,High
+ms9,pr5,Integration,Active,High
+ms10,pr7,Schema Design,Completed,High
+ms11,pr7,ETL Pipeline,Active,High
+ms12,pr7,Reporting,Pending,Low

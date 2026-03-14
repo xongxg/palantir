@@ -1,0 +1,4 @@
+id,name,timezone,currency
+r1,North America,UTC-5,USD
+r2,Europe,UTC+1,EUR
+r3,Asia Pacific,UTC+8,SGD

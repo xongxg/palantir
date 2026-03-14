@@ -1,0 +1,13 @@
+id,name,department_id,office_id,manager_id,level,salary
+e1,Alice Chen,d1,o1,,Staff,145000
+e2,Bob Martinez,d1,o1,e1,Senior,120000
+e3,Carol White,d2,o2,e1,Senior,115000
+e4,David Kim,d3,o3,e5,Mid,85000
+e5,Eva Patel,d3,o3,,Staff,140000
+e6,Frank Lee,d4,o4,e7,Junior,68000
+e7,Grace Nguyen,d4,o4,,Senior,95000
+e8,Henry Brown,d5,o5,e9,Mid,78000
+e9,Ivan Russo,d5,o5,,Senior,98000
+e10,Julia Santos,d6,o5,e9,Junior,62000
+e11,Karl Muller,d2,o3,e3,Mid,88000
+e12,Laura Kim,d1,o2,e2,Senior,118000

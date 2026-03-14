@@ -1,0 +1,9 @@
+id,vendor_id,status,priority,currency,total_amount
+po1,ve1,Delivered,High,USD,45000
+po2,ve1,Processing,Medium,USD,32000
+po3,ve2,Delivered,Low,EUR,18500
+po4,ve3,Active,High,GBP,89000
+po5,ve3,Completed,Medium,GBP,54000
+po6,ve4,Active,Low,EUR,12000
+po7,ve5,Completed,High,CAD,28000
+po8,ve5,Processing,Medium,CAD,19500
