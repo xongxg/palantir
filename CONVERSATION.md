@@ -1,6 +1,6 @@
 # Palantir in Rust — Full Conversation
 
-Exported from 2 sessions · 133 message turns
+Exported from 3 sessions · 133 + session-2 + session-3 message turns
 
 ---
 
@@ -1449,4 +1449,192 @@ examples/
 导出conversation 所有的讨论和对话
 
 ---
+
+### **Claude** · 2026-03-14 05:07:30
+
+用 Python 脚本读取两个 JSONL session 文件，提取 133 条消息，写入 CONVERSATION.md（1452 行）。
+
+---
+
+
+## Session `da64fd0f…` (continued) + Session 3 · 2026-03-14
+
+> 上下文压缩后继续，今天完成了 Example 09 验证、Example 10 Policy/Saga 实现、以及扩展方向讨论。
+
+---
+
+### **You** · 2026-03-14 05:28:15
+
+**10 — Read Model 持久化**：把 Projection 写到 `ontology_graph.json`，让 D3 可视化实时反映 EventStore 的状态
+**Optimistic concurrency**：在 `append` 时检查 `expected_version`，冲突时返回错误，防止并发写入
+**Event upcasting**：当 `OrderEvent` 格式变更时，如何把旧版本事件升级到新版本再 apply
+
+先做这几个
+
+---
+
+### **Claude** · 2026-03-14 05:33:00
+
+实现了三个 Advanced Event Sourcing 特性，全部写入 `examples/09_advanced_es.rs`：
+
+**新增文件/修改：**
+
+- `src/domain/order_v1.rs` — V1 legacy schema (`OrderEventV1` 无 `customer_id`) + `RawEvent` 枚举 + `UpcastChain::to_current()`
+- `src/infrastructure/event_store.rs` — 新增 `ConcurrencyError` + `append_expected(id, ts, event, expected_version)`
+- `src/application/event_sourcing.rs` — 新增 `export_order_graph(store, path)` → `ontology_graph.json`
+- `examples/09_advanced_es.rs` — 三幕演示
+
+**Act 1 — Optimistic Concurrency**：Writer A (v2→Ok)，Writer B stale (v2→ConcurrencyError)，Writer B reload retry (v3→Ok)
+
+**Act 2 — Event Upcasting**：2 个 V1 事件 + 2 个 V2 事件 → upcast chain → 重建状态，`customer_id = LEGACY_UNKNOWN` 标记迁移事件，存储字节完全不变
+
+**Act 3 — Read Model Persistence**：`OrderStatusProjection` 导出为实体图，Customer (Aggregate Root) + Order (Entity) + status:X (Value Object)，catch-up 演示 checkpoint 22 → 23
+
+---
+
+### **You** · 2026-03-14 13:46:54
+
+怎么运行怎么运行
+
+---
+
+### **Claude** · 2026-03-14 13:47:10
+
+运行命令：
+
+```bash
+# 运行某个 example
+cargo run --example 09_advanced_es
+
+# 所有 examples
+cargo run --example 01_ddd_core
+cargo run --example 02_ontology
+cargo run --example 03_csv_adapter
+cargo run --example 04_logic_and_workflow
+cargo run --example 05_complex_discovery
+cargo run --example 06_time_series
+cargo run --example 07_event_sourcing
+cargo run --example 08_multi_bc
+cargo run --example 09_advanced_es
+
+# D3 可视化服务
+cargo run --bin serve   # → http://localhost:3000
+```
+
+规律：`cargo run --example <文件名不带.rs>`
+
+---
+
+### **You** · 2026-03-14 13:49:23
+
+Policy / Saga：跨 BC 的业务流程（Order confirmed → trigger Procurement PO），用 `CrossContextLink` 驱动 Saga 步骤
+
+---
+
+### **Claude** · 2026-03-14 13:58:00
+
+实现了完整的 Policy/Saga 跨 BC 业务流程协调，新建三个文件：
+
+**新增文件：**
+
+- `src/domain/procurement.rs` — Procurement BC 的 `PurchaseOrder` 聚合，`POStatus`（NonExistent→Pending→Approved→Fulfilled/Cancelled），`ProcurementEvent`（POCreated/POApproved/POFulfilled/POCancelled）
+- `src/application/saga.rs` — 核心基础设施：
+  - `BcEvent` 枚举：跨 BC 事件信封
+  - `SagaLink` + `SAGA_LINKS` 常量：路由表（类比 `CrossContextLink` 但用于事件驱动耦合）
+  - `SagaStep` 状态机：AwaitingPayment → AwaitingPOApproval → AwaitingDelivery → Completed / Compensated
+  - `ProcurementStore`：append-only，per-PO 序列号
+  - `SagaOrchestrator`：双 EventStore + `po_to_order` 关联表，`process()` 返回反应事件
+- `examples/10_policy_saga.rs` — 两幕演示
+
+**路由表（SagaLink）：**
+
+```
+Customer.PaymentReceived  →  Procurement.POCreated       (forward)
+Procurement.POApproved    →  Customer.ItemShipped         (forward)
+Procurement.POCancelled   →  Customer.OrderCancelled      (COMPENSATE ⚡)
+Customer.OrderDelivered   →  Procurement.POFulfilled      (forward)
+```
+
+**Happy Path (o30)**：PaymentReceived→POCreated→POApproved→ItemShipped→OrderDelivered→POFulfilled → `Completed ✓`
+
+**Compensation Path (o31)**：PaymentReceived→POCreated→POCancelled⚡→OrderCancelled → `Compensated ✗ (out of stock)`
+
+**关键设计决策：**
+- `order_id` 是唯一跨 BC 共享概念（correlation ID）
+- `po_to_order: HashMap<po_id → order_id>` 做反向查找
+- `std::mem::replace` 解决 `saga.step` 所有权问题
+- 补偿就是普通事件，aggregate 的 `apply()` 正常处理，无特殊逻辑
+
+---
+
+### **You** · 2026-03-14 13:58:28
+
+还有什么可以扩展的，这个问题真的很有趣，也很有挑战
+
+---
+
+### **Claude** · 2026-03-14 13:59:30
+
+列出了 8 个扩展方向，按难度分层：
+
+**★★ 模式对比类**
+
+- **11 — Choreography Saga** vs 当前 Orchestration：没有中央协调者，每个 BC 自己监听事件。核心挑战：因果链条不可见，怎么做可观测性？
+- **12 — Specification Pattern**：`OrderSpec::paid_after(...).and(OrderSpec::customer("cu1"))` 可组合业务规则，同一个 Spec 既查询又校验
+
+**★★★ 概念深度类**
+
+- **13 — Aggregate Root + Child Entities**：`Order` 含 `Vec<OrderLine>`，不变量跨子实体（`total == sum(line.qty * unit_price)`），事件粒度更细（`LineAdded`/`LineRemoved`）
+- **14 — Saga Timeout / Deadline**：`OrderPlaced + 24h → OrderExpired`。核心难题：怎么在 append-only EventStore 里表达"预期事件没发生"？
+- **15 — Parallel Saga Steps**：`PaymentReceived` 同时触发 POCreated + CreditCheck，两者都完成才推进。Saga 状态需要 `AwaitingBoth { po_done, credit_done }`
+
+**★★★★ 生产级别类**
+
+- **16 — Outbox Pattern**：进程崩溃时事件不丢失。用 EventStore 本身作为 outbox，`outbox_pos: usize` 作为已发布 checkpoint
+- **17 — Event Versioning Registry**：多聚合类型统一版本管理，`SchemaRegistry { upcasters: HashMap<event_type, Vec<UpcastFn>> }`
+- **18 — Anti-Corruption Layer (ACL)**：显式翻译层阻止 Procurement 概念渗入 Customer 模型，用类型系统强制隔离
+
+**推荐组合**：13 (Aggregate + OrderLines) + 14 (Saga Timeout) — 最能暴露 ES 根本难题：聚合边界在哪里划 + "没发生"怎么表达。
+
+---
+
+### **You** · 2026-03-14 14:00:50
+
+优秀，这些以后肯定会扩展的，现在展示先这样。顺便把今天的讨论导出到conversation文件中
+
+---
+
+### **Claude** · 2026-03-14 14:01:30
+
+追加今天（Session 3）的讨论到 CONVERSATION.md。
+
+---
+
+## 项目现状总览（2026-03-14）
+
+### Examples 清单
+
+```
+01_ddd_core.rs          DDD 四层架构 · ValueObject · Entity · Repository
+02_ontology.rs          本体论发现 · 三趟扫描 · 实体/关系自动识别
+03_csv_adapter.rs       CSV → OntologyGraph · 模式推断
+04_logic_and_workflow.rs Calculations · Workflow · 多步骤审批
+05_complex_discovery.rs  复杂 CSV · 多实体类型 · 关系网络
+06_time_series.rs        乱序时间序列 · 自动排序 · 时序分析
+07_event_sourcing.rs     EventStore · 状态重建 · Projections · Time-travel · Snapshot
+08_multi_bc.rs           4 个 Bounded Context · Context Map · Shared Kernel
+09_advanced_es.rs        Optimistic Concurrency · Event Upcasting · Read Model Export
+10_policy_saga.rs        Policy/Saga · 跨 BC 业务流程 · Compensation
+```
+
+### 待扩展方向（按优先级）
+
+1. Aggregate Root + Child Entities (OrderLines)
+2. Saga Timeout / Deadline
+3. Choreography Saga
+4. Specification Pattern
+5. Parallel Saga Steps
+6. Outbox Pattern
+7. Event Versioning Registry
+8. Anti-Corruption Layer (ACL)
 

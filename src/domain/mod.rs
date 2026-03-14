@@ -6,3 +6,4 @@ pub mod money;
 pub mod order;
 pub mod order_v1;
 pub mod organization;
+pub mod procurement;
