@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Palantir Foundry — 官方处理流程 UML</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+  background: #0d0f1a;
+  color: #c9d1d9;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+/* ── toolbar ── */
+#toolbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(13,15,26,0.95);
+  border-bottom: 1px solid #21262d;
+  backdrop-filter: blur(8px);
+  padding: 10px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+#toolbar .ttl  { font-size: 13px; font-weight: 700; color: #58a6ff; letter-spacing: 0.3px; }
+#toolbar .sub  { font-size: 10px; color: #484f58; margin-top: 2px; font-family: sans-serif; }
+.tb-btn {
+  background: #21262d; border: 1px solid #30363d; color: #8b949e;
+  border-radius: 6px; padding: 5px 14px; font-size: 11px; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.tb-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+.tb-btns { display: flex; gap: 8px; }
+
+/* ── diagram canvas ── */
+#diagram {
+  padding: 40px 60px 80px;
+  min-width: 1400px;
+}
+
+/* ── UML base ── */
+.uml-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+
+/* ── Layer swimlane ── */
+.layer {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  border-bottom: 1px dashed #21262d;
+  min-height: 120px;
+  position: relative;
+}
+.layer:last-child { border-bottom: none; }
+
+.layer-label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 8px;
+  border-right: 2px solid #21262d;
+  background: #0d0f1a;
+  position: relative;
+  z-index: 2;
+}
+.layer-label .ll-num {
+  font-size: 10px; font-weight: 700;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 6px; flex-shrink: 0;
+}
+.layer-label .ll-name {
+  font-size: 10px; font-weight: 700; text-align: center;
+  writing-mode: vertical-rl; text-orientation: mixed;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+
+.layer-body {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+/* ── UML component box ── */
+.uml-box {
+  background: #161b22;
+  border: 1.5px solid #30363d;
+  border-radius: 4px;
+  min-width: 130px;
+  max-width: 200px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Stereotype header */
+.uml-box .stereo {
+  display: block;
+  font-size: 9px;
+  color: #484f58;
+  text-align: center;
+  padding: 4px 8px 0;
+  font-style: italic;
+  letter-spacing: 0.3px;
+}
+.uml-box .uml-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 10px 4px;
+  border-bottom: 1px solid #21262d;
+}
+.uml-box .uml-attrs {
+  padding: 6px 10px;
+  font-size: 10px;
+  color: #8b949e;
+  line-height: 1.7;
+  min-height: 10px;
+}
+.uml-box .uml-attrs .attr { display: flex; gap: 6px; }
+.uml-box .uml-attrs .attr-vis { color: #484f58; }
+.uml-box .uml-attrs .attr-name { color: #79c0ff; }
+.uml-box .uml-attrs .attr-type { color: #56d364; font-style: italic; }
+.uml-box .uml-methods {
+  padding: 0 10px 6px;
+  font-size: 10px;
+  color: #8b949e;
+  line-height: 1.8;
+  border-top: 1px dashed #21262d;
+}
+.uml-box .uml-methods .meth { color: #d2a8ff; }
+
+/* Interface box */
+.uml-box.interface { border-style: dashed; border-color: #58a6ff88; }
+.uml-box.interface .uml-name { color: #58a6ff; }
+.uml-box.interface .stereo   { color: #388bfd88; }
+
+/* Abstract */
+.uml-box.abstract .uml-name { color: #f0883e; font-style: italic; }
+
+/* Concrete */
+.uml-box.concrete .uml-name { color: #56d364; }
+
+/* Service */
+.uml-box.service .uml-name  { color: #bc8cff; }
+
+/* Data */
+.uml-box.data .uml-name     { color: #79c0ff; }
+
+/* Actor */
+.uml-actor {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 70px;
+}
+.actor-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  background: #161b22; border: 1.5px solid #30363d;
+}
+.actor-name { font-size: 10px; color: #8b949e; text-align: center; }
+
+/* ── Arrows / connectors ── */
+.arrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+.arrow-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  flex-shrink: 0;
+  gap: 2px;
+}
+.arr-line {
+  width: 1px;
+  height: 30px;
+  background: #30363d;
+  position: relative;
+}
+
+/* Between-layer arrows */
+.layer-arrow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 36px;
+  padding-left: 120px;
+  position: relative;
+  margin: 0;
+}
+.layer-arrow svg { overflow: visible; }
+
+/* ── Note box ── */
+.uml-note {
+  background: #1c2128;
+  border: 1px solid #30363d;
+  border-left: 3px solid #58a6ff;
+  border-radius: 2px;
+  padding: 6px 10px;
+  font-size: 10px;
+  color: #8b949e;
+  max-width: 200px;
+  line-height: 1.7;
+  flex-shrink: 0;
+}
+.uml-note .note-title { font-weight: 700; color: #58a6ff; margin-bottom: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ── Package grouping ── */
+.pkg {
+  border: 1px dashed #30363d;
+  border-radius: 4px;
+  padding: 8px 12px;
+  position: relative;
+  flex-shrink: 0;
+}
+.pkg-name {
+  position: absolute; top: -9px; left: 10px;
+  font-size: 9px; padding: 1px 6px;
+  background: #0d0f1a;
+  color: #484f58;
+  border: 1px solid #21262d;
+  border-radius: 3px;
+  font-style: italic;
+}
+.pkg-body { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+
+/* ── Dependency / realize arrows inline ── */
+.dep-arr { color: #484f58; font-size: 11px; align-self: center; }
+.realize-arr { color: #388bfd; font-size: 11px; align-self: center; }
+.compose-arr  { color: #56d364; font-size: 11px; align-self: center; }
+.assoc-arr    { color: #8b949e; font-size: 11px; align-self: center; }
+
+/* ── Full-width connector between layers ── */
+.flow-connector {
+  padding-left: 140px;
+  padding-right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  position: relative;
+}
+.fc-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #30363d 0%, #30363d 100%);
+  position: relative;
+}
+.fc-line::after {
+  content: '▶';
+  position: absolute;
+  right: -6px; top: -7px;
+  font-size: 10px;
+  color: #484f58;
+}
+.fc-label {
+  font-size: 9px; color: #484f58; white-space: nowrap;
+  font-style: italic;
+}
+
+/* ── Section divider ── */
+.sec-div {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #21262d 10%, #21262d 90%, transparent);
+  margin: 0 0 0 120px;
+}
+
+/* Color theming per layer */
+.layer-0 .layer-label { }
+.layer-0 .ll-num { background: #1f3050; color: #58a6ff; border: 1px solid #388bfd44; }
+.layer-0 .ll-name { color: #388bfd; }
+
+.layer-1 .ll-num { background: #1b2f1f; color: #56d364; border: 1px solid #2ea04344; }
+.layer-1 .ll-name { color: #3fb950; }
+
+.layer-2 .ll-num { background: #2d1f3f; color: #bc8cff; border: 1px solid #8957e544; }
+.layer-2 .ll-name { color: #a371f7; }
+
+.layer-3 .ll-num { background: #30261a; color: #f0883e; border: 1px solid #d2942044; }
+.layer-3 .ll-name { color: #e3b341; }
+
+.layer-4 .ll-num { background: #1f2d30; color: #39d353; border: 1px solid #39d35344; }
+.layer-4 .ll-name { color: #26a641; }
+
+.layer-5 .ll-num { background: #2d1f1f; color: #f85149; border: 1px solid #f8514944; }
+.layer-5 .ll-name { color: #da3633; }
+
+.layer-6 .ll-num { background: #1f222d; color: #79c0ff; border: 1px solid #1f6feb44; }
+.layer-6 .ll-name { color: #58a6ff; }
+
+.layer-7 .ll-num { background: #241f2d; color: #d2a8ff; border: 1px solid #8957e544; }
+.layer-7 .ll-name { color: #bc8cff; }
+
+.layer-8 .ll-num { background: #1a2020; color: #39d353; border: 1px solid #26a64144; }
+.layer-8 .ll-name { color: #3fb950; }
+
+/* vertical arrow between layers */
+.v-arrow {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0 0 0 180px;
+  height: 28px;
+}
+.v-arrow-line {
+  width: 1px; flex: 1; background: #30363d;
+}
+.v-arrow-label {
+  position: absolute;
+  font-size: 9px; color: #484f58;
+  font-style: italic; white-space: nowrap;
+  left: 310px;
+}
+.v-arrow-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 0 180px;
+  height: 28px;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div>
+    <div class="ttl">Palantir Foundry — 官方处理流程  &lt;&lt;component diagram&gt;&gt;</div>
+    <div class="sub" style="font-family:sans-serif">UML Component + Sequence 混合风格 · 从数据源到决策的完整链路</div>
+  </div>
+  <div class="tb-btns">
+    <button class="tb-btn" onclick="window.print()">导出 PDF</button>
+  </div>
+</div>
+
+<div id="diagram">
+<div class="uml-diagram">
+
+<!-- ════════════════════════════════════════════════
+     LAYER 0 — Actors / Data Sources
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-0">
+  <div class="layer-label">
+    <div class="ll-num">0</div>
+    <div class="ll-name">Data Sources</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-actor">
+      <div class="actor-icon">🗄</div>
+      <div class="actor-name">RDBMS<br>PostgreSQL/Oracle</div>
+    </div>
+    <div class="dep-arr">──</div>
+    <div class="uml-actor">
+      <div class="actor-icon">📂</div>
+      <div class="actor-name">File Storage<br>S3 / HDFS / CSV</div>
+    </div>
+    <div class="dep-arr">──</div>
+    <div class="uml-actor">
+      <div class="actor-icon">📡</div>
+      <div class="actor-name">Streaming<br>Kafka / Kinesis</div>
+    </div>
+    <div class="dep-arr">──</div>
+    <div class="uml-actor">
+      <div class="actor-icon">🌐</div>
+      <div class="actor-name">REST API<br>GraphQL / SOAP</div>
+    </div>
+    <div class="dep-arr">──</div>
+    <div class="uml-actor">
+      <div class="actor-icon">📊</div>
+      <div class="actor-name">SaaS<br>Salesforce / SAP</div>
+    </div>
+    <div class="dep-arr">──</div>
+    <div class="uml-actor">
+      <div class="actor-icon">📟</div>
+      <div class="actor-name">IoT / Sensors<br>MQTT / OPC-UA</div>
+    </div>
+
+    <div style="margin-left:auto;">
+      <div class="uml-note">
+        <div class="note-title">note</div>
+        数据源无需提前 schema 对齐。<br>
+        Foundry 在 Raw 层原样保留，<br>
+        血缘从此开始记录。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="320" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«connect» pull / push / CDC</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 1 — Connector Layer (Magritte)
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-1">
+  <div class="layer-label">
+    <div class="ll-num">1</div>
+    <div class="ll-name">Connector</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box interface">
+      <span class="stereo">«interface»</span>
+      <span class="uml-name">SourceConnector</span>
+      <div class="uml-methods">
+        <div class="meth">+ connect(): Connection</div>
+        <div class="meth">+ read(cursor?): Stream&lt;RawRecord&gt;</div>
+        <div class="meth">+ describe(): SourceSchema</div>
+        <div class="meth">+ checkpoint(): Cursor</div>
+      </div>
+    </div>
+
+    <div class="realize-arr">──▷</div>
+
+    <div class="pkg">
+      <span class="pkg-name">Magritte Connector Runtime</span>
+      <div class="pkg-body">
+        <div class="uml-box concrete">
+          <span class="stereo">«connector»</span>
+          <span class="uml-name">JdbcConnector</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">jdbc_url</span><span class="attr-type">: String</span></div>
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">incremental</span><span class="attr-type">: Bool</span></div>
+          </div>
+        </div>
+        <div class="uml-box concrete">
+          <span class="stereo">«connector»</span>
+          <span class="uml-name">S3Connector</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">bucket</span><span class="attr-type">: String</span></div>
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">format</span><span class="attr-type">: Parquet|CSV</span></div>
+          </div>
+        </div>
+        <div class="uml-box concrete">
+          <span class="stereo">«connector»</span>
+          <span class="uml-name">KafkaConnector</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">topic</span><span class="attr-type">: String</span></div>
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">offset</span><span class="attr-type">: Cursor</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box data">
+      <span class="stereo">«dataset»</span>
+      <span class="uml-name">RawDataset</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">rid</span><span class="attr-type">: ResourceId</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">version</span><span class="attr-type">: Long</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">schema</span><span class="attr-type">: Schema?</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">lineage_id</span><span class="attr-type">: UUID</span></div>
+      </div>
+    </div>
+
+    <div style="margin-left:auto;">
+      <div class="uml-note">
+        <div class="note-title">CDC 增量同步</div>
+        Cursor 记录上次同步位置。<br>
+        下次只拉取 cursor 之后的变更，<br>
+        避免全量重跑。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="500" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«transform» Spark / Contour Pipeline — immutable, versioned</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 2 — Transform / Pipeline Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-2">
+  <div class="layer-label">
+    <div class="ll-num">2</div>
+    <div class="ll-name">Transform</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box interface">
+      <span class="stereo">«interface»</span>
+      <span class="uml-name">Transform</span>
+      <div class="uml-methods">
+        <div class="meth">+ compute(in: Dataset[]): Dataset</div>
+        <div class="meth">+ schema(): Schema</div>
+      </div>
+    </div>
+
+    <div class="realize-arr">──▷</div>
+
+    <div class="uml-box service">
+      <span class="stereo">«service»</span>
+      <span class="uml-name">PipelineGraph</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">nodes</span><span class="attr-type">: Transform[]</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">edges</span><span class="attr-type">: DataFlow[]</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ execute(): Dataset</div>
+        <div class="meth">+ preview(n): Rows</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="pkg">
+      <span class="pkg-name">Built-in Transforms</span>
+      <div class="pkg-body">
+        <div class="uml-box concrete" style="min-width:100px">
+          <span class="uml-name" style="font-size:11px">Filter</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">predicate</span><span class="attr-type">: Expr</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:100px">
+          <span class="uml-name" style="font-size:11px">Join</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">on</span><span class="attr-type">: Key[]</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:100px">
+          <span class="uml-name" style="font-size:11px">Aggregate</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">groupBy</span><span class="attr-type">: Col[]</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:100px">
+          <span class="uml-name" style="font-size:11px">CodeTransform</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">lang</span><span class="attr-type">: Python|Spark</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box data">
+      <span class="stereo">«dataset»</span>
+      <span class="uml-name">CleanDataset</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">rid</span><span class="attr-type">: ResourceId</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">upstream_rid</span><span class="attr-type">: RID</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">validated</span><span class="attr-type">: Bool</span></div>
+      </div>
+    </div>
+
+    <div style="margin-left:auto;">
+      <div class="uml-note">
+        <div class="note-title">Lineage DAG</div>
+        每个 Dataset 知道自己的<br>
+        上游 RID。变更上游会<br>
+        自动 cascade 触发重算。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="500" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«map» Ontology Mapping Rule — Dataset rows → Object instances</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 3 — Ontology Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-3">
+  <div class="layer-label">
+    <div class="ll-num">3</div>
+    <div class="ll-name">Ontology</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="pkg" style="flex-shrink:0">
+      <span class="pkg-name">Ontology Schema (Design-time)</span>
+      <div class="pkg-body">
+        <div class="uml-box abstract">
+          <span class="stereo">«objectType»</span>
+          <span class="uml-name">ObjectType</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">apiName</span><span class="attr-type">: String</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">primaryKey</span><span class="attr-type">: Property</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">properties</span><span class="attr-type">: Property[]</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">datasource</span><span class="attr-type">: DatasetRID</span></div>
+          </div>
+          <div class="uml-methods">
+            <div class="meth">+ validate(obj): Bool</div>
+          </div>
+        </div>
+
+        <div class="dep-arr">── 1..*</div>
+
+        <div class="uml-box abstract">
+          <span class="stereo">«linkType»</span>
+          <span class="uml-name">LinkType</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">from</span><span class="attr-type">: ObjectType</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">to</span><span class="attr-type">: ObjectType</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">cardinality</span><span class="attr-type">: ONE_MANY|MANY</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">foreignKey</span><span class="attr-type">: Property</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="pkg" style="flex-shrink:0">
+      <span class="pkg-name">Object Storage (Runtime)</span>
+      <div class="pkg-body">
+        <div class="uml-box service">
+          <span class="stereo">«service»</span>
+          <span class="uml-name">ObjectStorage</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">-</span><span class="attr-name">backend</span><span class="attr-type">: Cassandra|Foundry</span></div>
+          </div>
+          <div class="uml-methods">
+            <div class="meth">+ upsert(obj): void</div>
+            <div class="meth">+ get(id): Object</div>
+            <div class="meth">+ delete(id): void</div>
+            <div class="meth">+ link(from,to,type): void</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="pkg" style="flex-shrink:0">
+      <span class="pkg-name">Object Graph</span>
+      <div class="pkg-body">
+        <div class="uml-box data">
+          <span class="stereo">«instance»</span>
+          <span class="uml-name">OntologyObject</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">objectRid</span><span class="attr-type">: RID</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">type</span><span class="attr-type">: ObjectType</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">properties</span><span class="attr-type">: Map&lt;K,V&gt;</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">links</span><span class="attr-type">: Link[]</span></div>
+            <div class="attr"><span class="attr-vis">+</span><span class="attr-name">version</span><span class="attr-type">: Long</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-left:auto;">
+      <div class="uml-note">
+        <div class="note-title">Bi-temporal</div>
+        每个对象有 valid_time<br>（业务时间）+ tx_time<br>
+        （写入时间），支持<br>历史状态查询。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="600" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«query» Object Set API — lazy, composable, type-safe</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 4 — Semantic Query Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-4">
+  <div class="layer-label">
+    <div class="ll-num">4</div>
+    <div class="ll-name">Semantic Query</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box service">
+      <span class="stereo">«service»</span>
+      <span class="uml-name">ObjectSetAPI</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">objectType</span><span class="attr-type">: ObjectType</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ filter(pred): ObjectSet</div>
+        <div class="meth">+ navigate(linkType): ObjectSet</div>
+        <div class="meth">+ groupBy(prop): GroupedSet</div>
+        <div class="meth">+ aggregate(fn): Result</div>
+        <div class="meth">+ load(props[]): Object[]</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box data">
+      <span class="stereo">«value»</span>
+      <span class="uml-name">ObjectSet</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-name">// lazy evaluated</span></div>
+        <div class="attr"><span class="attr-name">// AST, not rows</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ filter(): ObjectSet</div>
+        <div class="meth">+ intersect(): ObjectSet</div>
+        <div class="meth">+ union(): ObjectSet</div>
+        <div class="meth">+ execute(): Result</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box service">
+      <span class="stereo">«service»</span>
+      <span class="uml-name">QueryBackend</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">-</span><span class="attr-name">engine</span><span class="attr-type">: Spark|Arrow</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ translate(ast): SQL/Spark</div>
+        <div class="meth">+ execute(): DataFrame</div>
+        <div class="meth">+ cache(): void</div>
+      </div>
+    </div>
+
+    <div style="margin-left: auto">
+      <div class="uml-note">
+        <div class="note-title">例：语义查询</div>
+        <span style="color:#56d364">Employee</span>.filter(<br>
+        &nbsp;&nbsp;spend_ratio &gt; 30%<br>
+        ).navigate(<br>
+        &nbsp;&nbsp;<span style="color:#79c0ff">HAS_MANAGER</span><br>
+        ).load([name])
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="600" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«compute» Ontology Functions — pure, deterministic, derived properties</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 5 — Functions / Calculation Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-5">
+  <div class="layer-label">
+    <div class="ll-num">5</div>
+    <div class="ll-name">Functions</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box interface">
+      <span class="stereo">«interface»</span>
+      <span class="uml-name">OntologyFunction&lt;T&gt;</span>
+      <div class="uml-methods">
+        <div class="meth">+ apply(objectSet): T</div>
+        <div class="meth">+ returnType(): Schema</div>
+        <div class="meth">+ isAggregation(): Bool</div>
+      </div>
+    </div>
+
+    <div class="realize-arr">──▷</div>
+
+    <div class="pkg">
+      <span class="pkg-name">Function Types</span>
+      <div class="pkg-body">
+        <div class="uml-box concrete" style="min-width:130px">
+          <span class="stereo">«aggregation»</span>
+          <span class="uml-name">AggFunction</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-name">// SUM / AVG / COUNT</span></div>
+            <div class="attr"><span class="attr-name">// MAX / PERCENTILE</span></div>
+          </div>
+          <div class="uml-methods">
+            <div class="meth">+ groupBy(linkType)</div>
+          </div>
+        </div>
+        <div class="uml-box concrete" style="min-width:130px">
+          <span class="stereo">«derived»</span>
+          <span class="uml-name">DerivedProperty</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-name">// virtual property</span></div>
+            <div class="attr"><span class="attr-name">// computed on-read</span></div>
+          </div>
+        </div>
+        <div class="uml-box concrete" style="min-width:130px">
+          <span class="stereo">«rule»</span>
+          <span class="uml-name">BusinessRule</span>
+          <div class="uml-attrs">
+            <div class="attr"><span class="attr-name">// risk_level()</span></div>
+            <div class="attr"><span class="attr-name">// compliance_flag()</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box data">
+      <span class="stereo">«result»</span>
+      <span class="uml-name">FunctionResult</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">value</span><span class="attr-type">: Any</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">object_rid</span><span class="attr-type">: RID?</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">computed_at</span><span class="attr-type">: Timestamp</span></div>
+      </div>
+    </div>
+
+    <div style="margin-left:auto">
+      <div class="uml-note">
+        <div class="note-title">TypeScript / Python</div>
+        Function 代码部署到<br>
+        Foundry Runtime，不需要<br>
+        管理服务器。结果可<br>
+        缓存为 Derived Property。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="600" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«trigger» Pattern detected → Action invoked (event-driven)</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 6 — Actions Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-6">
+  <div class="layer-label">
+    <div class="ll-num">6</div>
+    <div class="ll-name">Actions</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box abstract">
+      <span class="stereo">«actionType»</span>
+      <span class="uml-name">ActionType</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">apiName</span><span class="attr-type">: String</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">parameters</span><span class="attr-type">: Param[]</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">effects</span><span class="attr-type">: Effect[]</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">permissions</span><span class="attr-type">: RBAC</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">validation</span><span class="attr-type">: Rule[]</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ validate(params): Result</div>
+        <div class="meth">+ apply(params): void</div>
+        <div class="meth">+ preview(): Effects</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="pkg">
+      <span class="pkg-name">Effect Types</span>
+      <div class="pkg-body">
+        <div class="uml-box concrete" style="min-width:120px">
+          <span class="stereo">«effect»</span>
+          <span class="uml-name">ModifyObject</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">set property = expr</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:120px">
+          <span class="stereo">«effect»</span>
+          <span class="uml-name">CreateObject</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">objectType + props</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:120px">
+          <span class="stereo">«effect»</span>
+          <span class="uml-name">AddLink</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">linkType + target</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:120px">
+          <span class="stereo">«effect»</span>
+          <span class="uml-name">TriggerWorkflow</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">workflowId + params</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box service">
+      <span class="stereo">«service»</span>
+      <span class="uml-name">ActionLog</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">who</span><span class="attr-type">: Principal</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">when</span><span class="attr-type">: Timestamp</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">before</span><span class="attr-type">: Snapshot</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">after</span><span class="attr-type">: Snapshot</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="600" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«orchestrate» Workflow Engine — multi-step, auditable, SLA-aware</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 7 — Workflow + AIP Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-7">
+  <div class="layer-label">
+    <div class="ll-num">7</div>
+    <div class="ll-name">Workflow / AIP</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box service">
+      <span class="stereo">«service»</span>
+      <span class="uml-name">WorkflowEngine</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">trigger</span><span class="attr-type">: Condition</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">steps</span><span class="attr-type">: Step[]</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">sla</span><span class="attr-type">: Duration?</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ run(context): WorkflowRun</div>
+        <div class="meth">+ resume(runId): void</div>
+        <div class="meth">+ escalate(runId): void</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="pkg">
+      <span class="pkg-name">Step Types</span>
+      <div class="pkg-body">
+        <div class="uml-box concrete" style="min-width:110px">
+          <span class="uml-name" style="font-size:10px">ApprovalStep</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">approver: Role</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:110px">
+          <span class="uml-name" style="font-size:10px">NotifyStep</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">channel: Email|Slack</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:110px">
+          <span class="uml-name" style="font-size:10px">ActionStep</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">actionType: ref</span></div></div>
+        </div>
+        <div class="uml-box concrete" style="min-width:110px">
+          <span class="uml-name" style="font-size:10px">AIPStep</span>
+          <div class="uml-attrs"><div class="attr"><span class="attr-name">prompt: Template</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──▶</div>
+
+    <div class="uml-box service" style="border-color:#bc8cff88">
+      <span class="stereo">«service»</span>
+      <span class="uml-name" style="color:#d2a8ff">AIP Logic</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">model</span><span class="attr-type">: LLM</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">context</span><span class="attr-type">: ObjectSet</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ ask(query): Answer</div>
+        <div class="meth">+ suggest(): Action[]</div>
+        <div class="meth">+ summarize(): Text</div>
+        <div class="meth">+ predict(): Forecast</div>
+      </div>
+    </div>
+
+    <div style="margin-left:auto">
+      <div class="uml-note">
+        <div class="note-title">AIP = LLM + Ontology</div>
+        LLM 不查向量数据库，<br>
+        直接调用 ObjectSet API<br>
+        查询实时结构化数据。<br>
+        <br>
+        上下文是 Ontology 对象，<br>
+        不是原始文本。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div class="v-arrow-wrap">
+  <svg width="600" height="28" style="position:absolute;left:140px;top:0">
+    <line x1="80" y1="0" x2="80" y2="20" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+    <polygon points="75,18 85,18 80,26" fill="#30363d"/>
+    <text x="92" y="14" font-size="9" fill="#484f58" font-style="italic" font-family="monospace">«render» Application Layer — low-code, real-time Ontology binding</text>
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     LAYER 8 — Application Layer
+     ════════════════════════════════════════════════ -->
+<div class="layer layer-8">
+  <div class="layer-label">
+    <div class="ll-num">8</div>
+    <div class="ll-name">Application</div>
+  </div>
+  <div class="layer-body">
+
+    <div class="uml-box service">
+      <span class="stereo">«application»</span>
+      <span class="uml-name">Workshop</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-name">// Operational App</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">widgets</span><span class="attr-type">: Widget[]</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ bindObjectSet(query)</div>
+        <div class="meth">+ addActionButton(action)</div>
+        <div class="meth">+ addAIPCopilot()</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──</div>
+
+    <div class="uml-box service">
+      <span class="stereo">«application»</span>
+      <span class="uml-name">Slate</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-name">// Analytical Report</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">charts</span><span class="attr-type">: Chart[]</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ bindQuery(objectSet)</div>
+        <div class="meth">+ addFilter(prop)</div>
+        <div class="meth">+ export(fmt): File</div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──</div>
+
+    <div class="uml-box service">
+      <span class="stereo">«application»</span>
+      <span class="uml-name">Quill (Maps)</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-name">// Geospatial View</span></div>
+        <div class="attr"><span class="attr-vis">+</span><span class="attr-name">layers</span><span class="attr-type">: Layer[]</span></div>
+      </div>
+    </div>
+
+    <div class="dep-arr">──</div>
+
+    <div class="uml-box service" style="border-color:#bc8cff88">
+      <span class="stereo">«application»</span>
+      <span class="uml-name" style="color:#d2a8ff">AIP Assistant</span>
+      <div class="uml-attrs">
+        <div class="attr"><span class="attr-name">// Natural Language UI</span></div>
+      </div>
+      <div class="uml-methods">
+        <div class="meth">+ chat(question): Answer</div>
+        <div class="meth">+ suggestAction()</div>
+      </div>
+    </div>
+
+    <div style="margin-left: auto">
+      <div class="uml-actor">
+        <div class="actor-icon" style="font-size:22px">👤</div>
+        <div class="actor-name">Decision Maker<br>Operations User</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- end uml-diagram -->
+
+<!-- ── Full flow sequence summary ── -->
+<div style="margin-top:48px; background:#161b22; border:1px solid #21262d; border-radius:6px; padding:20px 24px; font-size:11px; color:#8b949e; line-height:2;">
+  <div style="font-size:12px; font-weight:700; color:#c9d1d9; margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+    <span style="color:#58a6ff">«sequence»</span> 完整处理链路摘要
+  </div>
+  <div style="display:grid; grid-template-columns: repeat(9, 1fr); gap:0; text-align:center; position:relative;">
+    <div style="padding:0 4px;">
+      <div style="background:#1f3050; border:1px solid #388bfd44; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#58a6ff; margin-bottom:6px;">DataSource</div>
+      <div style="font-size:9px; color:#484f58">CSV / DB<br>Kafka / API</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">→</div>
+    <div style="padding:0 4px;">
+      <div style="background:#1b2f1f; border:1px solid #2ea04344; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#3fb950; margin-bottom:6px;">Connector</div>
+      <div style="font-size:9px; color:#484f58">RawDataset<br>血缘起点</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">→</div>
+    <div style="padding:0 4px;">
+      <div style="background:#2d1f3f; border:1px solid #8957e544; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#a371f7; margin-bottom:6px;">Transform</div>
+      <div style="font-size:9px; color:#484f58">Spark DAG<br>CleanDataset</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">→</div>
+    <div style="padding:0 4px;">
+      <div style="background:#30261a; border:1px solid #d2942044; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#e3b341; margin-bottom:6px;">Ontology</div>
+      <div style="font-size:9px; color:#484f58">Objects<br>Links</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">→</div>
+    <div style="padding:0 4px;">
+      <div style="background:#1f2d30; border:1px solid #39d35344; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#26a641; margin-bottom:6px;">Query</div>
+      <div style="font-size:9px; color:#484f58">ObjectSet<br>navigate/filter</div>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns: repeat(9, 1fr); gap:0; text-align:center; margin-top:8px;">
+    <div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px;">↓</div>
+    <div></div>
+  </div>
+  <div style="display:grid; grid-template-columns: repeat(9, 1fr); gap:0; text-align:center; margin-top:0;">
+    <div></div><div></div>
+    <div style="padding:0 4px;">
+      <div style="background:#2d1f1f; border:1px solid #f8514944; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#da3633; margin-bottom:6px;">Actions</div>
+      <div style="font-size:9px; color:#484f58">RBAC+Audit<br>变更写回</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">←</div>
+    <div style="padding:0 4px;">
+      <div style="background:#241f2d; border:1px solid #8957e544; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#bc8cff; margin-bottom:6px;">Workflow</div>
+      <div style="font-size:9px; color:#484f58">多步骤<br>审批/通知</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">←</div>
+    <div style="padding:0 4px;">
+      <div style="background:#30261a; border:1px solid #d2942044; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#e3b341; margin-bottom:6px;">Functions</div>
+      <div style="font-size:9px; color:#484f58">DerivedProps<br>BusinessRules</div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:#30363d; font-size:16px; padding-top:2px">←</div>
+    <div style="padding:0 4px;">
+      <div style="background:#1f2d30; border:1px solid #39d35344; border-radius:4px; padding:6px 4px; font-size:10px; font-weight:700; color:#26a641; margin-bottom:6px;">Application</div>
+      <div style="font-size:9px; color:#484f58">Workshop/Slate<br>AIP Copilot</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end diagram -->
+
+</body>
+</html>

@@ -1,0 +1,9 @@
+id,aircraft_id,origin_id,destination_id,flight_code,scheduled_departure,scheduled_arrival,status,airline
+fl001,ac1,ap1,ap2,FL100,2024-04-01T08:00:00,2024-04-01T11:15:00,on_time,SkyAir
+fl002,ac2,ap2,ap3,FL200,2024-04-01T10:30:00,2024-04-02T05:45:00,delayed,SkyAir
+fl003,ac3,ap3,ap4,OA300,2024-04-01T14:00:00,2024-04-01T15:30:00,cancelled,OceanAir
+fl004,ac4,ap4,ap1,OA400,2024-04-01T18:00:00,2024-04-01T21:00:00,on_time,OceanAir
+fl005,ac5,ap1,ap5,FL500,2024-04-01T20:00:00,2024-04-01T21:45:00,on_time,SkyAir
+fl006,ac2,ap5,ap6,FL600,2024-04-01T22:00:00,2024-04-01T23:30:00,departed,SkyAir
+fl007,ac6,ap7,ap8,OA700,2024-04-02T06:00:00,2024-04-02T09:30:00,on_time,OceanAir
+fl008,ac1,ap2,ap1,FL800,2024-04-02T09:00:00,2024-04-02T12:15:00,on_time,SkyAir

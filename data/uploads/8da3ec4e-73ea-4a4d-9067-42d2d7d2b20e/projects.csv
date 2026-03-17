@@ -1,0 +1,8 @@
+id,name,department_id,lead_employee_id,status,budget
+p1,Platform Migration,d1,e1,Active,500000
+p2,CRM Redesign,d2,e3,Active,200000
+p3,APAC Expansion,d3,e5,Planning,350000
+p4,Brand Refresh,d4,e7,Active,150000
+p5,Logistics Automation,d5,e9,Active,280000
+p6,Support Portal,d6,e9,On Hold,80000
+p7,Data Warehouse,d1,e2,Active,420000

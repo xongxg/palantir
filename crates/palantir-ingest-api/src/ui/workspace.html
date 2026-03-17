@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Palantir Workspace</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    /* ── Header ── */
+    .header { background: #1a1d2e; border-bottom: 1px solid #2d3748; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+    .header-title { font-size: 17px; font-weight: 600; color: #a78bfa; letter-spacing: -0.3px; }
+    .header-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+    /* ── Step tabs ── */
+    .steps { display: flex; background: #1a1d2e; border-bottom: 1px solid #2d3748; padding: 0 20px; }
+    .step-tab { display: flex; align-items: center; gap: 8px; padding: 12px 18px; font-size: 13px; color: #64748b;
+                border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s; user-select: none; }
+    .step-tab.clickable { cursor: pointer; }
+    .step-tab.clickable:hover { color: #a78bfa; }
+    .step-tab.active { color: #a78bfa; border-bottom-color: #a78bfa; }
+    .step-tab.done { color: #10b981; cursor: pointer; }
+    .step-tab.done:hover { color: #34d399; }
+    .step-num { width: 20px; height: 20px; border-radius: 50%; background: #2d3748; font-size: 11px; font-weight: 700;
+                display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .step-tab.active .step-num { background: #a78bfa; color: #0f1117; }
+    .step-tab.done .step-num { background: #10b981; color: #0f1117; }
+
+    /* ── Layout ── */
+    .content { padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
+    .section-title { font-size: 17px; font-weight: 600; color: #e2e8f0; margin-bottom: 6px; }
+    .section-sub { font-size: 13px; color: #64748b; margin-bottom: 22px; line-height: 1.5; }
+    [data-step] { display: none; }
+    [data-step].visible { display: block; }
+
+    /* ── Upload zone ── */
+    .upload-zone { border: 2px dashed #2d3748; border-radius: 12px; padding: 44px 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: #a78bfa; background: rgba(167,139,250,0.04); }
+    .upload-zone .up-icon { font-size: 44px; line-height: 1; margin-bottom: 14px; }
+    .upload-zone h3 { font-size: 15px; color: #cbd5e0; margin-bottom: 6px; }
+    .upload-zone p { font-size: 12px; color: #64748b; }
+    #fileInput { display: none; }
+
+    /* ── File chips ── */
+    .file-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .file-chip { display: flex; align-items: center; gap: 8px; background: #1a1d2e; border: 1px solid #2d3748; border-radius: 8px; padding: 6px 10px 6px 12px; font-size: 13px; }
+    .file-chip.uploading { border-color: #f59e0b; color: #f59e0b; }
+    .file-chip.ready     { border-color: #10b981; color: #10b981; }
+    .file-chip.error     { border-color: #ef4444; color: #ef4444; }
+    .chip-name { flex: 1; }
+    .chip-acts { display: flex; gap: 2px; margin-left: 4px; }
+    .chip-btn  { background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px;
+                 font-size: 12px; line-height: 1; opacity: 0.55; transition: opacity 0.15s, background 0.15s; }
+    .chip-btn:hover { opacity: 1; }
+    .chip-btn.replace:hover { background: rgba(167,139,250,0.15); color: #a78bfa; }
+    .chip-btn.delete:hover  { background: rgba(239,68,68,0.12);   color: #ef4444; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s, opacity 0.15s; }
+    .btn-primary { background: #a78bfa; color: #0f1117; }
+    .btn-primary:hover:not(:disabled) { background: #8b5cf6; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #2d3748; }
+    .btn-ghost:hover { border-color: #64748b; color: #e2e8f0; }
+    .btn-danger { background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.4); }
+    .btn-danger:hover { background: rgba(239,68,68,0.1); }
+    .btn-icon { padding: 7px 12px; font-size: 15px; }
+    .actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
+
+    /* ── Mapping cards ── */
+    .mapping-cards { display: flex; flex-direction: column; gap: 18px; }
+    .mcard { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 12px; overflow: hidden; }
+    .mcard-head { padding: 14px 18px; background: #141726; border-bottom: 1px solid #2d3748; display: flex; align-items: center; justify-content: space-between; }
+    .mcard-head .mcard-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+    .mcard-head .mcard-meta { font-size: 12px; color: #64748b; }
+    .mcard-body { padding: 18px; }
+
+    /* ── Form fields ── */
+    .frow { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .flabel { font-size: 12px; color: #64748b; width: 80px; flex-shrink: 0; }
+    .finput { background: #0f1117; border: 1px solid #2d3748; border-radius: 6px; padding: 6px 10px; color: #e2e8f0; font-size: 13px; outline: none; }
+    .finput:focus { border-color: #a78bfa; }
+    select.finput { cursor: pointer; }
+
+    /* ── Column table ── */
+    .ctable { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+    .ctable th { text-align: left; padding: 7px 10px; color: #64748b; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #2d3748; }
+    .ctable td { padding: 7px 10px; border-bottom: 1px solid #1e2433; vertical-align: middle; }
+    .ctable tr:last-child td { border-bottom: none; }
+    .ctable tr:hover td { background: rgba(167,139,250,0.03); }
+    .col-mono { font-family: 'SF Mono', Menlo, monospace; color: #94a3b8; font-size: 12px; }
+    .id-badge { display: inline-block; font-size: 10px; background: #a78bfa; color: #0f1117; padding: 1px 6px; border-radius: 4px; font-weight: 700; }
+    .sample-val { font-family: 'SF Mono', Menlo, monospace; color: #64748b; font-size: 11px; }
+    input[type=checkbox] { width: 15px; height: 15px; accent-color: #a78bfa; cursor: pointer; }
+
+    /* ── Build summary ── */
+    .build-box { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 12px; padding: 22px; margin-bottom: 16px; }
+    .build-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; color: #e2e8f0; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+    .stat-card { background: #141726; border-radius: 8px; padding: 14px; text-align: center; }
+    .stat-val { font-size: 26px; font-weight: 700; color: #a78bfa; line-height: 1; }
+    .stat-lbl { font-size: 11px; color: #64748b; margin-top: 5px; }
+    .entity-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .entity-pill { background: #141726; border: 1px solid #2d3748; border-radius: 6px; padding: 4px 12px; font-size: 12px; color: #a78bfa; }
+
+    /* ── Build progress panel ── */
+    .build-progress { background: #141726; border: 1px solid #2d3748; border-radius: 10px; padding: 6px 0; margin-bottom: 16px; display: none; }
+    .prog-stage { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid #1e2433; transition: background 0.2s; }
+    .prog-stage:last-child { border-bottom: none; }
+    .prog-stage.running { background: rgba(167,139,250,0.04); }
+    .prog-stage.done    { background: transparent; }
+    .prog-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; background: #2d3748; color: #64748b; }
+    .prog-icon.running { background: transparent; }
+    .prog-icon.done  { background: #10b981; color: #fff; font-size: 13px; }
+    .prog-icon.error { background: #ef4444; color: #fff; font-size: 13px; }
+    .prog-text { font-size: 13px; color: #64748b; flex: 1; }
+    .prog-stage.running .prog-text { color: #a78bfa; }
+    .prog-stage.done    .prog-text { color: #94a3b8; }
+    .prog-detail { font-size: 11px; color: #4a5568; font-family: 'SF Mono', Menlo, monospace; }
+
+    /* ── Status messages ── */
+    .status-msg { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 7px 13px; border-radius: 6px; }
+    .status-msg.error { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+
+    /* ── Ontology view ── */
+    .viz-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .onto-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .viz-wrap { position: relative; }
+    .viz-frame { width: 100%; height: 580px; border: 1px solid #2d3748; border-radius: 12px; background: #0d0f18; display: block; }
+    .viz-fullscreen-btn { position: absolute; top: 10px; right: 10px; z-index: 10;
+      background: rgba(26,29,46,0.85); border: 1px solid #2d3748; color: #94a3b8;
+      border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer;
+      backdrop-filter: blur(4px); transition: color 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 6px; }
+    .viz-fullscreen-btn:hover { color: #a78bfa; border-color: #a78bfa; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(167,139,250,0.3); border-top-color: #a78bfa; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:16px;">
+    <a href="/" style="display:flex;align-items:center;gap:6px;font-size:13px;color:#a78bfa;text-decoration:none;
+       background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);border-radius:6px;
+       padding:5px 12px;white-space:nowrap;transition:background 0.2s;"
+       onmouseover="this.style.background='rgba(167,139,250,0.2)'"
+       onmouseout="this.style.background='rgba(167,139,250,0.1)'">
+      ← Projects
+    </a>
+    <div>
+      <div class="header-title">Palantir Workspace <span id="projNameDisplay" style="font-size:13px;color:#64748b;font-weight:400;"></span></div>
+      <div class="header-sub">Upload → Map Properties → Discover Relationships → Build Ontology</div>
+    </div>
+  </div>
+  <button class="btn btn-danger" onclick="resetAll()">Reset</button>
+</div>
+
+<div class="steps">
+  <div class="step-tab active clickable" id="stab-1" onclick="tabClick(1)"><div class="step-num">1</div>Upload Files</div>
+  <div class="step-tab" id="stab-2" onclick="tabClick(2)"><div class="step-num">2</div>Map Properties</div>
+  <div class="step-tab" id="stab-3" onclick="tabClick(3)"><div class="step-num">3</div>Build Ontology</div>
+  <div class="step-tab" id="stab-4" onclick="tabClick(4)"><div class="step-num">4</div>View Graph</div>
+</div>
+
+<div class="content">
+
+  <!-- ── Step 1: Upload ── -->
+  <div data-step="1" class="visible">
+    <div class="section-title">Upload Data Files</div>
+    <div class="section-sub">Upload one or more CSV files. Each file will become an entity type in your ontology.</div>
+    <div class="upload-zone" id="uploadZone"
+         onclick="document.getElementById('fileInput').click()"
+         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+      <div class="up-icon">📂</div>
+      <h3>Drop CSV files here or click to browse</h3>
+      <p>Upload multiple files — each file becomes one entity type</p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" multiple onchange="handleFiles(this.files)">
+    <div class="file-list" id="fileList"></div>
+    <div class="actions">
+      <button class="btn btn-primary" id="btnNext1" disabled onclick="goStep(2)">Configure Mappings →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Map Properties ── -->
+  <div data-step="2">
+    <div class="section-title">Map Properties</div>
+    <div class="section-sub">
+      Set the entity type and ID field for each file. Map columns to ontology property names, choose types,
+      and mark foreign-key columns (ending in <code style="color:#a78bfa">_id</code>) that link entities together.
+    </div>
+    <div class="mapping-cards" id="mappingCards"></div>
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="goStep(1)">← Back</button>
+      <button class="btn btn-primary" onclick="saveMappingsAndContinue()">Review & Build →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Build ── -->
+  <div data-step="3">
+    <div class="section-title">Build Ontology</div>
+    <div class="section-sub">Review the configuration, then click Build to apply all mappings and discover entity relationships.</div>
+    <div class="build-box" id="buildBox"></div>
+    <div class="build-progress" id="buildProgress"></div>
+    <div class="actions">
+      <button class="btn btn-ghost" id="btnBack3" onclick="goStep(2)">← Back</button>
+      <button class="btn btn-primary" id="btnBuild" onclick="buildOntology()">Build Ontology</button>
+      <span id="st3"></span>
+    </div>
+  </div>
+
+  <!-- ── Step 4: View ── -->
+  <div data-step="4">
+    <div class="viz-header">
+      <div>
+        <div class="section-title" style="margin-bottom:0">Ontology Graph</div>
+      </div>
+    </div>
+    <div class="onto-stats" id="ontoStats"></div>
+    <div class="viz-wrap">
+      <iframe class="viz-frame" id="vizFrame" src="about:blank"></iframe>
+      <button class="viz-fullscreen-btn" onclick="fullscreenViz()" title="Fullscreen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+        </svg>
+        Fullscreen
+      </button>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="goStep(3)">← Back</button>
+      <button class="btn btn-primary" onclick="refreshViz()">Refresh Graph</button>
+      <a href="/" class="btn" style="background:#8b5cf6;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">＋ New Project</a>
+      <button class="btn btn-danger" onclick="resetAll()" title="Clear current project data and restart from Step 1">Reset</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const S = {
+  uploads:   [],   // { filename, connector_id, ns, headers, samples }
+  built:     false,
+  projectId: new URLSearchParams(window.location.search).get('project_id') || '',
+};
+
+// Redirect to projects list if no project_id
+if (!S.projectId) { window.location.href = '/'; }
+
+// Restore project state on open
+(async () => {
+  if (!S.projectId) return;
+  try {
+    // Show project name
+    const pr = await fetch(`/api/projects/${S.projectId}`);
+    if (pr.ok) {
+      const pd = await pr.json();
+      document.getElementById('projNameDisplay').textContent = `— ${pd.name}`;
+    }
+
+    // Check if project already has built data
+    const gr = await fetch(`/api/live_ontology?project_id=${S.projectId}`);
+    if (!gr.ok) return;
+    const gd = await gr.json();
+    const hasEntities = (gd.entities || []).length > 0;
+
+    // Restore connectors into S.uploads (for re-build capability)
+    const cr = await fetch(`/api/projects/${S.projectId}/connectors`);
+    if (cr.ok) {
+      const cd = await cr.json();
+      for (const c of (cd.connectors || [])) {
+        const stem = c.ns.replace(/^csv\./, '');
+        const fname = stem + '.csv';
+        const headers = Array.isArray(c.headers) ? c.headers : [];
+        const samples = Array.isArray(c.samples) ? c.samples : [];
+        const u = { filename: fname, connector_id: c.id, ns: c.ns, headers, samples };
+        S.uploads.push(u);
+        renderChip(fname, 'ready');
+        renderMappingCard(u);
+        if (c.mapping_config) applyMappingConfig(c.id, c.mapping_config);
+      }
+      updateNextBtn();
+      updateTabsState();
+    }
+
+    // If graph data exists, jump straight to Step 4
+    if (hasEntities) {
+      S.built = true;
+      updateTabsState();
+
+      // Try to get exact counts from last build record
+      let stats = {
+        entities:         gd.summary?.total_entities      ?? gd.entities.length,
+        relationships:    gd.summary?.total_relationships ?? (gd.relationships || []).length,
+        bounded_contexts: gd.summary?.bounded_contexts    ?? (gd.bounded_contexts || []).length,
+        applied_events:   0,
+      };
+      try {
+        const br = await fetch(`/api/projects/${S.projectId}/builds`);
+        if (br.ok) {
+          const bd = await br.json();
+          const last = (bd.builds || [])[0];
+          if (last) stats = { entities: last.entities, relationships: last.relationships, bounded_contexts: last.bounded_contexts, applied_events: last.applied_events };
+        }
+      } catch (_) {}
+
+      renderOntoStats(stats);
+      // Navigate to step 4
+      document.querySelectorAll('[data-step]').forEach(el => el.classList.remove('visible'));
+      document.querySelectorAll('.step-tab').forEach(el => el.classList.remove('active'));
+      document.querySelector('[data-step="4"]').classList.add('visible');
+      document.getElementById('stab-4').classList.add('active', 'clickable');
+      for (let i = 1; i <= 3; i++) document.getElementById(`stab-${i}`).classList.add('done', 'clickable');
+      refreshViz();
+    }
+  } catch (e) { console.warn('restore state failed:', e); }
+})();
+
+// ─── Tab navigation ──────────────────────────────────────────────────────────
+function tabClick(n) {
+  if (n === 1) { goStep(1); return; }
+  if (n <= 3 && S.uploads.length > 0) { goStep(n); return; }
+  if (n === 4 && S.built) { goStep(4); return; }
+}
+
+function updateTabsState() {
+  const reachable = [
+    true,
+    S.uploads.length > 0,
+    S.uploads.length > 0,
+    S.built,
+  ];
+  reachable.forEach((ok, i) => {
+    const tab = document.getElementById(`stab-${i + 1}`);
+    if (ok && !tab.classList.contains('active') && !tab.classList.contains('done')) {
+      tab.classList.add('clickable');
+    } else if (!ok) {
+      tab.classList.remove('clickable');
+    }
+  });
+  if (S.built) document.getElementById('stab-4').classList.add('clickable');
+}
+
+function goStep(n) {
+  if (n === 3) renderBuildBox();
+  document.querySelectorAll('[data-step]').forEach(el => el.classList.remove('visible'));
+  document.querySelectorAll('.step-tab').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-step="${n}"]`).classList.add('visible');
+  document.getElementById(`stab-${n}`).classList.add('active');
+  for (let i = 1; i < n; i++) {
+    const t = document.getElementById(`stab-${i}`);
+    t.classList.remove('active');
+    t.classList.add('done', 'clickable');
+  }
+}
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+function onDragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag-over'); }
+function onDragLeave()  { document.getElementById('uploadZone').classList.remove('drag-over'); }
+function onDrop(e)      { e.preventDefault(); document.getElementById('uploadZone').classList.remove('drag-over'); handleFiles(e.dataTransfer.files); }
+
+let _replaceTarget = null; // filename being replaced
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.name.endsWith('.csv'));
+  for (const file of files) {
+    if (_replaceTarget) {
+      // Replace mode: remove old entry first, then upload new file
+      const old = S.uploads.find(u => u.filename === _replaceTarget);
+      if (old) await deleteFile(_replaceTarget, old.connector_id, /*silent*/ true);
+      _replaceTarget = null;
+    } else if (S.uploads.find(u => u.filename === file.name)) {
+      continue; // skip duplicates when not in replace mode
+    }
+    renderChip(file.name, 'uploading');
+    await uploadOne(file);
+  }
+}
+
+function replaceFile(name) {
+  _replaceTarget = name;
+  const input = document.getElementById('fileInput');
+  input.value = '';
+  input.click();
+}
+
+async function deleteFile(name, connectorId, silent = false) {
+  if (!silent && !confirm(`Remove "${name}"?`)) return;
+  // Remove from state
+  S.uploads = S.uploads.filter(u => u.filename !== name);
+  // Remove chip
+  document.getElementById('chip-' + name)?.remove();
+  // Remove mapping card
+  if (connectorId) document.getElementById('mcard-' + connectorId)?.remove();
+  // Delete from backend
+  if (connectorId && S.projectId) {
+    await fetch(`/api/connectors/${connectorId}?project_id=${S.projectId}`, { method: 'DELETE' })
+      .catch(() => {});
+  }
+  updateNextBtn();
+  updateTabsState();
+}
+
+async function uploadOne(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res  = await fetch(`/api/upload?project_id=${S.projectId}`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'upload failed');
+    const ir   = await fetch('/api/inspect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connector_id: data.id, project_id: S.projectId, limit: 5 }),
+    });
+    const id = await ir.json();
+    S.uploads.push({ filename: file.name, connector_id: data.id, ns: data.ns, headers: id.headers || [], samples: id.samples || [] });
+    renderChip(file.name, 'ready');
+    renderMappingCard(S.uploads[S.uploads.length - 1]);
+    updateNextBtn();
+    updateTabsState();
+  } catch (err) {
+    renderChip(file.name, 'error');
+    console.error(err);
+  }
+}
+
+function renderChip(name, status) {
+  const list = document.getElementById('fileList');
+  let chip = document.getElementById('chip-' + name);
+  if (!chip) { chip = document.createElement('div'); chip.id = 'chip-' + name; list.appendChild(chip); }
+  chip.className = 'file-chip ' + status;
+  const icons = { uploading: '<span class="spinner"></span>', ready: '✓', error: '✗' };
+  const upload = S.uploads.find(u => u.filename === name);
+  const cid    = upload ? upload.connector_id : '';
+  const acts   = (status === 'ready' || status === 'error')
+    ? `<span class="chip-acts">
+         <button class="chip-btn replace" title="Replace with new file" onclick="replaceFile('${name}')">↺</button>
+         <button class="chip-btn delete"  title="Remove"               onclick="deleteFile('${name}','${cid}')">✕</button>
+       </span>`
+    : '';
+  chip.innerHTML = `${icons[status]} <span class="chip-name">${name}</span>${acts}`;
+}
+
+function updateNextBtn() {
+  const btn = document.getElementById('btnNext1');
+  const n   = S.uploads.length;
+  btn.disabled = n === 0;
+  if (n > 0) btn.textContent = `Configure ${n} file${n > 1 ? 's' : ''} →`;
+}
+
+// ─── Mapping Cards ────────────────────────────────────────────────────────────
+function titleCase(s) {
+  s = s.replace(/\.csv$/i, '');
+  if (s.endsWith('ies')) s = s.slice(0, -3) + 'y';
+  else if (s.endsWith('s') && !s.endsWith('ss')) s = s.slice(0, -1);
+  return s.replace(/[_\-\s]+(\w)/g, (_, c) => c.toUpperCase()).replace(/^\w/, c => c.toUpperCase());
+}
+
+function inferType(col, samples) {
+  const vals = samples.map(s => s[col]).filter(v => v != null && v !== '');
+  if (!vals.length) return 'str';
+  if (vals.every(v => /^-?\d+$/.test(String(v).trim()))) return 'int';
+  if (vals.every(v => !isNaN(parseFloat(v)) && isFinite(v))) return 'float';
+  return 'str';
+}
+
+function renderMappingCard(u) {
+  const idField   = u.headers.find(h => h.toLowerCase() === 'id') || u.headers[0] || 'id';
+  const entity    = titleCase(u.filename);
+  const cid       = u.connector_id;
+  const otherCols = u.headers.filter(h => h !== idField);
+  const optSel    = u.headers.map(h => `<option value="${h}" ${h===idField?'selected':''}>${h}</option>`).join('');
+  const colRows   = otherCols.map(col => {
+    const type   = inferType(col, u.samples);
+    const isFk   = col.toLowerCase().endsWith('_id');
+    const sample = u.samples.slice(0, 2).map(s => s[col] ?? '').join(', ');
+    return `<tr>
+      <td><span class="col-mono">${col}</span></td>
+      <td><input class="finput" style="width:140px" value="${col}" data-prop="${cid}:${col}"></td>
+      <td><select class="finput" data-type="${cid}:${col}">
+        <option value="str"   ${type==='str'  ?'selected':''}>str</option>
+        <option value="int"   ${type==='int'  ?'selected':''}>int</option>
+        <option value="float" ${type==='float'?'selected':''}>float</option>
+        <option value="bool">bool</option>
+      </select></td>
+      <td style="text-align:center"><input type="checkbox" data-fk="${cid}:${col}" ${isFk?'checked':''}></td>
+      <td><span class="sample-val">${sample}</span></td>
+    </tr>`;
+  }).join('');
+  const idRow = `<tr>
+    <td><span class="col-mono">${idField}</span></td>
+    <td colspan="3"><span class="id-badge">ID</span></td>
+    <td><span class="sample-val">${u.samples.slice(0,2).map(s=>s[idField]??'').join(', ')}</span></td>
+  </tr>`;
+  const tableHtml = `<table class="ctable">
+    <thead><tr><th>Column</th><th>Property Name</th><th>Type</th><th>FK Link</th><th>Sample</th></tr></thead>
+    <tbody>${idRow}${colRows}</tbody>
+  </table>`;
+  const card = document.createElement('div');
+  card.className = 'mcard';
+  card.id = 'mcard-' + cid;
+  card.innerHTML = `
+    <div class="mcard-head">
+      <div class="mcard-name">📄 ${u.filename}</div>
+      <div class="mcard-meta">${u.headers.length} columns · ${u.samples.length} sample rows</div>
+    </div>
+    <div class="mcard-body">
+      <div class="frow">
+        <span class="flabel">Entity Type</span>
+        <input class="finput" style="width:180px" id="etype-${cid}" value="${entity}" placeholder="e.g. Employee">
+      </div>
+      <div class="frow">
+        <span class="flabel">ID Field</span>
+        <select class="finput" id="idfield-${cid}">${optSel}</select>
+      </div>
+      ${otherCols.length ? tableHtml : '<p style="font-size:13px;color:#64748b">No additional columns</p>'}
+    </div>`;
+  document.getElementById('mappingCards').appendChild(card);
+}
+
+async function saveMappingsAndContinue() {
+  // Persist each connector's mapping config before proceeding
+  await Promise.all(S.uploads.map(u => {
+    const cfg = getCardConfig(u);
+    return fetch(`/api/connectors/${u.connector_id}/mapping`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entity_type: cfg.entity_type,
+        id_field:    cfg.id_field,
+        columns:     cfg.columns.map(c => ({ col: c.col, prop: c.prop, type: c.type, is_fk: c.is_fk })),
+      }),
+    }).catch(() => {});
+  }));
+  goStep(3);
+}
+
+function applyMappingConfig(cid, cfg) {
+  // cfg: { entity_type, id_field, columns: [{col, prop, type, is_fk}] }
+  const etEl = document.getElementById(`etype-${cid}`);
+  if (etEl && cfg.entity_type) etEl.value = cfg.entity_type;
+  const idEl = document.getElementById(`idfield-${cid}`);
+  if (idEl && cfg.id_field) idEl.value = cfg.id_field;
+  for (const col of (cfg.columns || [])) {
+    const propEl = document.querySelector(`[data-prop="${cid}:${col.col}"]`);
+    if (propEl && col.prop != null) propEl.value = col.prop;
+    const typeEl = document.querySelector(`[data-type="${cid}:${col.col}"]`);
+    if (typeEl && col.type != null) typeEl.value = col.type;
+    const fkEl = document.querySelector(`[data-fk="${cid}:${col.col}"]`);
+    if (fkEl && col.is_fk != null) fkEl.checked = col.is_fk;
+  }
+}
+
+function getCardConfig(u) {
+  const cid        = u.connector_id;
+  const entityType = document.getElementById(`etype-${cid}`)?.value.trim() || 'Entity';
+  const idField    = document.getElementById(`idfield-${cid}`)?.value || u.headers[0];
+  const columns    = u.headers.filter(h => h !== idField).map(col => ({
+    col,
+    prop:  document.querySelector(`[data-prop="${cid}:${col}"]`)?.value.trim() || col,
+    type:  document.querySelector(`[data-type="${cid}:${col}"]`)?.value || 'str',
+    is_fk: document.querySelector(`[data-fk="${cid}:${col}"]`)?.checked || false,
+  }));
+  return { connector_id: cid, entity_type: entityType, id_field: idField, columns };
+}
+
+// ─── Build Summary ────────────────────────────────────────────────────────────
+function renderBuildBox() {
+  const cfgs      = S.uploads.map(getCardConfig);
+  const totalCols = cfgs.reduce((n, c) => n + c.columns.length, 0);
+  const totalFks  = cfgs.reduce((n, c) => n + c.columns.filter(x => x.is_fk).length, 0);
+  document.getElementById('buildBox').innerHTML = `
+    <h3>Ready to Build</h3>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-val">${cfgs.length}</div><div class="stat-lbl">Files</div></div>
+      <div class="stat-card"><div class="stat-val">${totalCols}</div><div class="stat-lbl">Properties</div></div>
+      <div class="stat-card"><div class="stat-val">${totalFks}</div><div class="stat-lbl">FK Links</div></div>
+    </div>
+    <div class="entity-list" style="margin-top:14px">
+      ${cfgs.map(c => `<span class="entity-pill">${c.entity_type}</span>`).join('')}
+    </div>`;
+  // Reset progress panel
+  document.getElementById('buildProgress').style.display = 'none';
+  document.getElementById('buildProgress').innerHTML = '';
+  document.getElementById('btnBuild').disabled = false;
+  document.getElementById('btnBuild').textContent = 'Build Ontology';
+  document.getElementById('btnBack3').disabled = false;
+  document.getElementById('st3').innerHTML = '';
+}
+
+// ─── Async Build with Progress ────────────────────────────────────────────────
+function initProgress() {
+  const prog = document.getElementById('buildProgress');
+  const stages = [
+    ...S.uploads.map(u => ({ id: `f-${u.connector_id}`, label: `Applying ${u.filename}`, sub: getCardConfig(u).entity_type })),
+    { id: 'discover', label: 'Discovering relationships across entities' },
+    { id: 'graph',    label: 'Building ontology graph' },
+  ];
+  prog.innerHTML = stages.map(s => `
+    <div class="prog-stage" id="ps-${s.id}">
+      <div class="prog-icon" id="pi-${s.id}">·</div>
+      <span class="prog-text">${s.label}${s.sub ? ` <span style="color:#64748b">→ ${s.sub}</span>` : ''}</span>
+      <span class="prog-detail" id="pd-${s.id}"></span>
+    </div>`).join('');
+  prog.style.display = 'block';
+}
+
+function setStage(id, status, detail) {
+  const stage = document.getElementById(`ps-${id}`);
+  const icon  = document.getElementById(`pi-${id}`);
+  const det   = document.getElementById(`pd-${id}`);
+  if (!stage) return;
+  stage.className = `prog-stage ${status}`;
+  if (detail !== undefined) det.textContent = detail;
+  if (status === 'running') {
+    icon.className = 'prog-icon running';
+    icon.innerHTML = '<span class="spinner"></span>';
+  } else if (status === 'done') {
+    icon.className = 'prog-icon done';
+    icon.innerHTML = '✓';
+  } else if (status === 'error') {
+    icon.className = 'prog-icon error';
+    icon.innerHTML = '✗';
+  }
+}
+
+async function buildOntology() {
+  const btn = document.getElementById('btnBuild');
+  const st  = document.getElementById('st3');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Building…';
+  document.getElementById('btnBack3').disabled = true;
+  st.innerHTML = '';
+
+  initProgress();
+
+  // Animate per-file stages while the real fetch runs in background
+  const files = S.uploads;
+  files.forEach((u, i) => {
+    setTimeout(() => {
+      if (i > 0) setStage(`f-${files[i-1].connector_id}`, 'done');
+      setStage(`f-${u.connector_id}`, 'running');
+    }, i * 180);
+  });
+  const baseMs = files.length * 180 + 80;
+  setTimeout(() => {
+    if (files.length) setStage(`f-${files[files.length-1].connector_id}`, 'done');
+    setStage('discover', 'running');
+  }, baseMs);
+  setTimeout(() => {
+    setStage('discover', 'done');
+    setStage('graph', 'running');
+  }, baseMs + 350);
+
+  try {
+    const res  = await fetch('/api/workspace/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: S.projectId, items: files.map(getCardConfig) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'build failed');
+
+    // Mark all complete
+    files.forEach(u => setStage(`f-${u.connector_id}`, 'done'));
+    setStage('discover', 'done', `${data.relationships ?? 0} relationships`);
+    setStage('graph',    'done', `${data.entities ?? 0} entities · ${data.bounded_contexts ?? 0} BCs`);
+
+    btn.innerHTML = '✓ Built';
+    S.built = true;
+    updateTabsState();
+
+    setTimeout(() => {
+      // Navigate to step 4
+      document.querySelectorAll('[data-step]').forEach(el => el.classList.remove('visible'));
+      document.querySelectorAll('.step-tab').forEach(el => el.classList.remove('active'));
+      document.querySelector('[data-step="4"]').classList.add('visible');
+      document.getElementById('stab-4').classList.add('active', 'clickable');
+      for (let i = 1; i <= 3; i++) document.getElementById(`stab-${i}`).classList.add('done', 'clickable');
+      renderOntoStats(data);
+      refreshViz();
+    }, 700);
+
+  } catch (err) {
+    files.forEach(u => setStage(`f-${u.connector_id}`, 'error'));
+    setStage('discover', 'error');
+    setStage('graph', 'error');
+    st.innerHTML = `<span class="status-msg error">✗ ${err.message}</span>`;
+    btn.disabled = false;
+    btn.textContent = 'Retry Build';
+    document.getElementById('btnBack3').disabled = false;
+  }
+}
+
+function renderOntoStats(data) {
+  document.getElementById('ontoStats').innerHTML = [
+    ['Entities',         data.entities         ?? 0],
+    ['Relationships',    data.relationships     ?? 0],
+    ['Bounded Contexts', data.bounded_contexts  ?? 0],
+    ['Events Applied',   data.applied_events    ?? 0],
+  ].map(([lbl, val]) => `
+    <div class="stat-card"><div class="stat-val">${val}</div><div class="stat-lbl">${lbl}</div></div>
+  `).join('');
+}
+
+// ─── Viz ──────────────────────────────────────────────────────────────────────
+function refreshViz() {
+  document.getElementById('vizFrame').src = `/viz?project_id=${S.projectId}&t=${Date.now()}`;
+}
+
+function fullscreenViz() {
+  const frame = document.getElementById('vizFrame');
+  const fn = frame.requestFullscreen || frame.webkitRequestFullscreen || frame.mozRequestFullScreen;
+  if (fn) fn.call(frame);
+}
+
+// ─── Reset ────────────────────────────────────────────────────────────────────
+async function resetAll() {
+  if (!confirm('Clear all data for this project and restart from Step 1?')) return;
+  await fetch('/api/reset', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({project_id: S.projectId}) });
+  S.uploads = [];
+  S.built   = false;
+  document.getElementById('fileList').innerHTML     = '';
+  document.getElementById('mappingCards').innerHTML = '';
+  document.getElementById('fileInput').value        = '';
+  document.getElementById('vizFrame').src           = 'about:blank';
+  document.querySelectorAll('[data-step]').forEach(el => el.classList.remove('visible'));
+  document.querySelectorAll('.step-tab').forEach(el => el.classList.remove('active', 'done', 'clickable'));
+  document.querySelector('[data-step="1"]').classList.add('visible');
+  document.getElementById('stab-1').classList.add('active', 'clickable');
+  updateNextBtn();
+}
+</script>
+</body>
+</html>

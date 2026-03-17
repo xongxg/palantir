@@ -1,0 +1,9 @@
+[package]
+name = "palantir_application"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+palantir_domain = { path = "../palantir-domain" }
+palantir_pipeline = { path = "../palantir-pipeline" }
+serde = { version = "1", features = ["derive"] }

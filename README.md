@@ -152,6 +152,101 @@ cargo run
 
 No external dependencies — pure Rust standard library.
 
+### Quick Start — Path B (Web API for CSV → Ontology)
+
+Run the minimal ingest API (for UI integration):
+
+```bash
+cargo run -p palantir_ingest_api
+# Ingest API listening on http://0.0.0.0:8080
+```
+
+Open the UI: http://localhost:8080/ui — Upload/Connect → Save Mapping → Preview/Apply → Show Viz. The embedded viz loads from `/api/live_ontology` and refreshes after Apply.
+
+Endpoints:
+- POST `/api/upload` (multipart): upload a CSV file → returns `{ id, ns, schema }` connector
+- POST `/api/connectors` JSON `{ id?, path, ns, schema }` → returns `{ id }`
+- GET  `/api/connectors` → list saved connectors
+- POST `/api/mappings` JSON `{ id?, mapping_toml }` → returns `{ id }`
+- GET  `/api/mappings` → list saved mappings
+- POST `/api/preview` JSON `{ connector_id, mapping_id, limit? }` → returns `{ events: [...] }`
+- POST `/api/apply`   JSON `{ connector_id, mapping_id }` → returns `{ applied_events: N }`
+- GET  `/api/live_ontology` — returns the current live ontology (entities + relationships) for the D3 viz.
+
+Example mapping (TOML) for `data/transactions.csv`:
+
+```toml
+version = "v1"
+entity = "Transaction"
+
+[from]
+ns = "csv.transactions"
+
+[id]
+field = "id"
+
+[map]
+employee_id = "employee_id|str"
+amount      = "amount|float"
+category    = "category|str"
+
+[[links]]
+rel = "HAS"
+from_key = "employee_id"
+to_key   = "id"
+```
+
+Preview via curl (replace ids with actual values):
+
+```bash
+# 1) Upload CSV (optional — or use an existing path via /api/connectors)
+curl -F file=@data/transactions.csv http://localhost:8080/api/upload
+
+# 2) Save mapping
+curl -X POST http://localhost:8080/api/mappings \
+  -H 'Content-Type: application/json' \
+  -d @- << 'JSON'
+{ "mapping_toml": "version=\"v1\"\nentity=\"Transaction\"\n[from]\nns=\"csv.transactions\"\n[id]\nfield=\"id\"\n[map]\nemployee_id=\"employee_id|str\"\namount=\"amount|float\"\ncategory=\"category|str\"\n[[links]]\nrel=\"HAS\"\nfrom_key=\"employee_id\"\nto_key=\"id\"" }
+JSON
+
+# 3) Preview (returns ontology events without persisting)
+curl -X POST http://localhost:8080/api/preview \
+  -H 'Content-Type: application/json' \
+  -d '{ "connector_id": "csv.<id>", "mapping_id": "map.<id>", "limit": 5 }'
+
+# 4) Apply
+curl -X POST http://localhost:8080/api/apply \
+  -H 'Content-Type: application/json' \
+  -d '{ "connector_id": "csv.<id>", "mapping_id": "map.<id>" }'
+```
+
+### Agent-Driven CSV (optional)
+
+Use the built-in Agent stub to preview/apply a CSV mapping locally:
+
+```bash
+cargo run --example 14_agent_csv
+# Preview events: 6 (limit 3)
+# Applied events: 30
+```
+
+### Ontology Export + Viewer (existing flow)
+
+Run the CSV ingest to refresh the demo ontology JSON, then start the D3 viewer (standalone, optional — the UI uses the embedded viz already):
+
+```bash
+cargo run --example 12_ingest_csv_ontology
+cargo run --bin serve
+# open http://localhost:3000
+```
+
+### Multi-BC Demo
+
+```bash
+cargo run --example 08_multi_bc
+# Generates ontology_graph.json and bc_process.puml
+```
+
 ---
 
 ## Four Extension Dimensions

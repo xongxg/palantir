@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Palantir 架构思维导图</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    background: #0d0f1a;
+    color: #e2e8f0;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(26,29,46,0.92);
+    border-bottom: 1px solid #2d3748;
+    backdrop-filter: blur(8px);
+    padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  #toolbar .title { font-size: 14px; font-weight: 600; color: #a78bfa; }
+  #toolbar .subtitle { font-size: 11px; color: #64748b; margin-top: 1px; }
+  #toolbar .controls { display: flex; gap: 8px; }
+  .tb-btn {
+    background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25);
+    color: #a78bfa; border-radius: 6px; padding: 5px 12px; font-size: 12px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .tb-btn:hover { background: rgba(167,139,250,0.2); }
+  #canvas-wrap {
+    position: fixed; top: 52px; left: 0; right: 0; bottom: 0;
+    overflow: hidden; cursor: grab;
+  }
+  #canvas-wrap.dragging { cursor: grabbing; }
+  svg { width: 100%; height: 100%; }
+
+  /* Node styles */
+  .node-root circle   { fill: #a78bfa; }
+  .node-root text     { fill: #0f1117; font-weight: 700; font-size: 15px; }
+
+  .node-l1 rect       { rx: 8; }
+  .node-l1 text       { font-weight: 600; font-size: 13px; }
+
+  .node-l2 rect       { rx: 6; }
+  .node-l2 text       { font-size: 12px; }
+
+  .node-l3 text       { font-size: 11px; fill: #94a3b8; }
+
+  .link { fill: none; stroke-width: 1.5; opacity: 0.5; }
+
+  .badge {
+    font-size: 9px; font-weight: 700;
+    padding: 1px 5px; border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div>
+    <div class="title">Palantir Ontology Platform — 架构全景</div>
+    <div class="subtitle">从异构数据源 → Ontology Graph → 语义查询 → 决策执行</div>
+  </div>
+  <div class="controls">
+    <button class="tb-btn" onclick="resetView()">重置视图</button>
+    <button class="tb-btn" onclick="zoomIn()">＋</button>
+    <button class="tb-btn" onclick="zoomOut()">－</button>
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <svg id="svg">
+    <defs>
+      <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#4a5568" opacity="0.6"/>
+      </marker>
+    </defs>
+    <g id="root-g"></g>
+  </svg>
+</div>
+
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+const tree = {
+  id: 'root',
+  label: 'Palantir\nOntology Platform',
+  color: '#a78bfa',
+  children: [
+    {
+      id: 'ingest',
+      label: '① Ingest Layer',
+      sub: 'SourceAdapter trait',
+      color: '#06b6d4',
+      badge: 'crate: palantir-ontology-manager',
+      children: [
+        { id: 'csv',      label: 'CsvAdapter',      sub: '已实现', color: '#10b981' },
+        { id: 'postgres', label: 'PostgresAdapter',  sub: '待实现', color: '#f59e0b' },
+        { id: 'kafka',    label: 'KafkaAdapter',     sub: '待实现 / 支持 Cursor 增量', color: '#f59e0b' },
+        { id: 'http',     label: 'HttpAdapter',      sub: '待实现 / REST 分页拉取', color: '#f59e0b' },
+        {
+          id: 'contract',
+          label: 'stream(since: Cursor)',
+          sub: '增量同步接口',
+          color: '#06b6d4',
+          children: [
+            { id: 'c1', label: 'describe() → SourceDescriptor', sub: 'has_cursor / partitions', color: '#475569' },
+            { id: 'c2', label: 'stream(None) → 全量', sub: '首次同步', color: '#475569' },
+            { id: 'c3', label: 'stream(Some(cursor)) → 增量', sub: 'CDC / offset', color: '#475569' },
+          ]
+        }
+      ]
+    },
+    {
+      id: 'canonical',
+      label: '② CanonicalRecord',
+      sub: '统一数据模型',
+      color: '#8b5cf6',
+      badge: 'model.rs',
+      children: [
+        { id: 'cr1', label: 'source / ns / schema', sub: '数据血缘标识', color: '#6d28d9' },
+        { id: 'cr2', label: 'payload: JSON',         sub: '原始字段 key→value', color: '#6d28d9' },
+        { id: 'cr3', label: 'ts: OffsetDateTime',    sub: '采集时间', color: '#6d28d9' },
+        { id: 'cr4', label: 'cursor: Option<Value>', sub: '增量游标', color: '#6d28d9' },
+      ]
+    },
+    {
+      id: 'mapping',
+      label: '③ Mapping',
+      sub: 'TomlMapping → OntologyEvent',
+      color: '#f59e0b',
+      badge: 'mapping_toml.rs',
+      children: [
+        { id: 'm1', label: 'TOML 映射规则',    sub: 'entity / id / [map]', color: '#b45309' },
+        { id: 'm2', label: 'UI 可视化配置',    sub: 'Step 2: Map Properties', color: '#b45309' },
+        { id: 'm3', label: 'mapping_config 持久化', sub: 'SQLite connectors 表', color: '#b45309' },
+        {
+          id: 'm4',
+          label: 'OntologyEvent',
+          sub: '输出事件流',
+          color: '#f59e0b',
+          children: [
+            { id: 'me1', label: 'Upsert { object }',    sub: '实体写入', color: '#78350f' },
+            { id: 'me2', label: 'Link { from, to, rel }', sub: '关系写入', color: '#78350f' },
+            { id: 'me3', label: 'Delete { id }',         sub: '实体删除', color: '#78350f' },
+          ]
+        }
+      ]
+    },
+    {
+      id: 'graph',
+      label: '④ Ontology Graph',
+      sub: 'Entity + Relationship',
+      color: '#10b981',
+      badge: 'live_entities / live_relationships',
+      children: [
+        {
+          id: 'g1',
+          label: 'OntologyObject',
+          sub: '实体节点',
+          color: '#059669',
+          children: [
+            { id: 'go1', label: 'id / entity_type',       sub: '唯一标识 + 类型', color: '#064e3b' },
+            { id: 'go2', label: 'attrs: BTreeMap<k,Value>', sub: 'str/int/float/bool/time', color: '#064e3b' },
+            { id: 'go3', label: 'time: TimeBounds',        sub: 'valid_from / valid_to / tx_time', color: '#064e3b' },
+            { id: 'go4', label: 'provenance',              sub: '数据血缘溯源', color: '#064e3b' },
+          ]
+        },
+        {
+          id: 'g2',
+          label: 'RelationshipKind',
+          sub: '关系类型',
+          color: '#059669',
+          children: [
+            { id: 'gr1', label: 'HAS',        sub: 'FK 外键关联（Integration）', color: '#064e3b' },
+            { id: 'gr2', label: 'BELONGS_TO', sub: '类目分组（Logic）', color: '#064e3b' },
+            { id: 'gr3', label: 'LINKED_TO',  sub: '触发关联（Workflow）', color: '#064e3b' },
+            { id: 'gr4', label: 'SIMILAR_TO', sub: '相似匹配（Search）', color: '#064e3b' },
+          ]
+        },
+        {
+          id: 'g3',
+          label: '持久化',
+          sub: 'SQLite + In-Memory',
+          color: '#059669',
+          children: [
+            { id: 'gp1', label: 'LIVE_GRAPHS (内存)',     sub: 'HashMap<project_id, Graph>', color: '#064e3b' },
+            { id: 'gp2', label: 'live_entities (SQLite)', sub: 'project 级隔离', color: '#064e3b' },
+            { id: 'gp3', label: 'D3.js 可视化',           sub: 'force-directed graph', color: '#064e3b' },
+          ]
+        }
+      ]
+    },
+    {
+      id: 'discovery',
+      label: '⑤ Discovery Engine',
+      sub: '自动发现关系',
+      color: '#ec4899',
+      badge: 'discovery.rs',
+      children: [
+        { id: 'd1', label: 'Pass 1: 实体物化',     sub: '每条记录 → OntologyObject', color: '#9d174d' },
+        { id: 'd2', label: 'Pass 2: FK 检测',      sub: '_id 结尾字段 → HAS 关系', color: '#9d174d' },
+        { id: 'd3', label: 'Pass 3: 类目分组',     sub: '重复字符串值 → BELONGS_TO', color: '#9d174d' },
+        { id: 'd4', label: 'BoundedContext 识别',  sub: '连通子图 → 领域边界', color: '#9d174d' },
+      ]
+    },
+    {
+      id: 'logic',
+      label: '⑥ Logic / Calculation',
+      sub: '图上派生指标',
+      color: '#f97316',
+      badge: 'logic.rs',
+      children: [
+        { id: 'l1', label: 'salary_band()',         sub: 'Junior / Mid / Senior / Staff', color: '#7c2d12' },
+        { id: 'l2', label: 'spend_ratio_pct()',     sub: 'spend / salary * 100', color: '#7c2d12' },
+        { id: 'l3', label: 'concentration_ratio()', sub: '最高类目集中度', color: '#7c2d12' },
+        { id: 'l4', label: 'expense_risk_level()',  sub: 'Low / Medium / High', color: '#7c2d12' },
+        { id: 'l5', label: '纯函数计算',            sub: '相同输入 → 相同输出 / 无副作用', color: '#7c2d12' },
+      ]
+    },
+    {
+      id: 'query',
+      label: '⑦ Semantic Query',
+      sub: 'Pipeline 链式查询',
+      color: '#06b6d4',
+      badge: 'queries.rs / pipeline',
+      children: [
+        { id: 'q1', label: 'Filter',    sub: 'amount > 500', color: '#0e7490' },
+        { id: 'q2', label: 'Join',      sub: 'Employee ⟷ Transaction via employee_id', color: '#0e7490' },
+        { id: 'q3', label: 'Aggregate', sub: 'GROUP BY department, SUM/AVG/COUNT/MAX', color: '#0e7490' },
+        { id: 'q4', label: 'Sort',      sub: 'ORDER BY total_spend DESC', color: '#0e7490' },
+        { id: 'q5', label: 'Select',    sub: '字段投影', color: '#0e7490' },
+        { id: 'q6', label: '语义层',    sub: '查询描述业务概念 不是表名/SQL', color: '#0e7490' },
+      ]
+    },
+    {
+      id: 'action',
+      label: '⑧ Action → Workflow',
+      sub: '模式识别 → 决策执行',
+      color: '#ef4444',
+      badge: 'action.rs / workflow.rs',
+      children: [
+        {
+          id: 'a1',
+          label: 'Action Derivation',
+          sub: '关系模式 → 可执行动作',
+          color: '#dc2626',
+          children: [
+            { id: 'aa1', label: 'BelongsTo → Logic Action',    sub: '按组聚合计算', color: '#7f1d1d' },
+            { id: 'aa2', label: 'HAS → Integration Action',    sub: 'Join 跨实体', color: '#7f1d1d' },
+            { id: 'aa3', label: 'LinkedTo → Workflow Trigger', sub: '触发审批流', color: '#7f1d1d' },
+            { id: 'aa4', label: 'SimilarTo → Search Action',   sub: '相似模式匹配', color: '#7f1d1d' },
+          ]
+        },
+        {
+          id: 'a2',
+          label: 'WorkflowRun',
+          sub: '多步骤可审计执行',
+          color: '#dc2626',
+          children: [
+            { id: 'aw1', label: '✓ Validate threshold',  sub: '确认是否触发条件', color: '#7f1d1d' },
+            { id: 'aw2', label: '✓ Notify manager',      sub: '发送告警通知', color: '#7f1d1d' },
+            { id: 'aw3', label: '✓ Create approval hold', sub: '冻结待审批', color: '#7f1d1d' },
+            { id: 'aw4', label: '✓ Archive audit record', sub: '写入审计日志', color: '#7f1d1d' },
+          ]
+        },
+        {
+          id: 'a3',
+          label: 'StepOutcome',
+          sub: 'Completed / Skipped / Failed',
+          color: '#dc2626',
+        }
+      ]
+    },
+    {
+      id: 'persistence',
+      label: '⑨ Persistence',
+      sub: 'SQLite (demo) / Postgres (prod)',
+      color: '#64748b',
+      badge: 'crate: palantir-persistence',
+      children: [
+        { id: 'p1', label: 'projects',            sub: 'id / name / created_at', color: '#374151' },
+        { id: 'p2', label: 'connectors',          sub: 'path / headers / samples / mapping_config', color: '#374151' },
+        { id: 'p3', label: 'live_entities',       sub: 'entity_type / ddd_concept / properties JSON', color: '#374151' },
+        { id: 'p4', label: 'live_relationships',  sub: 'from_id / to_id / kind', color: '#374151' },
+        { id: 'p5', label: 'builds',              sub: 'entities / rels / BCs / applied_events', color: '#374151' },
+      ]
+    },
+  ]
+};
+
+// ─── Layout ──────────────────────────────────────────────────────────────────
+const CX = 2200, CY = 1600;   // canvas center
+const ROOT_R = 80;
+
+// Place children radially around root
+function layout(node, x, y, angle, spread) {
+  node.x = x;
+  node.y = y;
+  if (!node.children?.length) return;
+  const n = node.children.length;
+  const start = angle - spread / 2;
+  const step  = spread / (n > 1 ? n - 1 : 1);
+  const depth = getDepth(node);
+  const radius = depth === 0 ? 360 : depth === 1 ? 280 : 200;
+  node.children.forEach((child, i) => {
+    const a = start + step * i;
+    const rad = a * Math.PI / 180;
+    const cx  = x + Math.cos(rad) * radius;
+    const cy  = y + Math.sin(rad) * radius;
+    const childSpread = Math.max(15, spread / Math.max(n, 2) * 1.1);
+    layout(child, cx, cy, a, childSpread);
+  });
+}
+
+function getDepth(node) {
+  if (node.id === 'root') return 0;
+  return 1; // top-level children of root
+}
+
+// Place root L1 nodes in a wide circle
+const L1 = tree.children;
+const L1_RADIUS = 600;
+const L1_SPREAD = 50;
+L1.forEach((child, i) => {
+  const angle = (360 / L1.length) * i - 90;
+  const rad   = angle * Math.PI / 180;
+  child.x = CX + Math.cos(rad) * L1_RADIUS;
+  child.y = CY + Math.sin(rad) * L1_RADIUS;
+  tree.x  = CX;
+  tree.y  = CY;
+  if (child.children) {
+    const n = child.children.length;
+    const outAngle = angle;
+    const spread   = 40;
+    const start    = outAngle - (spread * (n - 1)) / 2;
+    const R2 = 260;
+    child.children.forEach((gc, j) => {
+      const a2  = start + spread * j;
+      const r2  = a2 * Math.PI / 180;
+      gc.x = child.x + Math.cos(r2) * R2;
+      gc.y = child.y + Math.sin(r2) * R2;
+      if (gc.children) {
+        const n2 = gc.children.length;
+        const s2 = 30;
+        const st2 = a2 - (s2 * (n2 - 1)) / 2;
+        const R3 = 200;
+        gc.children.forEach((ggc, k) => {
+          const a3 = st2 + s2 * k;
+          const r3 = a3 * Math.PI / 180;
+          ggc.x = gc.x + Math.cos(r3) * R3;
+          ggc.y = gc.y + Math.sin(r3) * R3;
+        });
+      }
+    });
+  }
+});
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+const svg  = document.getElementById('svg');
+const g    = document.getElementById('root-g');
+const NS   = 'http://www.w3.org/2000/svg';
+
+function el(tag, attrs = {}, parent = g) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.appendChild(e);
+  return e;
+}
+
+function drawLink(x1, y1, x2, y2, color) {
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  el('path', {
+    d: `M${x1},${y1} Q${mx},${y1} ${x2},${y2}`,
+    stroke: color || '#4a5568',
+    'stroke-width': 1.5,
+    fill: 'none',
+    opacity: 0.4,
+  });
+}
+
+function drawNode(node, level) {
+  if (level === 0) {
+    // Root circle
+    const circle = el('circle', { cx: node.x, cy: node.y, r: ROOT_R, fill: node.color });
+    const lines = node.label.split('\n');
+    lines.forEach((line, i) => {
+      const t = el('text', {
+        x: node.x, y: node.y + (i - (lines.length - 1) / 2) * 18,
+        'text-anchor': 'middle', 'dominant-baseline': 'middle',
+        fill: '#0f1117', 'font-weight': '700', 'font-size': '13px',
+        'pointer-events': 'none',
+      });
+      t.textContent = line;
+    });
+    return;
+  }
+
+  // Box nodes
+  const w = level === 1 ? 160 : level === 2 ? 150 : 170;
+  const h = node.sub ? (level === 1 ? 52 : 44) : (level === 1 ? 36 : 30);
+  const rx = 8;
+  const alpha = level === 1 ? 'cc' : level === 2 ? '44' : '22';
+  const border = level === 1 ? 'cc' : '66';
+
+  // Background
+  el('rect', {
+    x: node.x - w/2, y: node.y - h/2, width: w, height: h, rx,
+    fill: node.color + alpha,
+    stroke: node.color + border,
+    'stroke-width': level === 1 ? 1.5 : 1,
+  });
+
+  // Label
+  el('text', {
+    x: node.x, y: node.y - (node.sub ? 8 : 0),
+    'text-anchor': 'middle', 'dominant-baseline': 'middle',
+    fill: level === 1 ? '#e2e8f0' : '#cbd5e0',
+    'font-size': level === 1 ? '12px' : '11px',
+    'font-weight': level === 1 ? '600' : '400',
+    'pointer-events': 'none',
+  }).textContent = node.label;
+
+  // Sub label
+  if (node.sub) {
+    el('text', {
+      x: node.x, y: node.y + 12,
+      'text-anchor': 'middle', 'dominant-baseline': 'middle',
+      fill: node.color,
+      'font-size': '9px',
+      'pointer-events': 'none',
+      opacity: '0.8',
+    }).textContent = node.sub;
+  }
+}
+
+function renderTree(node, level = 0, parent = null) {
+  if (parent) {
+    drawLink(parent.x, parent.y, node.x, node.y, node.color);
+  }
+  drawNode(node, level);
+  if (node.children) {
+    node.children.forEach(child => renderTree(child, level + 1, node));
+  }
+}
+
+renderTree(tree);
+
+// ─── Pan & Zoom ──────────────────────────────────────────────────────────────
+let vx = 0, vy = 0, scale = 0.55;
+let dragging = false, lastX, lastY;
+const wrap = document.getElementById('canvas-wrap');
+
+function applyTransform() {
+  g.setAttribute('transform', `translate(${vx},${vy}) scale(${scale})`);
+}
+
+// Center on load
+function resetView() {
+  const W = wrap.clientWidth;
+  const H = wrap.clientHeight;
+  scale = 0.55;
+  vx = W / 2 - CX * scale;
+  vy = H / 2 - CY * scale;
+  applyTransform();
+}
+setTimeout(resetView, 50);
+
+wrap.addEventListener('mousedown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  wrap.classList.add('dragging');
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  vx += e.clientX - lastX;
+  vy += e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  applyTransform();
+});
+window.addEventListener('mouseup', () => { dragging = false; wrap.classList.remove('dragging'); });
+
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  const rect   = wrap.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  vx = mx - (mx - vx) * factor;
+  vy = my - (my - vy) * factor;
+  scale *= factor;
+  applyTransform();
+}, { passive: false });
+
+function zoomIn()  { scale *= 1.2; applyTransform(); }
+function zoomOut() { scale *= 0.8; applyTransform(); }
+</script>
+</body>
+</html>

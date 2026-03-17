@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Palantir Ingest — CSV → Ontology</title>
+  <script src="/static/d3.v7.min.js"></script>
+  <script>if (typeof d3 === 'undefined') { document.write('<script src="https://d3js.org/d3.v7.min.js"><\\/script>'); }</script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #1f2328; }
+    h2 { margin-top: 24px; }
+    textarea { width: 100%; height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .row { display: flex; gap: 16px; align-items: center; }
+    .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; cursor: pointer; }
+    .btn:active { transform: translateY(1px); }
+    pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow: auto; }
+    input[type="text"] { width: 420px; }
+  </style>
+</head>
+<body>
+  <h1>CSV → Ontology (Path B UI)</h1>
+  <div>
+    <h2>1) Upload CSV</h2>
+    <input type="file" id="file" multiple />
+    <button class="btn" onclick="upload()">Upload</button>
+    <button class="btn" onclick="uploadMulti()">Upload Multiple (Auto)</button>
+    <div id="uploadInfo"></div>
+  </div>
+
+  <div>
+    <h2>2) Or Register Connector</h2>
+    <div class="row">
+      <label>path</label><input type="text" id="path" value="data/transactions.csv" />
+      <label>ns</label><input type="text" id="ns" value="csv.transactions" />
+      <label>schema</label><input type="text" id="schema" value="transactions_v1" />
+      <button class="btn" onclick="registerConnector()">Register</button>
+    </div>
+    <div>connector_id: <code id="connectorId">(none)</code></div>
+  </div>
+
+  <div>
+    <h2>3) Mapping (TOML)</h2>
+    <textarea id="mapping"></textarea>
+    <div class="row">
+      <button class="btn" onclick="saveMapping()">Save Mapping</button>
+      <button class="btn" onclick="suggestMapping()">Suggest Mapping</button>
+      <button class="btn" onclick="resetLive()" title="Clear in-memory state">Reset Live</button>
+      <span>mapping_id: <code id="mappingId">(none)</code></span>
+    </div>
+  </div>
+
+  <div>
+    <h2>4) Preview & Apply</h2>
+    <div class="row">
+      <label>limit</label><input type="text" id="limit" value="5" />
+      <button class="btn" onclick="preview()">Preview</button>
+      <button class="btn" onclick="applyMap()">Apply</button>
+    </div>
+    <h3>Response</h3>
+    <pre id="out"></pre>
+  </div>
+
+  <div>
+    <h2>5) Visualize Ontology (Inline)</h2>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn" onclick="updateViz(true)">Refresh Viz</button>
+      <span id="liveStats" style="opacity:.7"></span>
+    </div>
+    <div id="vizWrap" style="width:100%; height:640px; border:1px solid #d0d7de; border-radius:6px; background:#fff"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const setExample = () => {
+      $("mapping").value = `version = "v1"
+entity = "Transaction"
+[from]
+ns = "csv.transactions"
+[id]
+field = "id"
+[map]
+employee_id = "employee_id|str"
+amount      = "amount|float"
+category    = "category|str"
+[[links]]
+rel = "HAS"
+from_key = "employee_id"
+to_key   = "id"`;
+    };
+    setExample();
+
+    async function upload() {
+      const files = $("file").files;
+      if (!files.length) return;
+      const fd = new FormData();
+      fd.append("file", files[0]);
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      const j = await r.json();
+      $("uploadInfo").textContent = JSON.stringify(j);
+      if (j.id) $("connectorId").textContent = j.id;
+    }
+    async function uploadMulti() {
+      const files = $("file").files;
+      if (!files.length) { alert('Choose multiple files'); return; }
+      const fd = new FormData();
+      for (const f of files) fd.append('file', f);
+      const r = await fetch('/api/upload_multi', { method: 'POST', body: fd });
+      const j = await r.json();
+      $("uploadInfo").textContent = JSON.stringify(j);
+      updateViz(true);
+    }
+    async function registerConnector() {
+      const body = { path: $("path").value, ns: $("ns").value, schema: $("schema").value };
+      const r = await fetch('/api/connectors', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (j.id) $("connectorId").textContent = j.id;
+    }
+    async function saveMapping() {
+      const body = { mapping_toml: $("mapping").value };
+      const r = await fetch('/api/mappings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (j.id) $("mappingId").textContent = j.id;
+    }
+    async function suggestMapping() {
+      const cid = $("connectorId").textContent;
+      if (!cid || cid === '(none)') { alert('Please upload or register a connector first'); return; }
+      const r = await fetch('/api/inspect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ connector_id: cid, limit: 3 }) });
+      const j = await r.json();
+      const headers = j.headers || [];
+      const samples = j.samples || [];
+      if (!headers.length) { alert('No headers detected'); return; }
+      const idField = headers.find(h => h.toLowerCase() === 'id') || headers[0];
+      const fields = headers.filter(h => h !== idField);
+      const pickType = (k) => {
+        const vals = samples.map(s => (s[k] ?? '') + '').slice(0, 3);
+        return vals.every(v => /^-?\d+(\.\d+)?$/.test(v)) ? 'float' : 'str';
+      };
+      const mapLines = fields.map(k => `${k} = "${k}|${pickType(k)}"`).join('\n');
+      const linkCand = headers.find(h => h.toLowerCase().endsWith('_id') && h.toLowerCase() !== 'id');
+      const linkBlock = linkCand ? `\n[[links]]\nrel = "HAS"\nfrom_key = "${linkCand}"\nto_key = "${idField}"\n` : '';
+      const ns = j.ns || 'csv.unknown';
+      const entity = (j.schema || 'Record').replace(/_v\d+$/, '') || 'Record';
+      const toml = `version = "v1"\nentity = "${entity}"\n[from]\nns = "${ns}"\n[id]\nfield = "${idField}"\n[map]\n${mapLines}${linkBlock}`;
+      $("mapping").value = toml;
+    }
+    async function preview() {
+      const body = { connector_id: $("connectorId").textContent, mapping_id: $("mappingId").textContent, limit: Number($("limit").value)||5 };
+      const r = await fetch('/api/preview', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json();
+      $("out").textContent = JSON.stringify(j, null, 2);
+    }
+    async function applyMap() {
+      const body = { connector_id: $("connectorId").textContent, mapping_id: $("mappingId").textContent };
+      const r = await fetch('/api/apply', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json();
+      $("out").textContent = JSON.stringify(j, null, 2);
+      // auto refresh inline viz after apply
+      // auto discover cross-file links after apply
+      await fetch('/api/discover', { method: 'POST' });
+      updateViz(true);
+    }
+
+    // ── Inline D3 Viz (simplified) ─────────────────────────
+    let sim, svg, linkSel, nodeSel;
+    function initViz() {
+      const wrap = document.getElementById('vizWrap');
+      if (typeof d3 === 'undefined') {
+        wrap.innerHTML = '<div style="padding:12px;color:#6e7781">D3 库未加载，可能被浏览器或网络拦截。你可以直接打开完整可视化页面： <a href="/viz?src=/api/live_ontology" target="_blank">/viz?src=/api/live_ontology</a></div>';
+        return;
+      }
+      wrap.innerHTML = '<svg id="vizSvg" width="100%" height="100%"></svg>';
+      svg = d3.select('#vizSvg');
+      const g = svg.append('g');
+      linkSel = g.append('g').attr('stroke', '#388bfd55').selectAll('line');
+      nodeSel = g.append('g').selectAll('g');
+      const zoom = d3.zoom().scaleExtent([0.05, 5]).on('zoom', e => g.attr('transform', e.transform));
+      svg.call(zoom);
+    }
+    function drawViz(data) {
+      if (!svg) initViz();
+      const nodes = data.entities.map(e => ({ id: e.id, label: e.label || e.id, type: e.type || 'Entity' }));
+      const links = data.relationships.map(r => ({ source: r.from, target: r.to }));
+      sim && sim.stop();
+      sim = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(60).strength(0.3))
+        .force('charge', d3.forceManyBody().strength(-180))
+        .force('collide', d3.forceCollide(16))
+        .force('center', d3.forceCenter( window.innerWidth * 0.45, 300));
+      linkSel = linkSel.data(links, d => d.source.id + '→' + d.target.id).join('line').attr('stroke-width', 1.5);
+      const nodeEnter = nodeSel.data(nodes, d => d.id).join(enter => {
+        const g = enter.append('g').attr('class', 'node');
+        g.append('circle').attr('r', 8).attr('fill', '#388bfd').attr('stroke', '#1f2328');
+        g.append('text').attr('y', -14).attr('font-size', 10).text(d => d.label).attr('fill', '#1f2328');
+        return g;
+      });
+      nodeSel = nodeEnter;
+      sim.on('tick', () => {
+        linkSel.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+               .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+      });
+    }
+    async function updateViz(showStats=false) {
+      try {
+        const r = await fetch('/api/live_ontology', { cache: 'no-store' });
+        const j = await r.json();
+        if (typeof d3 === 'undefined') {
+          // 已提示，直接返回
+          return;
+        }
+        drawViz(j);
+        if (showStats) {
+          const s = j.summary || {}; const n = s.total_entities ?? (j.entities||[]).length; const m = s.total_relationships ?? (j.relationships||[]).length;
+          $("liveStats").textContent = `${n} entities · ${m} relationships`;
+        }
+      } catch (err) {
+        $("liveStats").textContent = 'Load error: ' + (err.message || err);
+      }
+    }
+    async function resetLive() {
+      await fetch('/api/reset', { method: 'POST' });
+      $("out").textContent = '';
+      $("uploadInfo").textContent = '';
+      $("connectorId").textContent = '(none)';
+      $("mappingId").textContent = '(none)';
+      updateViz(true);
+    }
+    // initial viz (empty)
+    initViz();
+  </script>
+</body>
+</html>

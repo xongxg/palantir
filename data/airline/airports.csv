@@ -1,0 +1,9 @@
+id,iata_code,city,country,continent,latitude,longitude,hub_type
+ap1,JFK,New York,USA,North America,40.6413,-73.7781,international
+ap2,LAX,Los Angeles,USA,North America,33.9425,-118.4081,international
+ap3,LHR,London,UK,Europe,51.4700,-0.4543,international
+ap4,CDG,Paris,France,Europe,49.0097,2.5479,international
+ap5,ORD,Chicago,USA,North America,41.9742,-87.9073,domestic
+ap6,DFW,Dallas,USA,North America,32.8998,-97.0403,domestic
+ap7,HKG,Hong Kong,China,Asia,22.3080,113.9185,international
+ap8,SIN,Singapore,Singapore,Asia,1.3644,103.9915,international

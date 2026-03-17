@@ -1,0 +1,13 @@
+id,employee_id,contract_type,status,annual_value
+con1,em1,Permanent,Active,145000
+con2,em2,Permanent,Active,120000
+con3,em3,Permanent,Active,115000
+con4,em4,Contractor,Active,102000
+con5,em5,Permanent,Active,140000
+con6,em6,Contractor,Active,81600
+con7,em7,Permanent,Active,95000
+con8,em8,Permanent,Active,78000
+con9,em9,Permanent,Active,98000
+con10,em10,Contractor,Active,74400
+con11,em11,Permanent,Expired,88000
+con12,em12,Permanent,Active,118000

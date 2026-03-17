@@ -1,0 +1,6 @@
+id,name,region_id,country,capacity
+o1,New York HQ,r1,USA,200
+o2,San Francisco,r1,USA,150
+o3,London,r2,UK,120
+o4,Paris,r2,France,80
+o5,Singapore,r3,Singapore,100

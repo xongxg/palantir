@@ -1,0 +1,15 @@
+id,passenger_id,flight_code,seat_class,status
+bk001,ps1,FL100,business,confirmed
+bk002,ps2,FL100,economy,confirmed
+bk003,ps3,FL200,first,confirmed
+bk004,ps4,FL200,economy,confirmed
+bk005,ps1,OA300,business,confirmed
+bk006,ps5,OA300,economy,confirmed
+bk007,ps6,OA400,economy,confirmed
+bk008,ps7,OA400,business,confirmed
+bk009,ps3,FL500,economy,confirmed
+bk010,ps8,FL500,economy,confirmed
+bk011,ps9,OA700,business,confirmed
+bk012,ps10,OA700,first,confirmed
+bk013,ps2,FL800,economy,confirmed
+bk014,ps4,FL800,economy,confirmed

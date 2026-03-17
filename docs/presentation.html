@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Palantir Ontology Platform</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --pu:#a78bfa;--pu2:#7c3aed;
+  --bl:#38bdf8;--gr:#34d399;--ye:#fbbf24;--re:#f87171;
+  --bg:#0b0d17;--bg2:#141726;--bg3:#1c1f30;--bg4:#0d0f1a;
+  --bd:#252a3a;--bd2:#2d3748;
+  --tx:#e2e8f0;--tx2:#cbd5e1;--mu:#64748b;
+}
+html,body{
+  width:100%;height:100%;
+  background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB',Roboto,sans-serif;
+  overflow:hidden;user-select:none;
+}
+
+/* ── Deck ── */
+#deck{position:relative;width:100vw;height:100vh;overflow:hidden;
+      background:var(--bg)}
+
+/* ── Slide ── */
+.slide{
+  position:absolute;inset:0;
+  opacity:0;pointer-events:none;
+  will-change:transform,opacity;
+}
+.slide.active{opacity:1;pointer-events:auto}
+
+/* ── Page layout ── */
+.page{
+  display:flex;flex-direction:column;
+  height:100%;
+  padding:20px 44px 36px;
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+
+/* ── Header ── */
+.hd{
+  flex-shrink:0;
+  padding-left:16px;
+  border-left:3px solid var(--pu);
+  margin-bottom:18px;
+}
+.tag{
+  font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:2px;color:var(--pu);display:block;margin-bottom:4px;
+}
+.ttl{font-size:34px;font-weight:800;line-height:1.15;color:var(--tx);letter-spacing:-.5px}
+.ttl em{
+  font-style:normal;
+  background:linear-gradient(90deg,var(--pu),var(--bl));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.sub{font-size:14px;color:var(--mu);margin-top:6px;line-height:1.6}
+
+/* ── Body ── */
+.body{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0}
+
+/* ── 2-col / 3-col grid ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.col{display:flex;flex-direction:column;gap:14px}
+
+/* ── Card ── */
+.card{
+  background:var(--bg2);
+  border:1px solid var(--bd);
+  border-radius:12px;
+  padding:18px 20px;
+  position:relative;
+  overflow:hidden;
+}
+.card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--bd);
+}
+.card.pu::before{background:linear-gradient(90deg,var(--pu),transparent)}
+.card.bl::before{background:linear-gradient(90deg,var(--bl),transparent)}
+.card.gr::before{background:linear-gradient(90deg,var(--gr),transparent)}
+.card.ye::before{background:linear-gradient(90deg,var(--ye),transparent)}
+.card.re::before{background:linear-gradient(90deg,var(--re),transparent)}
+.card.pu{border-color:rgba(167,139,250,.25);background:rgba(167,139,250,.04)}
+.card.bl{border-color:rgba(56,189,248,.25); background:rgba(56,189,248,.04)}
+.card.gr{border-color:rgba(52,211,153,.25); background:rgba(52,211,153,.04)}
+.card.ye{border-color:rgba(251,191,36,.25); background:rgba(251,191,36,.04)}
+.card.re{border-color:rgba(248,113,113,.25);background:rgba(248,113,113,.04)}
+.ch{
+  font-size:14px;font-weight:700;margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;
+}
+.cb{font-size:14px;color:var(--tx2);line-height:1.9}
+.cb strong{color:var(--tx);font-weight:600}
+.cb code{font-family:'SF Mono',Consolas,Menlo,monospace;font-size:12px;
+          background:rgba(255,255,255,.06);padding:2px 6px;border-radius:3px}
+
+/* ── Pipeline ── */
+.pipe{display:flex;align-items:stretch;justify-content:center;gap:0}
+.pn{
+  background:var(--bg3);
+  border:1px solid var(--bd2);
+  border-radius:10px;
+  padding:14px 10px;
+  text-align:center;
+  flex:1;max-width:140px;min-width:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:border-color .2s;
+}
+.pn:hover{border-color:var(--pu)}
+.pn-i{font-size:24px;margin-bottom:6px;line-height:1}
+.pn-n{font-size:12px;font-weight:700;line-height:1.3;margin-bottom:3px}
+.pn-s{font-size:10px;color:var(--mu);line-height:1.4}
+.arr{
+  display:flex;align-items:center;
+  font-size:14px;color:var(--bd2);flex-shrink:0;padding:0 5px;
+}
+
+/* ── Code block ── */
+.code{
+  background:#0d1117;
+  border:1px solid #1e2430;
+  border-radius:8px;
+  padding:14px 18px;
+  font-family:'SF Mono',Consolas,Menlo,monospace;
+  font-size:13px;line-height:1.85;
+  color:#c9d1d9;overflow:auto;
+}
+.code-label{
+  font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--mu);margin-bottom:7px;
+}
+.k{color:#ff7b72}.s{color:#a5d6ff}.c{color:#6e7681;font-style:italic}
+.f{color:#d2a8ff}.t{color:#79c0ff}.n{color:#ffa657}.op{color:#89ddff}
+
+/* ── Steps (numbered list) ── */
+.steps{display:flex;flex-direction:column;gap:0}
+.step{
+  display:flex;align-items:flex-start;gap:16px;
+  padding:14px 0;
+  border-bottom:1px solid var(--bd);
+}
+.step:last-child{border-bottom:none}
+.snum{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;margin-top:1px;
+}
+.scontent{}
+.slabel{font-size:15px;font-weight:700;margin-bottom:4px}
+.sdesc{font-size:13px;color:var(--mu);line-height:1.7}
+.sdesc code{font-family:'SF Mono',Consolas,Menlo,monospace;font-size:11px;
+             color:var(--gr);background:rgba(52,211,153,.08);padding:1px 6px;border-radius:3px}
+
+/* ── Table ── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl thead tr{background:var(--bg3)}
+.tbl th{
+  text-align:left;padding:10px 14px;color:var(--mu);font-size:11px;
+  text-transform:uppercase;letter-spacing:.05em;
+  border-bottom:1px solid var(--bd2);
+}
+.tbl td{padding:10px 14px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover td{background:rgba(167,139,250,.03)}
+.layer{color:var(--pu);font-weight:700;white-space:nowrap}
+.bar-wrap{display:flex;align-items:center;gap:8px}
+.bar{height:5px;border-radius:3px;background:var(--bg3);flex:1;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px}
+.pill{
+  display:inline-block;font-size:11px;font-weight:600;
+  padding:3px 9px;border-radius:5px;margin:2px 3px 2px 0;
+  white-space:nowrap;
+}
+.pd{background:rgba(52,211,153,.1); color:var(--gr);border:1px solid rgba(52,211,153,.2)}
+.pp{background:rgba(251,191,36,.1); color:var(--ye);border:1px solid rgba(251,191,36,.2)}
+.pt{background:rgba(248,113,113,.08);color:var(--re);border:1px solid rgba(248,113,113,.2)}
+
+/* ── Cover ── */
+.cover{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;height:100%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 30%,rgba(124,58,237,.18) 0%,transparent 70%),
+    radial-gradient(ellipse 40% 30% at 80% 80%,rgba(56,189,248,.06) 0%,transparent 60%);
+}
+.c-logo{font-size:64px;margin-bottom:24px;
+        filter:drop-shadow(0 0 40px rgba(167,139,250,.5))}
+.c-ttl{
+  font-size:54px;font-weight:800;letter-spacing:-1.5px;line-height:1.1;
+  margin-bottom:16px;
+}
+.c-ttl .accent{
+  background:linear-gradient(90deg,var(--pu),var(--bl));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.c-sub{font-size:18px;color:var(--mu);max-width:580px;line-height:1.75;margin-bottom:32px}
+.c-tags{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.c-tag{
+  background:rgba(167,139,250,.08);
+  border:1px solid rgba(167,139,250,.2);
+  color:var(--pu);border-radius:8px;padding:8px 18px;font-size:13px;font-weight:500;
+}
+
+/* ── Quote ── */
+.quote{
+  font-size:24px;font-style:italic;color:#94a3b8;
+  text-align:center;line-height:1.8;padding:0 40px;position:relative;
+}
+.quote::before{
+  content:'\201C';font-size:90px;color:var(--pu);opacity:.25;
+  position:absolute;top:-28px;left:10px;line-height:1;font-style:normal;
+}
+
+/* ── Divider ── */
+.div-line{
+  width:64px;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--pu),var(--bl));
+  margin:28px auto;
+}
+
+/* ── Nav ── */
+#nav{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;z-index:200;
+  background:rgba(20,23,38,.85);border:1px solid var(--bd2);
+  border-radius:12px;padding:6px 14px;backdrop-filter:blur(12px);
+}
+#nav button{
+  background:none;border:none;color:var(--mu);cursor:pointer;
+  font-size:12px;padding:4px 10px;border-radius:6px;
+  transition:color .15s,background .15s;
+}
+#nav button:hover{color:var(--pu);background:rgba(167,139,250,.1)}
+#cnt{font-size:11px;color:var(--mu);font-family:monospace;padding:0 6px;
+     border-left:1px solid var(--bd2);border-right:1px solid var(--bd2)}
+/* progress */
+#prog{position:fixed;bottom:0;left:0;right:0;height:2px;background:var(--bd);z-index:300}
+#pf{height:100%;background:linear-gradient(90deg,var(--pu),var(--bl));
+    transition:width .4s cubic-bezier(.4,0,.2,1)}
+</style>
+</head>
+<body>
+<div id="deck">
+
+<!-- ══ S1 — Cover ══ -->
+<div class="slide active" id="s1">
+  <div class="cover">
+    <div class="c-logo">🏛</div>
+    <div class="c-ttl">
+      <span class="accent">Palantir</span> Ontology Platform
+    </div>
+    <div class="c-sub">从异构数据源到语义图谱<br>让数据在<em style="color:var(--pu);font-style:normal">进入系统时</em>就被理解，而非出报告时</div>
+    <div class="c-tags">
+      <span class="c-tag">🦀 Rust</span>
+      <span class="c-tag">🕸 Ontology Graph</span>
+      <span class="c-tag">🔄 SourceAdapter</span>
+      <span class="c-tag">🤖 Agent</span>
+      <span class="c-tag">💾 SQLite</span>
+    </div>
+    <div style="margin-top:40px;font-size:11px;color:var(--mu)">
+      按 <kbd style="background:var(--bg2);border:1px solid var(--bd2);padding:2px 8px;border-radius:5px;font-size:11px">→</kbd>
+      或点击 <strong style="color:var(--tx2)">Next</strong> 开始
+    </div>
+  </div>
+</div>
+
+<!-- ══ S2 — Problem ══ -->
+<div class="slide" id="s2">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">背景 / Problem</span>
+      <div class="ttl">企业数据的真实现状</div>
+      <div class="sub">数据孤岛无处不在 — 格式各异、语义割裂、无法互联</div>
+    </div>
+    <div class="body g2">
+      <div class="col">
+        <div class="card re">
+          <div class="ch" style="color:var(--re)">💔 数据孤岛</div>
+          <div class="cb">
+            销售数据在 <strong>Salesforce</strong>，财务数据在 <strong>Oracle ERP</strong>，<br>
+            运营日志在 <strong>Kafka</strong>。<br>
+            分析师每次做报告都需要手动 join CSV，耗时数天。
+          </div>
+        </div>
+        <div class="card ye">
+          <div class="ch" style="color:var(--ye)">🔀 格式异构</div>
+          <div class="cb">
+            同样是"客户"，CRM 叫 <strong>customer_id</strong>，<br>
+            订单系统叫 <strong>cust_no</strong>，数仓叫 <strong>client_key</strong>。<br>
+            没有统一语义，无法自动关联。
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card pu">
+          <div class="ch" style="color:var(--pu)">🧠 Palantir 的回答</div>
+          <div class="cb">
+            把所有数据语义化成<strong>有类型、有关系的图谱（Ontology）</strong>。<br><br>
+            分析师不再写 SQL，而是直接描述：<br>
+            <em style="color:var(--pu)">"给我所有高风险供应商及其关联合同"</em>
+          </div>
+        </div>
+        <div class="card bl">
+          <div class="ch" style="color:var(--bl)">⚡ 核心价值</div>
+          <div class="cb">
+            数据在<strong>进入系统时</strong>就被语义化，<br>
+            不是在出报告时才被理解。<br><br>
+            <strong style="font-size:13px">Ontology = 企业的统一语言</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S3 — Official Palantir Flow ══ -->
+<div class="slide" id="s3">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">官方平台 / Palantir Foundry</span>
+      <div class="ttl">完整处理链路 — <em>9 层架构</em></div>
+      <div class="sub">从原始数据到 AI 辅助决策的端到端管道</div>
+    </div>
+    <div class="body" style="gap:18px">
+
+      <!-- Row 1 -->
+      <div class="pipe">
+        <div class="pn" style="border-color:rgba(56,189,248,.4)">
+          <div class="pn-i">🗄</div>
+          <div class="pn-n" style="color:var(--bl)">Data Sources</div>
+          <div class="pn-s">DB / S3 / Kafka / API</div>
+        </div>
+        <div class="arr">→</div>
+        <div class="pn" style="border-color:rgba(52,211,153,.4)">
+          <div class="pn-i">🔌</div>
+          <div class="pn-n" style="color:var(--gr)">Connector</div>
+          <div class="pn-s">Magritte / CDC</div>
+        </div>
+        <div class="arr">→</div>
+        <div class="pn" style="border-color:rgba(167,139,250,.4)">
+          <div class="pn-i">⚙️</div>
+          <div class="pn-n" style="color:var(--pu)">Transform</div>
+          <div class="pn-s">Spark DAG / Lineage</div>
+        </div>
+        <div class="arr">→</div>
+        <div class="pn" style="border-color:rgba(251,191,36,.4)">
+          <div class="pn-i">🕸</div>
+          <div class="pn-n" style="color:var(--ye)">Ontology</div>
+          <div class="pn-s">ObjectType + LinkType</div>
+        </div>
+        <div class="arr">→</div>
+        <div class="pn" style="border-color:rgba(52,211,153,.4)">
+          <div class="pn-i">🔍</div>
+          <div class="pn-n" style="color:var(--gr)">Query</div>
+          <div class="pn-s">ObjectSet API</div>
+        </div>
+      </div>
+
+      <div style="text-align:right;padding-right:calc(20% + 30px);font-size:18px;color:var(--bd2);line-height:1">↓</div>
+
+      <!-- Row 2 (reversed) -->
+      <div class="pipe" style="flex-direction:row-reverse">
+        <div class="pn" style="border-color:rgba(248,113,113,.4)">
+          <div class="pn-i">𝑓</div>
+          <div class="pn-n" style="color:var(--re)">Functions</div>
+          <div class="pn-s">DerivedProps / Rules</div>
+        </div>
+        <div class="arr">←</div>
+        <div class="pn" style="border-color:rgba(56,189,248,.4)">
+          <div class="pn-i">⚡</div>
+          <div class="pn-n" style="color:var(--bl)">Actions</div>
+          <div class="pn-s">RBAC + Audit</div>
+        </div>
+        <div class="arr">←</div>
+        <div class="pn" style="border-color:rgba(167,139,250,.4)">
+          <div class="pn-i">🔁</div>
+          <div class="pn-n" style="color:var(--pu)">Workflow</div>
+          <div class="pn-s">AIP + 多步审批</div>
+        </div>
+        <div class="arr">←</div>
+        <div class="pn" style="border-color:rgba(52,211,153,.4)">
+          <div class="pn-i">🖥</div>
+          <div class="pn-n" style="color:var(--gr)">Application</div>
+          <div class="pn-s">Workshop / Slate</div>
+        </div>
+      </div>
+
+      <!-- Key points -->
+      <div class="g3" style="margin-top:4px">
+        <div class="card ye">
+          <div class="ch" style="color:var(--ye)">🕸 Ontology 核心</div>
+          <div class="cb">
+            <strong>ObjectType</strong> 定义实体类型<br>
+            <strong>LinkType</strong> 定义关系类型<br>
+            <strong>Bi-temporal</strong> 双时间轴记录<br>
+            <strong>Provenance</strong> 完整血缘追踪
+          </div>
+        </div>
+        <div class="card gr">
+          <div class="ch" style="color:var(--gr)">🔍 语义查询</div>
+          <div class="cb">
+            不写 SQL，描述业务概念<br>
+            <code>Employee.filter(risk > HIGH)</code><br>
+            <code>.navigate(HAS_MANAGER)</code><br>
+            自动翻译为 Spark 执行
+          </div>
+        </div>
+        <div class="card pu">
+          <div class="ch" style="color:var(--pu)">🤖 AIP 决策</div>
+          <div class="cb">
+            LLM 直接调用 ObjectSet API<br>
+            上下文是<strong>结构化 Ontology 对象</strong><br>
+            不是原始文本或向量<br>
+            AI 可建议 Action + 预测
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S4 — Our Architecture ══ -->
+<div class="slide" id="s4">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">我们的实现 / Our Architecture</span>
+      <div class="ttl">Rust 多 crate 工作空间</div>
+      <div class="sub">8 个 crate，职责分离，与 Palantir Foundry 架构一一对齐</div>
+    </div>
+    <div class="body g2">
+      <div class="col">
+        <div class="step">
+          <div class="snum" style="background:rgba(52,211,153,.12);color:var(--gr);border:1px solid rgba(52,211,153,.25)">1</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--gr)">palantir-ontology-manager</div>
+            <div class="sdesc">SourceAdapter trait · CsvAdapter · TomlMapping · OntologyEvent · OntologyManager</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="snum" style="background:rgba(167,139,250,.12);color:var(--pu);border:1px solid rgba(167,139,250,.25)">2</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--pu)">palantir-application</div>
+            <div class="sdesc">OntologyGraph · DiscoveryEngine · Logic/Calc · SemanticQuery · ActionDerivation · WorkflowRun</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="snum" style="background:rgba(56,189,248,.12);color:var(--bl);border:1px solid rgba(56,189,248,.25)">3</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--bl)">palantir-ingest-api</div>
+            <div class="sdesc">Axum Web API · 项目管理 · 上传 / 映射 / 构建 · D3.js 可视化 · 4步向导</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="snum" style="background:rgba(251,191,36,.12);color:var(--ye);border:1px solid rgba(251,191,36,.25)">4</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--ye)">palantir-persistence</div>
+            <div class="sdesc">SQLite (sqlx) · projects · connectors · live_entities · live_relationships · builds</div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="step">
+          <div class="snum" style="background:rgba(248,113,113,.12);color:var(--re);border:1px solid rgba(248,113,113,.25)">5</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--re)">palantir-domain</div>
+            <div class="sdesc">业务实体 · Employee / Order / Finance / Flight · 值对象 · 聚合根</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="snum" style="background:rgba(52,211,153,.12);color:var(--gr);border:1px solid rgba(52,211,153,.25)">6</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--gr)">palantir-pipeline</div>
+            <div class="sdesc">Dataset · Filter / Join / Aggregate / Sort / Select · 链式 Pipeline</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="snum" style="background:rgba(167,139,250,.12);color:var(--pu);border:1px solid rgba(167,139,250,.25)">7</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--pu)">palantir-agent</div>
+            <div class="sdesc">Agent&lt;T: IngestTools&gt; · CsvIngestIntent · LLM 接入骨架（待接 Claude API）</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="snum" style="background:rgba(56,189,248,.12);color:var(--bl);border:1px solid rgba(56,189,248,.25)">8</div>
+          <div class="scontent">
+            <div class="slabel" style="color:var(--bl)">palantir-infrastructure</div>
+            <div class="sdesc">InMemoryRepository · EventStore · DataSource · Export</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S5 — Core Flow ══ -->
+<div class="slide" id="s5">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">核心流程 / Core Flow</span>
+      <div class="ttl">数据源 → <em>CanonicalRecord</em> → Ontology Graph</div>
+      <div class="sub">三步把任意格式数据变成语义图谱节点</div>
+    </div>
+    <div class="body g2">
+      <div class="col">
+        <div class="code-label">SourceAdapter trait</div>
+        <div class="code">
+<span class="c">// 任何数据源只需实现这个 trait</span>
+<span class="k">#[async_trait]</span>
+<span class="k">pub trait</span> <span class="t">SourceAdapter</span>: Send + Sync {
+  <span class="k">fn</span> <span class="f">id</span>(&amp;self) -&gt; &amp;str;
+  <span class="k">fn</span> <span class="f">stream</span>(
+    &amp;self, since: <span class="t">Option</span>&lt;<span class="t">Cursor</span>&gt;, <span class="c">// 增量同步</span>
+  ) -&gt; <span class="t">BoxStream</span>&lt;<span class="t">Result</span>&lt;<span class="t">CanonicalRecord</span>&gt;&gt;;
+}</div>
+        <div class="code-label" style="margin-top:12px">TomlMapping 规则（UI 自动生成）</div>
+        <div class="code">
+entity  = <span class="s">"Employee"</span>
+[id]    field = <span class="s">"emp_id"</span>
+[map]
+name    = <span class="s">"name|str"</span>
+salary  = <span class="s">"salary|float"</span>
+dept_id = <span class="s">"dept_id|str|fk"</span>  <span class="c"># FK 自动建关系</span></div>
+      </div>
+      <div class="col">
+        <div class="card pu">
+          <div class="ch" style="color:var(--pu)">OntologyEvent 输出流</div>
+          <div class="code" style="font-size:10.5px;margin-top:8px">
+<span class="t">OntologyEvent</span>::<span class="f">Upsert</span> {
+  object: <span class="t">OntologyObject</span> {
+    id: <span class="s">"E001"</span>,
+    entity_type: <span class="s">"Employee"</span>,
+    attrs: { name: <span class="s">"Alice"</span>, salary: <span class="n">120000.0</span> },
+    time: <span class="t">TimeBounds</span> { valid_from, tx_time },
+    provenance: <span class="t">Provenance</span> { source_id, .. }
+  }
+}
+<span class="t">OntologyEvent</span>::<span class="f">Link</span> {
+  from: <span class="s">"E001"</span>, to: <span class="s">"DEPT:Eng"</span>,
+  rel:  <span class="s">"BELONGS_TO"</span>,
+}</div>
+        </div>
+        <div class="card gr">
+          <div class="ch" style="color:var(--gr)">🔍 Discovery Engine — 3-Pass 自动关系发现</div>
+          <div class="cb">
+            <strong>Pass 1</strong> — 每条记录 → OntologyObject<br>
+            <strong>Pass 2</strong> — <code>*_id</code> 字段 → <strong>HAS</strong> 关系（FK 检测）<br>
+            <strong>Pass 3</strong> — 重复字符串值 → <strong>BELONGS_TO</strong><br>
+            <span style="color:var(--gr);font-weight:600">无需手动定义关系，自动推断</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S6 — Logic + Workflow ══ -->
+<div class="slide" id="s6">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">计算 + 决策 / Logic & Workflow</span>
+      <div class="ttl">图上计算 → 模式发现 → <em>工作流执行</em></div>
+      <div class="sub">从 Ontology 图中自动推导 Action，驱动可审计的业务流程</div>
+    </div>
+    <div class="body g2">
+      <div class="col">
+        <div class="card ye">
+          <div class="ch" style="color:var(--ye)">📐 Logic Actions — 图上纯函数计算</div>
+          <div class="cb">
+            <code>graph.objects_by_type("Employee")</code><br>
+            → 遍历 <strong>HAS</strong> 关系聚合 Transaction 总额<br>
+            → <code>spend_ratio_pct(spend, salary)</code><br>
+            → <code>expense_risk_level(ratio, concentration)</code><br>
+            → 输出风险标签：<strong>Low / Medium / High</strong>
+          </div>
+        </div>
+        <div class="card bl">
+          <div class="ch" style="color:var(--bl)">🔗 Action Derivation — 关系模式 → 动作类型</div>
+          <div class="cb">
+            <code style="color:var(--gr)">BelongsTo</code> → Logic: 按组聚合计算<br>
+            <code style="color:var(--bl)">HAS</code> → Integration: Join 跨实体<br>
+            <code style="color:var(--pu)">LinkedTo</code> → Workflow: 触发审批流<br>
+            <code style="color:var(--ye)">SimilarTo</code> → Search: 相似模式匹配
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card pu">
+          <div class="ch" style="color:var(--pu)">⚙️ WorkflowRun — 可审计执行链</div>
+          <div class="cb">
+            <span style="color:var(--gr)">✓</span> Validate threshold → 超出 $3,200<br>
+            <span style="color:var(--gr)">✓</span> Notify dept head → 告警邮件已发<br>
+            <span style="color:var(--gr)">✓</span> Create hold → HOLD-ALICE-8200<br>
+            <span style="color:var(--gr)">✓</span> Archive audit → AR-00A2 写入日志<br>
+            <br>
+            每步状态：<code>Completed / Skipped / Failed</code>
+          </div>
+        </div>
+        <div class="card bl">
+          <div class="ch" style="color:var(--bl)">📊 Semantic Query Pipeline</div>
+          <div class="code" style="font-size:10.5px;margin-top:8px">
+Pipeline::new(<span class="s">"high_risk"</span>)
+  .step(<span class="t">Filter</span>{ field:<span class="s">"amount"</span>, op:Gt, val:<span class="n">500.0</span> })
+  .step(<span class="t">Join</span>{ right:employees,
+              left_key:<span class="s">"employee_id"</span> })
+  .step(<span class="t">Aggregate</span>{
+    group_by:[<span class="s">"department"</span>],
+    aggs:[Sum(<span class="s">"amount"</span>), Count],
+  })
+  .run(transactions)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S7 — Gap Analysis ══ -->
+<div class="slide" id="s7">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">差距分析 / Gap Analysis</span>
+      <div class="ttl">我们 vs <em>Palantir Foundry</em></div>
+      <div class="sub">核心架构已对齐 — 还需填补的关键缺口</div>
+    </div>
+    <div class="body">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:120px">层次</th>
+            <th>Palantir Foundry</th>
+            <th>我们的现状</th>
+            <th style="width:130px">覆盖度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="layer">① 数据接入</td>
+            <td style="color:var(--mu)">100+ 连接器，CDC，企业鉴权</td>
+            <td><span class="pill pd">✓ CsvAdapter</span><span class="pill pt">✗ DB/Kafka</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:20%;background:var(--ye)"></div></div><span style="font-size:10px;color:var(--mu)">20%</span></div></td>
+          </tr>
+          <tr>
+            <td class="layer">② 血缘</td>
+            <td style="color:var(--mu)">Dataset 版本，Transform DAG</td>
+            <td><span class="pill pp">~ provenance 字段</span><span class="pill pt">✗ DAG</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:5%;background:var(--re)"></div></div><span style="font-size:10px;color:var(--mu)">5%</span></div></td>
+          </tr>
+          <tr>
+            <td class="layer">③ Ontology</td>
+            <td style="color:var(--mu)">ObjectType，Schema 版本</td>
+            <td><span class="pill pd">✓ OntologyObject</span><span class="pill pd">✓ TomlMapping</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:45%;background:var(--ye)"></div></div><span style="font-size:10px;color:var(--mu)">45%</span></div></td>
+          </tr>
+          <tr>
+            <td class="layer">④ 语义查询</td>
+            <td style="color:var(--mu)">ObjectSet API，图遍历</td>
+            <td><span class="pill pd">✓ Pipeline</span><span class="pill pt">✗ 图直接查询</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:30%;background:var(--ye)"></div></div><span style="font-size:10px;color:var(--mu)">30%</span></div></td>
+          </tr>
+          <tr>
+            <td class="layer">⑤⑥ 计算+动作</td>
+            <td style="color:var(--mu)">TS Functions，RBAC Actions</td>
+            <td><span class="pill pd">✓ Logic/Calc</span><span class="pill pt">✗ 泛化 Function</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:25%;background:var(--ye)"></div></div><span style="font-size:10px;color:var(--mu)">25%</span></div></td>
+          </tr>
+          <tr>
+            <td class="layer">⑦ Workflow</td>
+            <td style="color:var(--mu)">事件驱动，SLA，AIP 集成</td>
+            <td><span class="pill pd">✓ WorkflowRun</span><span class="pill pt">✗ 事件驱动</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:35%;background:var(--ye)"></div></div><span style="font-size:10px;color:var(--mu)">35%</span></div></td>
+          </tr>
+          <tr>
+            <td class="layer">⑧ AI 决策</td>
+            <td style="color:var(--mu)">AIP Logic，LLM + Ontology</td>
+            <td><span class="pill pp">~ Agent trait</span><span class="pill pt">✗ LLM 接入</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:5%;background:var(--re)"></div></div><span style="font-size:10px;color:var(--mu)">5%</span></div></td>
+          </tr>
+          <tr style="background:rgba(167,139,250,.04)">
+            <td class="layer" style="font-size:13px">整体</td>
+            <td style="color:var(--mu)">完整企业平台，生产就绪</td>
+            <td><span class="pill pp">MVP Demo — 核心链路已跑通</span></td>
+            <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:25%;background:linear-gradient(90deg,var(--pu),var(--bl))"></div></div><span style="font-size:11px;color:var(--tx);font-weight:700">~25%</span></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S8 — Live Demo ══ -->
+<div class="slide" id="s8">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">Live Demo 🎬</span>
+      <div class="ttl">现场演示 — <em>5 步走</em></div>
+      <div class="sub">
+        启动：<code style="background:var(--bg3);color:var(--pu);padding:2px 8px;border-radius:4px;font-family:monospace;font-size:11px">cargo run -p palantir_ingest_api</code>
+        &nbsp;→&nbsp;
+        <code style="background:var(--bg3);color:var(--bl);padding:2px 8px;border-radius:4px;font-family:monospace;font-size:11px">http://localhost:8080</code>
+      </div>
+    </div>
+    <div class="body steps">
+      <div class="step">
+        <div class="snum" style="background:rgba(167,139,250,.12);color:var(--pu);border:1px solid rgba(167,139,250,.25)">1</div>
+        <div class="scontent">
+          <div class="slabel">创建项目 — Projects 页面</div>
+          <div class="sdesc">点击 "＋ New Project"，输入项目名 → 自动跳转 Workspace。展示项目卡片点击直接进入。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="snum" style="background:rgba(52,211,153,.12);color:var(--gr);border:1px solid rgba(52,211,153,.25)">2</div>
+        <div class="scontent">
+          <div class="slabel">上传 CSV — Step 1: Upload</div>
+          <div class="sdesc">拖拽上传 <code>data/airline/</code> 目录下的 CSV 文件（flights, passengers, bookings 等）。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="snum" style="background:rgba(251,191,36,.12);color:var(--ye);border:1px solid rgba(251,191,36,.25)">3</div>
+        <div class="scontent">
+          <div class="slabel">映射属性 — Step 2: Map Properties</div>
+          <div class="sdesc">配置 entity type、ID field、列→属性映射、FK 关系。点击 "Review & Build →" 自动持久化配置。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="snum" style="background:rgba(56,189,248,.12);color:var(--bl);border:1px solid rgba(56,189,248,.25)">4</div>
+        <div class="scontent">
+          <div class="slabel">构建图谱 — Step 3: Build Ontology</div>
+          <div class="sdesc">点击 Build Ontology，观察进度动画。SourceAdapter 流式读取 → TomlMapping → OntologyEvent → 图写入。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="snum" style="background:rgba(167,139,250,.12);color:var(--pu);border:1px solid rgba(167,139,250,.25)">5</div>
+        <div class="scontent">
+          <div class="slabel">查看图谱 — Step 4: View Graph</div>
+          <div class="sdesc">D3.js force-directed 图。关闭浏览器 → 重新打开项目 → 展示状态全部恢复（connector + mapping + graph）。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S9 — Roadmap ══ -->
+<div class="slide" id="s9">
+  <div class="page">
+    <div class="hd">
+      <span class="tag">路线图 / Roadmap</span>
+      <div class="ttl">下一步 — <em>三个阶段</em></div>
+      <div class="sub">从 MVP 到生产级 Palantir Foundry 替代方案</div>
+    </div>
+    <div class="body g3">
+      <div class="card gr" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--gr);margin-bottom:4px">P1 — 近期</div>
+          <div style="font-size:16px;font-weight:800;color:var(--gr)">补全核心层</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--tx2)">
+          <div style="display:flex;gap:8px"><span style="color:var(--gr);flex-shrink:0">✦</span> PostgreSQL / REST SourceAdapter</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--gr);flex-shrink:0">✦</span> 语义查询 API：graph.query().navigate()</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--gr);flex-shrink:0">✦</span> 通用 Function 定义（任意 ObjectType）</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--gr);flex-shrink:0">✦</span> 声明式 Action Schema + 触发条件</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--gr);flex-shrink:0">✦</span> 事件驱动 Workflow 自动触发</div>
+        </div>
+      </div>
+      <div class="card ye" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--ye);margin-bottom:4px">P2 — 中期</div>
+          <div style="font-size:16px;font-weight:800;color:var(--ye)">AIP + 血缘</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--tx2)">
+          <div style="display:flex;gap:8px"><span style="color:var(--ye);flex-shrink:0">✦</span> Agent 接入 Claude API</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--ye);flex-shrink:0">✦</span> Ontology 自然语言问答</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--ye);flex-shrink:0">✦</span> 数据血缘 Transform DAG</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--ye);flex-shrink:0">✦</span> Bi-temporal 双时间轴查询</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--ye);flex-shrink:0">✦</span> Schema 版本管理 + 迁移</div>
+        </div>
+      </div>
+      <div class="card pu" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--pu);margin-bottom:4px">P3 — 长期</div>
+          <div style="font-size:16px;font-weight:800;color:var(--pu)">生产化</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--tx2)">
+          <div style="display:flex;gap:8px"><span style="color:var(--pu);flex-shrink:0">✦</span> 低代码 App 构建（Workshop 等效）</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--pu);flex-shrink:0">✦</span> RBAC 权限控制 + 审计日志</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--pu);flex-shrink:0">✦</span> PostgreSQL 生产存储</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--pu);flex-shrink:0">✦</span> 大规模图计算（亿级对象）</div>
+          <div style="display:flex;gap:8px"><span style="color:var(--pu);flex-shrink:0">✦</span> 多租户 / 团队协作</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:14px 18px;background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.18);border-radius:10px;font-size:12px;color:var(--tx2);line-height:1.7;flex-shrink:0">
+      <strong style="color:var(--pu)">🎯 最高价值单个改进：</strong>
+      Agent 接入 LLM + 直接查询 Ontology。数据已语义化，缺的是自然语言入口——
+      让人能问 <em style="color:var(--pu)">"有哪些高风险供应商？"</em> 并直接得到答案。
+    </div>
+  </div>
+</div>
+
+<!-- ══ S10 — End ══ -->
+<div class="slide" id="s10">
+  <div class="cover" style="background:
+    radial-gradient(ellipse 70% 50% at 50% 50%,rgba(124,58,237,.15) 0%,transparent 65%),
+    radial-gradient(ellipse 30% 20% at 20% 80%,rgba(56,189,248,.07) 0%,transparent 60%)">
+    <div class="c-logo" style="font-size:48px">✦</div>
+    <div class="c-ttl" style="font-size:38px">核心思想</div>
+    <div class="div-line"></div>
+    <div class="quote">
+      数据不是在出报告时才被理解，<br>
+      而是在<span style="color:var(--pu)">进入系统时</span>就被语义化。<br>
+      <span style="font-size:18px;color:var(--mu)">Ontology = 企业的统一语言。</span>
+    </div>
+    <div class="div-line"></div>
+    <div class="c-tags" style="margin-top:8px">
+      <span class="c-tag">GitHub: palantir</span>
+      <span class="c-tag">cargo run -p palantir_ingest_api</span>
+      <span class="c-tag">localhost:8080</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
+<!-- Navigation -->
+<div id="nav">
+  <button onclick="prev()">← Prev</button>
+  <span id="cnt">1 / 10</span>
+  <button onclick="next()">Next →</button>
+</div>
+<div id="prog"><div id="pf"></div></div>
+
+<script>
+const TOTAL = 10;
+let cur = 1, busy = false;
+
+function show(n, dir = 1) {
+  if (busy || n === cur || n < 1 || n > TOTAL) return;
+  busy = true;
+
+  const from = document.getElementById('s' + cur);
+  const to   = document.getElementById('s' + n);
+
+  // ── Out: old slide scales down + fades ──
+  from.style.transition = 'opacity .28s ease, transform .28s ease';
+  from.style.opacity    = '0';
+  from.style.transform  = `scale(.96) translateX(${dir > 0 ? '-2%' : '2%'})`;
+
+  setTimeout(() => {
+    from.classList.remove('active');
+    from.style.transition = '';
+    from.style.transform  = '';
+    from.style.opacity    = '';
+
+    // ── In: new slide slides in + fades ──
+    to.style.transition = 'none';
+    to.style.opacity    = '0';
+    to.style.transform  = `translateX(${dir > 0 ? '3%' : '-3%'})`;
+    to.classList.add('active');
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      to.style.transition = 'opacity .3s ease, transform .3s cubic-bezier(.22,1,.36,1)';
+      to.style.opacity    = '1';
+      to.style.transform  = 'translateX(0)';
+      setTimeout(() => {
+        to.style.transition = '';
+        to.style.transform  = '';
+        busy = false;
+      }, 320);
+    }));
+
+    cur = n;
+    document.getElementById('cnt').textContent = cur + ' / ' + TOTAL;
+    document.getElementById('pf').style.width  = (cur / TOTAL * 100) + '%';
+  }, 290);
+}
+
+function next() { show(cur + 1,  1); }
+function prev() { show(cur - 1, -1); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ')  { e.preventDefault(); next(); }
+  if (e.key === 'ArrowLeft')                     { e.preventDefault(); prev(); }
+  if (e.key === 'f' || e.key === 'F') {
+    document.fullscreenElement
+      ? document.exitFullscreen?.()
+      : document.documentElement.requestFullscreen?.();
+  }
+});
+
+let tx = 0;
+document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+document.addEventListener('touchend',   e => {
+  const dx = e.changedTouches[0].clientX - tx;
+  if (dx < -50) next();
+  if (dx > 50)  prev();
+});
+
+document.getElementById('pf').style.width = (1 / TOTAL * 100) + '%';
+</script>
+</body>
+</html>

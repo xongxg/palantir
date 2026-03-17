@@ -1,0 +1,16 @@
+id,employee_id,project_id,approver_id,amount,category,status
+x1,e2,p1,e1,1200,Software,Approved
+x2,e2,p7,e1,800,Hardware,Approved
+x3,e3,p2,e1,2500,Consulting,Approved
+x4,e11,p2,e3,350,Travel,Approved
+x5,e4,p3,e5,600,Travel,Approved
+x6,e5,p3,e5,3100,Marketing,Approved
+x7,e6,p4,e7,950,Design,Pending
+x8,e7,p4,e7,450,Travel,Approved
+x9,e8,p5,e9,700,Equipment,Approved
+x10,e9,p5,e9,1800,Software,Approved
+x11,e12,p7,e2,550,Training,Approved
+x12,e10,p6,e9,320,Software,Pending
+x13,e4,p3,e5,480,Office Supplies,Approved
+x14,e6,p4,e7,200,Office Supplies,Approved
+x15,e8,p5,e9,430,Logistics,Approved

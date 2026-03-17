@@ -1,0 +1,22 @@
+@startuml
+skinparam ArrowThickness 2
+skinparam backgroundColor #1c2128
+skinparam defaultTextAlignment center
+participant "Customer" as Customer
+participant "Department" as Department
+participant "Project" as Project
+participant "Vendor" as Vendor
+
+Customer -[#f0883e]-> Vendor : currency (34 links)
+Customer -[#bc8cff]-> Department : status (96 links)
+Customer -[#bc8cff]-> Project : status (96 links)
+Customer -[#bc8cff]-> Vendor : status (96 links)
+Department -[#bc8cff]-> Project : status (96 links)
+Department -[#bc8cff]-> Vendor : status (96 links)
+Project -[#bc8cff]-> Vendor : status (96 links)
+Customer -[#f0883e]-> Department : country (26 links)
+Customer -[#bc8cff]-> Project : priority (49 links)
+Customer -[#bc8cff]-> Vendor : priority (49 links)
+Project -[#bc8cff]-> Vendor : priority (49 links)
+Customer -[#3fb950]-> Vendor : tier (13 links)
+@enduml

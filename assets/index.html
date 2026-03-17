@@ -76,6 +76,8 @@
     .legend-swatch { width: 14px; height: 10px; border-radius: 3px; flex-shrink: 0; opacity: 0.5; border: 1px solid; }
     .legend-line { width: 24px; height: 2px; flex-shrink: 0; }
     .legend-sep { border-top: 1px solid #30363d; margin: 6px 0; }
+    .legend-dash { width: 24px; height: 2px; flex-shrink: 0;
+                   background: repeating-linear-gradient(90deg,#f0883e 0,#f0883e 6px,transparent 6px,transparent 10px); }
 
     /* Tooltip */
     #tooltip {
@@ -112,6 +114,8 @@
       font-size: 11px; font-weight: 700; text-transform: uppercase;
       letter-spacing: 1px; pointer-events: none; fill-opacity: 0.7;
     }
+    .bc-link { stroke: #f0883e; stroke-width: 2px; stroke-dasharray: 6 4;
+               stroke-opacity: 0.55; fill: none; pointer-events: none; }
 
     /* Nodes */
     .node circle { stroke-width: 1.5px; cursor: grab; }
@@ -134,6 +138,31 @@
       border-radius: 8px; padding: 8px 12px;
       font-size: 11px; color: #8b949e; z-index: 50;
     }
+    #bc-list {
+      position: fixed; top: 60px; left: 12px;
+      width: 320px; max-height: 260px;
+      background: #161b22dd; border: 1px solid #30363d;
+      border-radius: 8px; padding: 10px 12px;
+      font-size: 11px; color: #c9d1d9; z-index: 60;
+      overflow: auto;
+    }
+    #bc-list h3 { font-size: 10px; color: #8b949e; letter-spacing: 1px; margin-bottom: 6px; text-transform: uppercase; }
+    .bc-list-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; padding: 6px 8px; border-radius: 6px; background: #0d1117; border: 1px solid #242a33; }
+    .bc-list-color { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+    .bc-list-text { line-height: 1.4; }
+    .bc-list-text .label { font-weight: 700; font-size: 12px; }
+    .bc-list-text .meta  { color: #8b949e; font-size: 11px; }
+    #puml-panel {
+      position: fixed; top: 56px; right: 12px;
+      width: 360px; height: 420px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #0d1117;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+      z-index: 120;
+    }
+    #puml-frame { width: 100%; height: 100%; border: none; background: #0d1117; }
   </style>
 </head>
 <body>
@@ -147,10 +176,19 @@
     <button id="btn-labels">Labels: Off</button>
     <button id="btn-hulls" class="active">BC Hulls: On</button>
     <button id="btn-belongs">BELONGS_TO: On</button>
+    <button id="btn-puml">UML: Off</button>
+    <button id="btn-fullscreen" title="Fullscreen" onclick="toggleFullscreen()">⛶ Fullscreen</button>
   </div>
 </div>
 
 <div id="canvas"><svg id="graph"></svg></div>
+<div id="bc-list">
+  <h3>BC Links</h3>
+  <div id="bc-list-body"></div>
+</div>
+<div id="puml-panel" hidden>
+  <iframe id="puml-frame" title="BC Process UML"></iframe>
+</div>
 
 <div id="legend">
   <h3>DDD Concept</h3>
@@ -167,6 +205,9 @@
   </div>
   <div class="legend-item">
     <div class="legend-line" style="background:repeating-linear-gradient(90deg,#3fb950 0,#3fb950 4px,transparent 4px,transparent 7px)"></div>BELONGS_TO
+  </div>
+  <div class="legend-item">
+    <div class="legend-dash"></div>BC Link (Shared Dimension)
   </div>
 </div>
 
@@ -189,10 +230,15 @@ const nodeRadius = d => d.ddd_concept === "Aggregate Root" ? 13 : d.ddd_concept 
 
 // BC colours: warm amber, cool blue, rose, green
 const BC_PALETTE = ["#f0883e","#388bfd","#f85149","#3fb950","#bc8cff","#d29922","#58a6ff"];
+// BC link colours (shared dimensions)
+const BC_LINK_PALETTE = ["#f0883e","#bc8cff","#58a6ff","#d29922","#3fb950","#f85149","#9cdbff"];
 
 // ── Main ────────────────────────────────────────────────────────────────────
 async function main() {
-  const data = await fetch("/ontology_graph.json").then(r => r.json());
+  const params = new URLSearchParams(location.search);
+  const pid = params.get("project_id");
+  const src = params.get("src") || (pid ? `/api/live_ontology?project_id=${pid}` : "/api/live_ontology");
+  const data = await fetch(src).then(r => r.json());
 
   // Stats
   const s = data.summary ?? {};
@@ -203,6 +249,9 @@ async function main() {
 
   // BC metadata
   const bcs = data.bounded_contexts ?? [];
+  const bcLinks = data.cross_links ?? [];
+  const bcLinkColorMap = {};
+  bcLinks.forEach((cl, i) => { bcLinkColorMap[cl.via_type] = BC_LINK_PALETTE[i % BC_LINK_PALETTE.length]; });
   const bcColorMap = {};  // bc.name → color
   bcs.forEach((bc, i) => { bcColorMap[bc.name] = BC_PALETTE[i % BC_PALETTE.length]; });
 
@@ -220,6 +269,41 @@ async function main() {
     div.innerHTML = `<div class="legend-swatch" style="background:${bcColorMap[bc.name]};border-color:${bcColorMap[bc.name]}"></div>${bc.name}`;
     bcLegend.appendChild(div);
   });
+  // BC link legend (shared dimensions)
+  if (bcLinks.length) {
+    const uniqDims = [...new Set(bcLinks.map(cl => cl.via_type))];
+    uniqDims.forEach(dim => {
+      const div = document.createElement("div");
+      const col = bcLinkColorMap[dim] ?? "#f0883e";
+      div.className = "legend-item";
+      div.innerHTML = `<div class="legend-dash" style="background:repeating-linear-gradient(90deg,${col} 0,${col} 6px,transparent 6px,transparent 10px)"></div>${dim}`;
+      bcLegend.appendChild(div);
+    });
+  }
+
+  // BC link list (textual)
+  const bcListBody = document.getElementById("bc-list-body");
+  // Aggregate by shared dimension (category) with BC pair summary
+  const dimAgg = {};
+  bcLinks.forEach(cl => {
+    const entry = dimAgg[cl.via_type] ??= { total: 0, pairs: new Set() };
+    entry.total += cl.count;
+    entry.pairs.add(`${cl.from_bc}→${cl.to_bc}`);
+  });
+  Object.entries(dimAgg)
+    .sort((a,b) => b[1].total - a[1].total || a[0].localeCompare(b[0]))
+    .forEach(([dim, agg]) => {
+      const col = bcLinkColorMap[dim] ?? "#f0883e";
+      const pairs = [...agg.pairs].join(", ");
+      const row = document.createElement("div");
+      row.className = "bc-list-item";
+      row.innerHTML = `<div class="bc-list-color" style="background:${col}"></div>
+        <div class="bc-list-text">
+          <div class="label">${dim}</div>
+          <div class="meta">${pairs} (${agg.total} links)</div>
+        </div>`;
+      bcListBody.appendChild(row);
+    });
 
   // Node → bc color helper
   const nodeBcColor = d => bcColorMap[entityBc[d.type]] ?? "#555";
@@ -245,6 +329,12 @@ async function main() {
       .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
       .append("path").attr("d", "M0,-4L8,0L0,4").attr("fill", col);
   });
+  // BC link arrow
+  defs.append("marker")
+    .attr("id", "arrow-BCLINK")
+    .attr("viewBox", "0 -4 8 8").attr("refX", 10).attr("refY", 0)
+    .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
+    .append("path").attr("d", "M0,-4L8,0L0,4").attr("fill", "#f0883e");
 
   const g = svg.append("g");
 
@@ -277,6 +367,7 @@ async function main() {
     .force("bcY", d3.forceY(d => (bcCentroids[entityBc[d.type]] ?? {y:0}).y).strength(0.18));
 
   // ── BC hulls layer (behind links) ────────────────────────────────────────
+  const bcCenters = {}; // updated each tick based on current node positions
   const hullLayer = g.append("g").attr("class", "hulls");
 
   const hullPaths = hullLayer.selectAll("path.bc-hull")
@@ -292,6 +383,42 @@ async function main() {
       .attr("class", "bc-label")
       .attr("fill",  bc => bcColorMap[bc.name])
       .text(bc => bc.name);
+
+  // ── BC link layer (between hulls) ────────────────────────────────────────
+  // Offset multiple links between same BC pair to avoid overlap
+  const pairGroups = {};
+  bcLinks.forEach(cl => {
+    const key = `${cl.from_bc}|${cl.to_bc}`;
+    (pairGroups[key] ??= []).push(cl);
+  });
+  Object.values(pairGroups).forEach(group => {
+    const n = group.length;
+    group.forEach((cl, i) => {
+      const offset = (i - (n - 1) / 2) * 28; // symmetric spread
+      cl._offset = offset;
+    });
+  });
+
+  const bcLinkLayer = g.append("g").attr("class", "bc-links");
+  const bcLinkSel = bcLinkLayer.selectAll("path.bc-link")
+    .data(bcLinks)
+    .join("path")
+    .attr("class", "bc-link")
+    .attr("stroke", cl => bcLinkColorMap[cl.via_type] ?? "#f0883e")
+    .attr("marker-end", "url(#arrow-BCLINK)")
+    .attr("marker-start", "url(#arrow-BCLINK)");
+  const bcLinkLabels = bcLinkLayer.selectAll("text.bc-link-label")
+    .data(bcLinks)
+    .join("text")
+      .attr("class", "bc-label")
+      .attr("fill", cl => bcLinkColorMap[cl.via_type] ?? "#f0883e")
+      .attr("font-size", 11)
+      .attr("font-weight", 700)
+      .attr("paint-order", "stroke")
+      .attr("stroke", "#0d1117")
+      .attr("stroke-width", 3)
+      .attr("stroke-opacity", 0.85)
+      .text(cl => `${cl.from_bc} → ${cl.to_bc} · ${cl.via_type}`);
 
   // ── Links ────────────────────────────────────────────────────────────────
   const linkLayer = g.append("g").attr("class", "links");
@@ -339,13 +466,18 @@ async function main() {
   const PAD = 28;
   function updateHulls() {
     hullPaths.each(function(bc) {
-      const pts = data.entities
-        .filter(e => bc.entity_types.includes(e.type) && e.x !== undefined)
-        .flatMap(e => {
-          const r = nodeRadius(e) + PAD;
-          return [[e.x - r, e.y - r],[e.x + r, e.y - r],
-                  [e.x + r, e.y + r],[e.x - r, e.y + r]];
-        });
+      const members = data.entities
+        .filter(e => bc.entity_types.includes(e.type) && e.x !== undefined);
+      if (!members.length) return;
+      bcCenters[bc.name] = {
+        x: d3.mean(members, e => e.x),
+        y: d3.mean(members, e => e.y),
+      };
+      const pts = members.flatMap(e => {
+        const r = nodeRadius(e) + PAD;
+        return [[e.x - r, e.y - r],[e.x + r, e.y - r],
+                [e.x + r, e.y + r],[e.x - r, e.y + r]];
+      });
       if (pts.length < 3) return;
       const hull = d3.polygonHull(pts);
       if (!hull) return;
@@ -370,6 +502,37 @@ async function main() {
          .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
     nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
     updateHulls();
+    bcLinkSel.attr("d", cl => {
+      const a = bcCenters[cl.from_bc] ?? bcCentroids[cl.from_bc] ?? {x:0,y:0};
+      const b = bcCenters[cl.to_bc]   ?? bcCentroids[cl.to_bc]   ?? {x:0,y:0};
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len; // normal
+      const off = cl._offset ?? 0;
+      const mx = (a.x + b.x) / 2 + nx * off;
+      const my = (a.y + b.y) / 2 + ny * off;
+      return `M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}`;
+    });
+    bcLinkLabels
+      .attr("x", cl => {
+        const a = bcCenters[cl.from_bc] ?? bcCentroids[cl.from_bc] ?? {x:0,y:0};
+        const b = bcCenters[cl.to_bc]   ?? bcCentroids[cl.to_bc]   ?? {x:0,y:0};
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len, ny = dx / len;
+        const off = cl._offset ?? 0;
+        return (a.x + b.x) / 2 + nx * off;
+      })
+      .attr("y", cl => {
+        const a = bcCenters[cl.from_bc] ?? bcCentroids[cl.from_bc] ?? {x:0,y:0};
+        const b = bcCenters[cl.to_bc]   ?? bcCentroids[cl.to_bc]   ?? {x:0,y:0};
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len, ny = dx / len;
+        const off = cl._offset ?? 0;
+        return (a.y + b.y) / 2 + ny * off - 8;
+      })
+      .attr("text-anchor", "middle");
   });
 
   // Initial zoom after simulation settles
@@ -485,6 +648,46 @@ async function main() {
 main().catch(err => {
   document.getElementById("stats").textContent = "Error loading: " + err.message;
   console.error(err);
+});
+
+// ── UML toggle ────────────────────────────────────────────────────────────
+const pumlBtn = document.getElementById("btn-puml");
+const pumlPanel = document.getElementById("puml-panel");
+const pumlFrame = document.getElementById("puml-frame");
+let pumlLoaded = false;
+pumlBtn.addEventListener("click", () => {
+  const showing = !pumlPanel.hidden;
+  if (showing) {
+    pumlPanel.hidden = true;
+    pumlBtn.textContent = "UML: Off";
+    pumlBtn.classList.remove("active");
+  } else {
+    if (!pumlLoaded) {
+      pumlFrame.src = "/bc_process.puml";
+      pumlLoaded = true;
+    }
+    pumlPanel.hidden = false;
+    pumlBtn.textContent = "UML: On";
+    pumlBtn.classList.add("active");
+  }
+});
+
+// ── Fullscreen ────────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  const btn = document.getElementById('btn-fullscreen');
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().then(() => {
+      btn.textContent = '✕ Exit Fullscreen';
+    });
+  } else {
+    document.exitFullscreen().then(() => {
+      btn.textContent = '⛶ Fullscreen';
+    });
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('btn-fullscreen');
+  if (!document.fullscreenElement) btn.textContent = '⛶ Fullscreen';
 });
 </script>
 </body>

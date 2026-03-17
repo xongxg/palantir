@@ -1,0 +1,16 @@
+id,customer_id,product_id,quantity,amount,status,ordered_at
+o14,cu6,p1,1,999,Processing,2024-01-12T11:45:00
+o01,cu1,p1,1,999,Completed,2024-01-02T09:15:00
+o11,cu2,p5,1,149,Completed,2024-01-10T09:15:00
+o02,cu2,p2,2,598,Completed,2024-01-02T14:30:00
+o13,cu5,p2,1,299,Completed,2024-01-11T08:30:00
+o03,cu3,p3,1,79,Completed,2024-01-03T08:45:00
+o15,cu1,p3,1,79,Pending,2024-01-13T10:30:00
+o04,cu1,p4,3,147,Completed,2024-01-03T16:20:00
+o12,cu4,p2,1,299,Completed,2024-01-10T14:45:00
+o05,cu4,p5,1,149,Completed,2024-01-04T10:00:00
+o10,cu1,p4,2,98,Completed,2024-01-09T14:00:00
+o06,cu5,p1,1,999,Completed,2024-01-06T09:00:00
+o09,cu6,p3,3,237,Completed,2024-01-09T09:15:00
+o07,cu2,p3,2,158,Completed,2024-01-07T13:45:00
+o08,cu3,p4,2,98,Completed,2024-01-08T10:30:00

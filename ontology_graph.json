@@ -1,104 +1,552 @@
 {
   "entities": [
     {
-      "id": "cu1",
-      "type": "Customer",
+      "id": "e8",
+      "type": "Employee",
       "ddd_concept": "Aggregate Root",
-      "label": "cu1",
-      "properties": {"orders": 2}
+      "label": "Henry Brown",
+      "properties": {"department": "Operations", "name": "Henry Brown", "level": "Mid", "salary": 78000.00}
     },
     {
-      "id": "cu4",
-      "type": "Customer",
+      "id": "e1",
+      "type": "Employee",
       "ddd_concept": "Aggregate Root",
-      "label": "cu4",
-      "properties": {"orders": 1}
+      "label": "Alice Chen",
+      "properties": {"name": "Alice Chen", "department": "Engineering", "level": "Senior", "salary": 120000.00}
     },
     {
-      "id": "cu3",
-      "type": "Customer",
+      "id": "e4",
+      "type": "Employee",
       "ddd_concept": "Aggregate Root",
-      "label": "cu3",
-      "properties": {"orders": 1}
+      "label": "David Kim",
+      "properties": {"level": "Mid", "department": "Sales", "salary": 72000.00, "name": "David Kim"}
     },
     {
-      "id": "cu2",
-      "type": "Customer",
+      "id": "e7",
+      "type": "Employee",
       "ddd_concept": "Aggregate Root",
-      "label": "cu2",
-      "properties": {"orders": 2}
+      "label": "Grace Nguyen",
+      "properties": {"department": "Engineering", "level": "Staff", "name": "Grace Nguyen", "salary": 145000.00}
     },
     {
-      "id": "o22",
-      "type": "Order",
-      "ddd_concept": "Entity",
-      "label": "o22",
-      "properties": {"status": "Delivered", "amount": 580, "version": 4}
+      "id": "e2",
+      "type": "Employee",
+      "ddd_concept": "Aggregate Root",
+      "label": "Bob Martinez",
+      "properties": {"salary": 95000.00, "name": "Bob Martinez", "level": "Mid", "department": "Engineering"}
     },
     {
-      "id": "o14",
-      "type": "Order",
-      "ddd_concept": "Entity",
-      "label": "o14",
-      "properties": {"status": "Delivered", "amount": 999, "version": 4}
+      "id": "e3",
+      "type": "Employee",
+      "ddd_concept": "Aggregate Root",
+      "label": "Carol White",
+      "properties": {"name": "Carol White", "salary": 85000.00, "department": "Sales", "level": "Senior"}
     },
     {
-      "id": "o01",
-      "type": "Order",
-      "ddd_concept": "Entity",
-      "label": "o01",
-      "properties": {"status": "Delivered", "amount": 999, "version": 4}
+      "id": "e6",
+      "type": "Employee",
+      "ddd_concept": "Aggregate Root",
+      "label": "Frank Lee",
+      "properties": {"name": "Frank Lee", "level": "Junior", "department": "Marketing", "salary": 68000.00}
     },
     {
-      "id": "o21",
-      "type": "Order",
-      "ddd_concept": "Entity",
-      "label": "o21",
-      "properties": {"status": "Cancelled", "amount": 320, "version": 2}
+      "id": "e5",
+      "type": "Employee",
+      "ddd_concept": "Aggregate Root",
+      "label": "Eva Patel",
+      "properties": {"level": "Senior", "salary": 90000.00, "department": "Marketing", "name": "Eva Patel"}
     },
     {
-      "id": "o04",
-      "type": "Order",
+      "id": "t12",
+      "type": "Transaction",
       "ddd_concept": "Entity",
-      "label": "o04",
-      "properties": {"status": "Delivered", "amount": 147, "version": 4}
+      "label": "t12",
+      "properties": {"amount": 700.00, "employee_id": "e8", "category": "Equipment"}
     },
     {
-      "id": "o09",
-      "type": "Order",
+      "id": "t05",
+      "type": "Transaction",
       "ddd_concept": "Entity",
-      "label": "o09",
-      "properties": {"status": "Delivered", "amount": 237, "version": 4}
+      "label": "t05",
+      "properties": {"employee_id": "e3", "category": "Office Supplies", "amount": 450.00}
     },
-    {"id": "status:Delivered", "type": "status", "ddd_concept": "Value Object", "label": "Delivered", "properties": {}},
-    {"id": "status:Cancelled", "type": "status", "ddd_concept": "Value Object", "label": "Cancelled", "properties": {}}
+    {
+      "id": "t09",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t09",
+      "properties": {"amount": 950.00, "category": "Marketing Campaign", "employee_id": "e6"}
+    },
+    {
+      "id": "t08",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t08",
+      "properties": {"category": "Office Supplies", "amount": 200.00, "employee_id": "e5"}
+    },
+    {
+      "id": "t14",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t14",
+      "properties": {"amount": 525.00, "employee_id": "e2", "category": "Training"}
+    },
+    {
+      "id": "t13",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t13",
+      "properties": {"amount": 430.00, "employee_id": "e8", "category": "Travel"}
+    },
+    {
+      "id": "t11",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t11",
+      "properties": {"category": "Office Supplies", "employee_id": "e7", "amount": 120.00}
+    },
+    {
+      "id": "t07",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t07",
+      "properties": {"employee_id": "e5", "amount": 3100.00, "category": "Marketing Campaign"}
+    },
+    {
+      "id": "t02",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t02",
+      "properties": {"employee_id": "e1", "category": "Travel", "amount": 350.00}
+    },
+    {
+      "id": "t03",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t03",
+      "properties": {"category": "Hardware", "employee_id": "e2", "amount": 800.00}
+    },
+    {
+      "id": "t10",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t10",
+      "properties": {"amount": 5000.00, "employee_id": "e7", "category": "Software"}
+    },
+    {
+      "id": "t15",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t15",
+      "properties": {"category": "Travel", "employee_id": "e4", "amount": 180.00}
+    },
+    {
+      "id": "t04",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t04",
+      "properties": {"employee_id": "e3", "amount": 2500.00, "category": "Client Entertainment"}
+    },
+    {
+      "id": "t01",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t01",
+      "properties": {"employee_id": "e1", "category": "Software", "amount": 1200.00}
+    },
+    {
+      "id": "t06",
+      "type": "Transaction",
+      "ddd_concept": "Entity",
+      "label": "t06",
+      "properties": {"employee_id": "e4", "amount": 600.00, "category": "Travel"}
+    }
   ],
   "relationships": [
-    {"from": "cu4", "from_type": "Customer", "to": "o22", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o22", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu3", "from_type": "Customer", "to": "o14", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o14", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu1", "from_type": "Customer", "to": "o01", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o01", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu2", "from_type": "Customer", "to": "o21", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o21", "from_type": "Order", "to": "status:Cancelled", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu2", "from_type": "Customer", "to": "o04", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o04", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"},
-    {"from": "cu1", "from_type": "Customer", "to": "o09", "to_type": "Order", "kind": "HAS", "action_category": "Integration"},
-    {"from": "o09", "from_type": "Order", "to": "status:Delivered", "to_type": "status", "kind": "BELONGS_TO", "action_category": "Logic"}
+    {
+      "from": "e8",
+      "from_type": "Employee",
+      "to": "t12",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e3",
+      "from_type": "Employee",
+      "to": "t05",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e6",
+      "from_type": "Employee",
+      "to": "t09",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e5",
+      "from_type": "Employee",
+      "to": "t08",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e2",
+      "from_type": "Employee",
+      "to": "t14",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e8",
+      "from_type": "Employee",
+      "to": "t13",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e7",
+      "from_type": "Employee",
+      "to": "t11",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e5",
+      "from_type": "Employee",
+      "to": "t07",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e1",
+      "from_type": "Employee",
+      "to": "t02",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e2",
+      "from_type": "Employee",
+      "to": "t03",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e7",
+      "from_type": "Employee",
+      "to": "t10",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e4",
+      "from_type": "Employee",
+      "to": "t15",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e3",
+      "from_type": "Employee",
+      "to": "t04",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e1",
+      "from_type": "Employee",
+      "to": "t01",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e4",
+      "from_type": "Employee",
+      "to": "t06",
+      "to_type": "Transaction",
+      "kind": "HAS",
+      "action_category": "Integration"
+    },
+    {
+      "from": "e6",
+      "from_type": "Employee",
+      "to": "department:Marketing",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e5",
+      "from_type": "Employee",
+      "to": "department:Marketing",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e4",
+      "from_type": "Employee",
+      "to": "department:Sales",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e3",
+      "from_type": "Employee",
+      "to": "department:Sales",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e1",
+      "from_type": "Employee",
+      "to": "department:Engineering",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e7",
+      "from_type": "Employee",
+      "to": "department:Engineering",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e2",
+      "from_type": "Employee",
+      "to": "department:Engineering",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e8",
+      "from_type": "Employee",
+      "to": "department:Operations",
+      "to_type": "department",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e6",
+      "from_type": "Employee",
+      "to": "level:Junior",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e8",
+      "from_type": "Employee",
+      "to": "level:Mid",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e4",
+      "from_type": "Employee",
+      "to": "level:Mid",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e2",
+      "from_type": "Employee",
+      "to": "level:Mid",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e1",
+      "from_type": "Employee",
+      "to": "level:Senior",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e3",
+      "from_type": "Employee",
+      "to": "level:Senior",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e5",
+      "from_type": "Employee",
+      "to": "level:Senior",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "e7",
+      "from_type": "Employee",
+      "to": "level:Staff",
+      "to_type": "level",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t09",
+      "from_type": "Transaction",
+      "to": "category:Marketing Campaign",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t07",
+      "from_type": "Transaction",
+      "to": "category:Marketing Campaign",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t03",
+      "from_type": "Transaction",
+      "to": "category:Hardware",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t10",
+      "from_type": "Transaction",
+      "to": "category:Software",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t01",
+      "from_type": "Transaction",
+      "to": "category:Software",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t05",
+      "from_type": "Transaction",
+      "to": "category:Office Supplies",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t08",
+      "from_type": "Transaction",
+      "to": "category:Office Supplies",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t11",
+      "from_type": "Transaction",
+      "to": "category:Office Supplies",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t13",
+      "from_type": "Transaction",
+      "to": "category:Travel",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t02",
+      "from_type": "Transaction",
+      "to": "category:Travel",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t15",
+      "from_type": "Transaction",
+      "to": "category:Travel",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t06",
+      "from_type": "Transaction",
+      "to": "category:Travel",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t12",
+      "from_type": "Transaction",
+      "to": "category:Equipment",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t14",
+      "from_type": "Transaction",
+      "to": "category:Training",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    },
+    {
+      "from": "t04",
+      "from_type": "Transaction",
+      "to": "category:Client Entertainment",
+      "to_type": "category",
+      "kind": "BELONGS_TO",
+      "action_category": "Logic"
+    }
   ],
   "bounded_contexts": [
     {
-      "name": "OrderFulfillment",
-      "cohesion": 1.0,
-      "internal_links": 6,
-      "entity_types": ["Customer", "Order"]
+      "name": "Employee",
+      "cohesion": 1.00,
+      "internal_links": 15,
+      "entity_types": ["Employee", "Transaction"]
     }
   ],
-  "shared_kernel": ["status"],
+  "shared_kernel": ["category", "department", "level"],
+  "cross_links": [
+  ],
   "summary": {
-    "total_entities": 10,
-    "total_relationships": 12,
-    "bounded_contexts": 1
+      "total_entities": 23,
+      "total_relationships": 46,
+      "bounded_contexts": 1,
+      "cross_links": 0
   }
 }

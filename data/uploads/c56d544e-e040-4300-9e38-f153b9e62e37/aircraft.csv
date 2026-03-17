@@ -1,0 +1,7 @@
+id,model,capacity,airline,body_type
+ac1,Boeing 737-800,189,SkyAir,narrowbody
+ac2,Airbus A320,180,SkyAir,narrowbody
+ac3,Boeing 787-9,296,OceanAir,widebody
+ac4,Airbus A380,555,OceanAir,widebody
+ac5,Boeing 737 MAX,200,SkyAir,narrowbody
+ac6,Airbus A350,369,OceanAir,widebody

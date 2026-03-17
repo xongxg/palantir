@@ -1,0 +1,7 @@
+id,order_id,customer_id,category,priority,status,opened_at
+tk04,o12,cu4,Product,Medium,Open,2024-01-12T15:00:00
+tk01,o06,cu5,Delivery,High,Open,2024-01-09T10:00:00
+tk05,o14,cu6,Payment,High,Open,2024-01-13T09:00:00
+tk03,o04,cu1,Delivery,Low,Closed,2024-01-08T09:00:00
+tk02,o09,cu6,Payment,Medium,Resolved,2024-01-11T14:30:00
+tk06,o10,cu1,Delivery,Low,Resolved,2024-01-11T11:00:00

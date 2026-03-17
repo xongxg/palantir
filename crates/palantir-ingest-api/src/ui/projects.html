@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Palantir — Projects</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    .header { background: #1a1d2e; border-bottom: 1px solid #2d3748;
+              padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; }
+    .logo   { font-size: 18px; font-weight: 700; color: #a78bfa; letter-spacing: -0.5px; }
+    .logo span { color: #64748b; font-weight: 400; font-size: 13px; margin-left: 10px; }
+
+    .content { max-width: 860px; margin: 0 auto; padding: 40px 24px; }
+
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .page-title { font-size: 22px; font-weight: 600; color: #e2e8f0; }
+    .page-sub   { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+    .btn-new { display: flex; align-items: center; gap: 6px; background: #a78bfa;
+               color: #0f1117; border: none; border-radius: 8px; padding: 9px 18px;
+               font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-new:hover { background: #8b5cf6; }
+
+    /* Create form */
+    .create-form { display: none; background: #1a1d2e; border: 1px solid #a78bfa;
+                   border-radius: 10px; padding: 18px 20px; margin-bottom: 24px; }
+    .create-form.open { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .create-form input { flex: 1; min-width: 200px; background: #0f1117; border: 1px solid #2d3748;
+                         border-radius: 6px; padding: 8px 12px; color: #e2e8f0;
+                         font-size: 14px; outline: none; }
+    .create-form input:focus { border-color: #a78bfa; }
+    .create-form input::placeholder { color: #475569; }
+    .btn-create { background: #a78bfa; color: #0f1117; border: none; border-radius: 6px;
+                  padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-create:hover { background: #8b5cf6; }
+    .btn-cancel { background: transparent; color: #64748b; border: 1px solid #2d3748;
+                  border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+    .btn-cancel:hover { color: #e2e8f0; border-color: #64748b; }
+
+    /* Project list */
+    .project-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .project-card { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px;
+                    padding: 18px 20px; display: flex; align-items: center;
+                    cursor: pointer; transition: border-color 0.2s, background 0.2s;
+                    text-decoration: none; color: inherit; }
+    .project-card:hover { border-color: #a78bfa; background: rgba(167,139,250,0.04); }
+
+    .proj-icon { width: 40px; height: 40px; border-radius: 8px; background: rgba(167,139,250,0.15);
+                 display: flex; align-items: center; justify-content: center;
+                 font-size: 18px; flex-shrink: 0; margin-right: 16px; }
+    .proj-info { flex: 1; min-width: 0; }
+    .proj-name { font-size: 15px; font-weight: 600; color: #e2e8f0;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .proj-meta { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+    .proj-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn-arrow { background: none; border: none; color: #a78bfa; font-size: 18px;
+                 padding: 4px 8px; cursor: pointer; opacity: 0.7; transition: opacity 0.15s; }
+    .project-card:hover .btn-arrow { opacity: 1; }
+    .btn-del  { background: transparent; color: #475569; border: 1px solid #2d3748;
+                border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer;
+                transition: color 0.15s, border-color 0.15s; }
+    .btn-del:hover { color: #ef4444; border-color: #ef4444; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 64px 0; }
+    .empty-icon { font-size: 52px; margin-bottom: 16px; opacity: 0.3; }
+    .empty-text { font-size: 15px; color: #64748b; }
+
+    .spinner { display: inline-block; width: 16px; height: 16px;
+               border: 2px solid #a78bfa44; border-top-color: #a78bfa;
+               border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg { background: #2d1515; border: 1px solid #ef444466;
+                 color: #fca5a5; border-radius: 8px; padding: 10px 14px;
+                 font-size: 13px; margin-bottom: 16px; display: none; }
+    .error-msg.show { display: block; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <div class="logo">Palantir <span>Ontology Platform</span></div>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="top-bar">
+      <div>
+        <div class="page-title">Projects</div>
+        <div class="page-sub">Each project is an independent ontology workspace</div>
+      </div>
+      <button class="btn-new" onclick="toggleCreate()">＋ New Project</button>
+    </div>
+
+    <div class="create-form" id="createForm">
+      <input id="projName" type="text" placeholder="Project name…" maxlength="80"
+             onkeydown="if(event.key==='Enter')doCreate()">
+      <button class="btn-create" onclick="doCreate()">Create</button>
+      <button class="btn-cancel" onclick="toggleCreate()">Cancel</button>
+    </div>
+
+    <div class="error-msg" id="errMsg"></div>
+
+    <div id="listWrap">
+      <div class="empty"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <script>
+    async function loadProjects() {
+      const wrap = document.getElementById('listWrap');
+      try {
+        const res  = await fetch('/api/projects');
+        const data = await res.json();
+        const list = data.projects || [];
+        if (list.length === 0) {
+          wrap.innerHTML = '<div class="empty"><div class="empty-icon">🗂</div><div class="empty-text">No projects yet. Create one to get started.</div></div>';
+          return;
+        }
+        wrap.innerHTML = '<div class="project-list">' +
+          list.map(p => `
+            <a class="project-card" id="proj-${p.id}" href="/workspace?project_id=${p.id}">
+              <div class="proj-icon">📦</div>
+              <div class="proj-info">
+                <div class="proj-name">${esc(p.name)}</div>
+                <div class="proj-meta">Updated ${relTime(p.updated_at)}</div>
+              </div>
+              <div class="proj-actions">
+                <span class="btn-arrow">→</span>
+                <button class="btn-del" onclick="event.preventDefault();event.stopPropagation();delProject('${p.id}')">Delete</button>
+              </div>
+            </a>
+          `).join('') + '</div>';
+      } catch (e) {
+        wrap.innerHTML = '<div class="error-msg show">Failed to load projects: ' + e.message + '</div>';
+      }
+    }
+
+    function toggleCreate() {
+      const form = document.getElementById('createForm');
+      const open = form.classList.toggle('open');
+      if (open) { document.getElementById('projName').focus(); }
+    }
+
+    async function doCreate() {
+      const name = document.getElementById('projName').value.trim();
+      if (!name) return;
+      showErr('');
+      try {
+        const res  = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const data = await res.json();
+        if (!res.ok) { showErr(data.error || 'Create failed'); return; }
+        document.getElementById('projName').value = '';
+        document.getElementById('createForm').classList.remove('open');
+        // navigate directly to workspace
+        window.location.href = `/workspace?project_id=${data.id}`;
+      } catch (e) { showErr(e.message); }
+    }
+
+    async function delProject(id) {
+      if (!confirm('Delete this project and all its data?')) return;
+      try {
+        const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+        if (!res.ok) { showErr('Delete failed'); return; }
+        document.getElementById('proj-' + id)?.remove();
+        // if list is now empty, reload to show empty state
+        if (!document.querySelector('.project-card')) loadProjects();
+      } catch (e) { showErr(e.message); }
+    }
+
+    function showErr(msg) {
+      const el = document.getElementById('errMsg');
+      el.textContent = msg;
+      el.classList.toggle('show', !!msg);
+    }
+
+    function esc(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function relTime(unixSecs) {
+      const diff = Math.floor(Date.now() / 1000) - parseInt(unixSecs, 10);
+      if (isNaN(diff) || diff < 0) return 'just now';
+      if (diff < 60)   return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    loadProjects();
+  </script>
+</body>
+</html>

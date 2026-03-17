@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Palantir Ingest — Simple UI</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #1f2328; }
+    h2 { margin-top: 24px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; cursor: pointer; }
+    .btn:active { transform: translateY(1px); }
+    pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow: auto; }
+  </style>
+  <noscript>
+    <style>#app{display:none}</style>
+    JavaScript required. Try /viz directly: <a href="/viz?src=/api/live_ontology">/viz</a>
+  </noscript>
+  <script>
+    async function post(url, body) {
+      const r = await fetch(url, { method: 'POST', body });
+      const t = await r.text();
+      document.getElementById('out').textContent = t;
+      return r;
+    }
+    async function resetLive() { await fetch('/api/reset', { method: 'POST' }); document.getElementById('out').textContent = 'reset ok'; refreshViz(); }
+    async function uploadMulti() {
+      const f = document.getElementById('file').files;
+      if (!f.length) { alert('Choose files'); return; }
+      const fd = new FormData();
+      for (const x of f) fd.append('file', x);
+      await post('/api/upload_multi', fd);
+      refreshViz();
+    }
+    function showViz() {
+      const i = document.getElementById('viz');
+      if (!i.src) i.src = '/viz?src=/api/live_ontology';
+    }
+    function refreshViz() {
+      const i = document.getElementById('viz');
+      i.src = '/viz?src=/api/live_ontology&ts=' + Date.now();
+    }
+  </script>
+  </head>
+<body>
+  <h1>Palantir Ingest — Simple UI</h1>
+  <div id="app">
+    <div>
+      <h2>1) Multi Upload</h2>
+      <div class="row">
+        <input type="file" id="file" multiple />
+        <button class="btn" onclick="uploadMulti()">Upload Multiple (Auto)</button>
+        <button class="btn" onclick="resetLive()">Reset Live</button>
+      </div>
+    </div>
+    <div>
+      <h2>2) Visualize</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn" onclick="showViz()">Show Viz</button>
+        <button class="btn" onclick="refreshViz()">Refresh Viz</button>
+      </div>
+      <iframe id="viz" src="" style="width:100%;height:640px;border:1px solid #d0d7de;border-radius:6px;background:#fff"></iframe>
+    </div>
+    <div>
+      <h2>Log</h2>
+      <pre id="out"></pre>
+    </div>
+  </div>
+</body>
+</html>

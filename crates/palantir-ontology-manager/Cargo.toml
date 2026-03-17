@@ -1,0 +1,23 @@
+[package]
+name = "palantir_ontology_manager"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Pluggable ontology ingestion manager: adapters, mapping, repository traits"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+async-trait = "0.1"
+futures-core = "0.3"
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+time = { version = "0.3", features = ["serde-human-readable"] }
+anyhow = "1"
+toml = "0.8"
+csv = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
