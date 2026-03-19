@@ -121,6 +121,7 @@ palantir/
 | [ADR-24](adr/ADR-24-frontend-backend-security.md) | 前后端通信安全 | Access Token 存内存，Refresh Token 存 HttpOnly Cookie，CSP + DOMPurify | ✅ |
 | [ADR-25](adr/ADR-25-agent-tool-protocol.md) | Agent 工具调用协议 | 内部 API → Tool Calling；外部集成 → MCP Client | ✅ 决策，暂不实现 |
 | [ADR-26](adr/ADR-26-ontology-identity-permission.md) | Ontology 身份与数据权限 | 四粒度：RBAC(EntityType)→ReBAC(Object)→ABAC(Row)→Classification(Field) | ✅ |
+| [ADR-27](adr/ADR-27-surrealdb-dependency-risk.md) | SurrealDB 依赖风险与替代 | 收窄 SurrealDB 范围；迁移路径：NebulaGraph+MySQL/TiDB 或 PolarDB+AGE | ✅ |
 
 ---
 
