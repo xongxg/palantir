@@ -306,15 +306,18 @@ url = "http://vault:8200"
 ```rust
 // 启动时根据 deployment.toml 装配
 pub struct InfrastructureContainer {
-    pub graph:        Arc<dyn OntologyGraphStore>,  // NebulaGraph / Neo4j / Arango
-    pub structured:   Arc<dyn StructuredStore>,     // TiDB / MySQL / PolarDB / GaussDB
+    pub graph:        Arc<dyn OntologyGraphStore>,    // NebulaGraph / Neo4j / Arango
+    pub structured:   Arc<dyn StructuredStore>,       // TiDB / MySQL / PolarDB / GaussDB
     pub document:     Option<Arc<dyn DocumentStore>>, // MongoDB（可选，遗留系统适配）
-    pub append:       Arc<dyn AppendStore>,          // Cassandra / TiDB / HBase（审计日志）
-    pub object:       Arc<dyn ObjectStore>,          // RustFS / S3 / OSS / OBS
-    pub vector:       Arc<dyn VectorStore>,          // TiDB Vector / Qdrant / LanceDB
-    pub event_bus:    Arc<dyn EventPublisher>,       // NATS / RocketMQ / Kafka
-    pub cache:        Arc<dyn CacheStore>,           // Redis / 内存
-    pub key_manager:  Arc<dyn KeyManager>,           // Vault / AliKMS / AWS KMS
+    pub append:       Arc<dyn AppendStore>,            // Cassandra / TiDB / HBase（审计日志）
+    pub object:       Arc<dyn ObjectStore>,            // RustFS / S3 / OSS / OBS
+    pub vector:       Arc<dyn VectorStore>,            // TiDB Vector / Qdrant / LanceDB
+    pub event_bus:    Arc<dyn EventPublisher>,         // NATS / RocketMQ / Kafka
+    pub cache:        Arc<dyn CacheStore>,             // Redis / 内存
+    pub key_manager:  Arc<dyn KeyManager>,             // Vault / AliKMS / AWS KMS
+    pub discovery:    Arc<dyn ServiceDiscovery>,       // Consul / Nacos / etcd / Zookeeper / K8s
+    pub config:       Arc<dyn ConfigCenter>,           // Consul / Nacos / Apollo / etcd / K8s / 本地文件
+    // 注：Nacos / Consul / etcd 同时实现两个 trait，共享同一连接（见 ADR-29）
 }
 
 impl InfrastructureContainer {

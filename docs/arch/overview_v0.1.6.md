@@ -15,7 +15,8 @@
 | v0.1.4 | 2026-03-19 | ADR-16 前端选型（React+Vite），ADR-17 Agent 流式协议 |
 | v0.1.5 | 2026-03-19 | ADR-07 SurrealDB 主存储，ADR-08 RustFS 文件存储 |
 | v0.1.6 | 2026-03-19 | ADR-18 Arrow+DataFusion 加入 L2；ADR-19 embedding-svc 独立；ADR-20 内部 gRPC；ADR-21 Consul 服务发现；ADR-22 出站请求；ADR-23/24 安全方案 |
-| v0.1.7 | 2026-03-19 | ADR-25 Agent 工具协议（MCP/Tool Calling）；ADR-26 Ontology 身份权限四粒度；ADR-27 SurrealDB 替代（NebulaGraph+TiDB）；ADR-28 可插拔基础设施（DocumentStore/AppendStore 拆分，MongoDB/Cassandra/HBase 适配）；逃生门表重写 |
+| v0.1.7 | 2026-03-19 | ADR-25~28：Agent 工具协议、身份权限四粒度、NebulaGraph+TiDB 替代 SurrealDB、可插拔基础设施；逃生门表重写 |
+| v0.1.8 | 2026-03-19 | ADR-29：ServiceDiscovery + ConfigCenter 双 Trait 可插拔；支持 Nacos/Apollo/Zookeeper/etcd/K8s/Static；Dubbo 生态兼容 |
 
 ---
 
@@ -124,6 +125,7 @@ palantir/
 | [ADR-26](adr/ADR-26-ontology-identity-permission.md) | Ontology 身份与数据权限 | 四粒度：RBAC(EntityType)→ReBAC(Object)→ABAC(Row)→Classification(Field) | ✅ |
 | [ADR-27](adr/ADR-27-surrealdb-dependency-risk.md) | SurrealDB 依赖风险与替代 | 收窄 SurrealDB 范围；迁移路径：NebulaGraph+MySQL/TiDB 或 PolarDB+AGE | ✅ |
 | [ADR-28](adr/ADR-28-pluggable-storage.md) | 可插拔基础设施架构 | InfrastructureContainer + DeploymentProfile 驱动，支持 Standard/Aliyun/AWS/华为云/AirGapped | ✅ |
+| [ADR-29](adr/ADR-29-service-discovery-config-center.md) | 可插拔服务发现与配置中心 | ServiceDiscovery + ConfigCenter 双 Trait；Nacos/Apollo/Zookeeper/etcd/K8s/Static；Dubbo 生态兼容 | ✅ |
 
 ---
 
@@ -142,6 +144,8 @@ palantir/
 | `EventPublisher/Subscriber` | NATS JetStream | RocketMQ / Kafka / SQS |
 | `CacheStore` | Redis | 本地内存（单机开发）|
 | `KeyManager` | HashiCorp Vault | AliKMS / AWS KMS / LocalKeyManager |
+| `ServiceDiscovery` | Consul | Nacos / etcd / Zookeeper / K8s DNS / Static |
+| `ConfigCenter` | Consul KV | Nacos / Apollo / etcd / K8s ConfigMap / 本地文件 |
 | `PolicyEvaluator` | RBAC 简单实现 | OPA / Cedar |
 
 > 详细 Trait 定义、DeploymentProfile 配置格式、各云部署形态、存储选型矩阵见 [ADR-28](adr/ADR-28-pluggable-storage.md)
