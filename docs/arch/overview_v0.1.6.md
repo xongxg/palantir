@@ -119,6 +119,7 @@ palantir/
 | [ADR-22](adr/ADR-22-outbound-requests.md) | 对外出站请求 | function-svc 为集成出口，palantir-http-client 共享出站能力 | ✅ |
 | [ADR-23](adr/ADR-23-gateway-security.md) | Gateway 安全防御 | 五层防御：TLS + Rate Limiting + JWT + auth-svc + 审计 | ✅ |
 | [ADR-24](adr/ADR-24-frontend-backend-security.md) | 前后端通信安全 | Access Token 存内存，Refresh Token 存 HttpOnly Cookie，CSP + DOMPurify | ✅ |
+| [ADR-25](adr/ADR-25-agent-tool-protocol.md) | Agent 工具调用协议 | 内部 API → Tool Calling；外部集成 → MCP Client | ✅ 决策，暂不实现 |
 
 ---
 
