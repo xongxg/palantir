@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>架构对比：自研系统 vs Palantir 官方方案</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif; background:#111827; color:#333; }
+
+.slide {
+  width:1280px; height:720px; margin:32px auto;
+  position:relative; overflow:hidden;
+  border-radius:12px; box-shadow:0 24px 64px rgba(0,0,0,.5);
+  page-break-after:always; display:flex; flex-direction:column;
+}
+
+/* themes */
+.t-dark  { background:linear-gradient(135deg,#0f0c29,#302b63,#24243e); color:#fff; }
+.t-blue  { background:linear-gradient(135deg,#1e3c72,#2a5298); color:#fff; }
+.t-slate { background:linear-gradient(135deg,#2c3e50,#3498db); color:#fff; }
+.t-green { background:linear-gradient(135deg,#134e5e,#71b280); color:#fff; }
+.t-red   { background:linear-gradient(135deg,#642B73,#C6426E); color:#fff; }
+.t-gold  { background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460); color:#fff; }
+
+.brand-bar { position:absolute; top:0; left:0; right:0; height:5px;
+  background:linear-gradient(90deg,#00d2ff,#3a7bd5,#7f00ff); }
+.slide-num { position:absolute; bottom:20px; right:32px;
+  font-size:12px; opacity:.4; letter-spacing:1px; }
+
+/* title slide */
+.title-wrap { flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center; padding:60px; }
+.t-tag { font-size:12px; letter-spacing:4px; text-transform:uppercase;
+  color:#00d2ff; opacity:.8; margin-bottom:20px; }
+.t-main { font-size:54px; font-weight:800; line-height:1.2; margin-bottom:14px;
+  background:linear-gradient(135deg,#fff 0%,#a8c8ff 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.t-sub  { font-size:22px; opacity:.7; margin-bottom:40px; }
+.t-meta { display:flex; gap:40px; font-size:13px; opacity:.5; }
+.t-meta span::before { content:"· "; color:#00d2ff; }
+
+/* header */
+.hd { padding:34px 56px 0; flex-shrink:0; }
+.hd-label { font-size:11px; letter-spacing:3px; text-transform:uppercase; opacity:.5; margin-bottom:6px; }
+.hd-title { font-size:34px; font-weight:700; }
+.accent { width:52px; height:4px; border-radius:2px; margin-top:10px;
+  background:linear-gradient(90deg,#00d2ff,#3a7bd5); }
+
+/* body */
+.bd { flex:1; padding:24px 56px 44px; display:flex; flex-direction:column; justify-content:center; }
+
+/* summary */
+.sum-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-top:10px; }
+.sum-card { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13);
+  border-radius:12px; padding:22px 16px; text-align:center; }
+.sum-card .metric { font-size:38px; font-weight:800; margin-bottom:6px;
+  background:linear-gradient(135deg,#00d2ff,#a8c8ff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.sum-card .lbl { font-size:13px; opacity:.68; line-height:1.5; }
+
+.pts { display:flex; flex-direction:column; gap:12px; margin-top:20px; }
+.pt  { display:flex; align-items:flex-start; gap:14px;
+  background:rgba(255,255,255,.06); border-radius:10px; padding:13px 18px;
+  border-left:3px solid #00d2ff; }
+.pt-ico { font-size:20px; flex-shrink:0; }
+.pt-txt { font-size:15px; line-height:1.5; opacity:.88; }
+.pt-txt strong { color:#00d2ff; }
+
+/* table */
+.ct { width:100%; border-collapse:collapse; font-size:14px; margin-top:6px; }
+.ct th { padding:11px 14px; text-align:left; font-size:12px; font-weight:600; letter-spacing:.5px; }
+.ct td { padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.07); line-height:1.4; vertical-align:top; }
+.ct tr:last-child td { border-bottom:none; }
+.th-d { background:rgba(255,255,255,.05); color:rgba(255,255,255,.55); width:15%; }
+.th-p { background:rgba(58,123,213,.22); color:#a8c8ff; width:32%; }
+.th-u { background:rgba(0,210,255,.13); color:#00d2ff; width:32%; }
+.th-e { background:rgba(255,255,255,.03); color:rgba(255,255,255,.5); width:21%; }
+.ct td.d { opacity:.65; font-size:13px; }
+.ct td.p { color:#c8d8ff; }
+.ct td.u { color:#e0f8ff; }
+.ct td.e { font-size:12px; opacity:.65; }
+.ct tr:hover td { background:rgba(255,255,255,.025); }
+.badge { display:inline-block; padding:2px 8px; border-radius:4px;
+  font-size:11px; font-weight:600; letter-spacing:.3px; }
+.b-up   { background:rgba(0,210,255,.18); color:#00d2ff; }
+.b-par  { background:rgba(255,255,255,.1); color:rgba(255,255,255,.7); }
+.b-dn   { background:rgba(255,100,100,.18); color:#ff9090; }
+
+/* advantage */
+.adv-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:8px; }
+.adv { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.11);
+  border-radius:12px; padding:18px; position:relative; overflow:hidden; }
+.adv::before { content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg,#00d2ff,#3a7bd5); }
+.adv-ico   { font-size:26px; margin-bottom:8px; }
+.adv-title { font-size:14px; font-weight:700; color:#00d2ff; margin-bottom:6px; }
+.adv-desc  { font-size:12.5px; opacity:.75; line-height:1.5; }
+
+/* gap */
+.gaps { display:flex; flex-direction:column; gap:14px; margin-top:8px; }
+.gap  { display:flex; gap:18px; background:rgba(255,255,255,.06);
+  border-radius:12px; padding:16px 20px; border-left:4px solid #ff6b6b; align-items:flex-start; }
+.gap-n { font-size:30px; font-weight:800; color:#ff6b6b; opacity:.65; flex-shrink:0; line-height:1; }
+.gap-title { font-size:15px; font-weight:700; margin-bottom:4px; }
+.gap-desc  { font-size:13px; opacity:.7; line-height:1.5; }
+
+/* progress */
+.progs { display:flex; flex-direction:column; gap:16px; margin-top:8px; }
+.prog-hd { display:flex; justify-content:space-between; margin-bottom:6px; font-size:14px; }
+.prog-lbl { font-weight:600; }
+.prog-val { opacity:.55; font-size:13px; }
+.prog-bar { height:10px; background:rgba(255,255,255,.1); border-radius:5px; overflow:hidden; }
+.prog-fill { height:100%; border-radius:5px;
+  background:linear-gradient(90deg,#00d2ff,#3a7bd5); }
+.prog-note { font-size:12px; opacity:.5; margin-top:3px; }
+
+/* closing */
+.cl-wrap { flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center; padding:60px; }
+.cl-ico  { font-size:60px; margin-bottom:20px; }
+.cl-title { font-size:44px; font-weight:800; margin-bottom:14px;
+  background:linear-gradient(135deg,#fff,#a8c8ff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.cl-sub  { font-size:18px; opacity:.62; max-width:620px; line-height:1.6; }
+.cl-tags { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:28px; }
+.cl-tag  { border:1px solid rgba(0,210,255,.38); color:#00d2ff;
+  padding:5px 14px; border-radius:20px; font-size:13px; }
+
+@media print {
+  body { background:#fff; }
+  .slide { margin:0; border-radius:0; box-shadow:none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 01 Title -->
+<div class="slide t-dark">
+  <div class="brand-bar"></div>
+  <div class="title-wrap">
+    <div class="t-tag">Architecture Review · 2026</div>
+    <div class="t-main">架构对比分析</div>
+    <div class="t-sub">自研 Ontology 平台 vs Palantir 官方方案</div>
+    <div class="t-meta">
+      <span>企业级数据智能平台</span>
+      <span>微服务架构设计</span>
+      <span>2026 · Q1</span>
+    </div>
+  </div>
+  <div class="slide-num">01 / 10</div>
+</div>
+
+<!-- 02 Executive Summary -->
+<div class="slide t-dark">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Executive Summary</div>
+    <div class="hd-title">核心结论</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <div class="sum-grid">
+      <div class="sum-card"><div class="metric">80%</div><div class="lbl">概念对齐度<br>与 Palantir 设计方向一致</div></div>
+      <div class="sum-card"><div class="metric">90%</div><div class="lbl">技术现代性<br>部分选择领先官方</div></div>
+      <div class="sum-card"><div class="metric">6</div><div class="lbl">核心微服务<br>精简可落地</div></div>
+      <div class="sum-card"><div class="metric">9</div><div class="lbl">架构决策 ADR<br>已形成文档</div></div>
+    </div>
+    <div class="pts">
+      <div class="pt"><div class="pt-ico">🎯</div><div class="pt-txt">概念层与 Palantir <strong>高度对齐</strong>：Ontology / Function / Agent / Workflow 分层一致，AIP 设计方向相同</div></div>
+      <div class="pt"><div class="pt-ico">⚡</div><div class="pt-txt">技术选型<strong>更现代</strong>：全栈 Rust、SurrealDB 多模型、Crypto-Shredding，在若干维度领先官方</div></div>
+      <div class="pt"><div class="pt-ico">🏢</div><div class="pt-txt">定位精准：<strong>企业级中小规模</strong>场景，非政府/超大型金融。规模匹配，设计完整，可执行</div></div>
+    </div>
+  </div>
+  <div class="slide-num">02 / 10</div>
+</div>
+
+<!-- 03 Storage -->
+<div class="slide t-blue">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Layer Comparison · 01</div>
+    <div class="hd-title">存储层对比</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <table class="ct">
+      <thead><tr>
+        <th class="th-d">维度</th>
+        <th class="th-p">Palantir 官方</th>
+        <th class="th-u">我们的方案</th>
+        <th class="th-e">评价</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="d">Ontology 存储</td>
+          <td class="p">PostgreSQL / 自研图存储<br><small>多年生产验证</small></td>
+          <td class="u">SurrealDB（多模型合一）<br><small>文档 + 图 + 向量，TiKV 扩容</small></td>
+          <td class="e"><span class="badge b-up">我们更现代</span></td>
+        </tr>
+        <tr>
+          <td class="d">文件存储</td>
+          <td class="p">HDFS + S3（PB 级）</td>
+          <td class="u">RustFS（S3 兼容，TB 级）<br><small>object_store 抽象，可换云 S3</small></td>
+          <td class="e"><span class="badge b-par">量级不同，方向一致</span></td>
+        </tr>
+        <tr>
+          <td class="d">数据血缘</td>
+          <td class="p">独立血缘系统<br><small>与 Ontology 两套，需同步</small></td>
+          <td class="u">SurrealDB 图边（集成在 Ontology 内）<br><small>血缘即图关系，天然合一，无同步问题</small></td>
+          <td class="e"><span class="badge b-up">我们更优雅</span></td>
+        </tr>
+        <tr>
+          <td class="d">向量搜索</td>
+          <td class="p">专用向量数据库（独立）</td>
+          <td class="u">SurrealDB 内置 → Qdrant（按阶段）<br><small>MemoryStore trait 抽象，随时切换</small></td>
+          <td class="e"><span class="badge b-up">我们更精简</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="slide-num">03 / 10</div>
+</div>
+
+<!-- 04 Compute -->
+<div class="slide t-slate">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Layer Comparison · 02</div>
+    <div class="hd-title">计算层（Function）对比</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <table class="ct">
+      <thead><tr>
+        <th class="th-d">维度</th>
+        <th class="th-p">Palantir 官方</th>
+        <th class="th-u">我们的方案</th>
+        <th class="th-e">评价</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="d">执行模型</td>
+          <td class="p">TypeScript + Node.js<br><small>GC 停顿，门槛较低</small></td>
+          <td class="u">Rust（内置）+ CEL（表达式）<br><small>无 GC，可预测延迟</small></td>
+          <td class="e"><span class="badge b-up">性能更优</span></td>
+        </tr>
+        <tr>
+          <td class="d">SDK 生成</td>
+          <td class="p">Schema → TypeScript SDK<br><small>成熟，多年打磨</small></td>
+          <td class="u">Schema → Rust 强类型（build.rs codegen）<br><small>设计完整，待实现</small></td>
+          <td class="e"><span class="badge b-dn">Palantir 领先</span></td>
+        </tr>
+        <tr>
+          <td class="d">非技术用户</td>
+          <td class="p">需学 TypeScript</td>
+          <td class="u">自然语言 → CEL → 用户确认<br><small>LLM 注入 Schema 生成，结果可审计</small></td>
+          <td class="e"><span class="badge b-up">我们更友好</span></td>
+        </tr>
+        <tr>
+          <td class="d">大规模批处理</td>
+          <td class="p">Apache Spark 深度集成</td>
+          <td class="u">暂无</td>
+          <td class="e"><span class="badge b-dn">Palantir 领先</span></td>
+        </tr>
+        <tr>
+          <td class="d">可扩展沙箱</td>
+          <td class="p">Node.js VM 沙箱</td>
+          <td class="u">WASM 沙箱（接口已设计，待实现）</td>
+          <td class="e"><span class="badge b-par">方向一致</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="slide-num">04 / 10</div>
+</div>
+
+<!-- 05 AI/Agent -->
+<div class="slide t-dark">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Layer Comparison · 03</div>
+    <div class="hd-title">AI / Agent 层对比</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <table class="ct">
+      <thead><tr>
+        <th class="th-d">维度</th>
+        <th class="th-p">Palantir AIP</th>
+        <th class="th-u">我们的方案</th>
+        <th class="th-e">评价</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="d">Grounding</td>
+          <td class="p">Ontology 对象 ID + 时间戳</td>
+          <td class="u">相同设计，AgentTrace 存 SurrealDB</td>
+          <td class="e"><span class="badge b-par">完全对齐</span></td>
+        </tr>
+        <tr>
+          <td class="d">低延迟</td>
+          <td class="p">Proactive 预计算</td>
+          <td class="u">Proactive + Plan-then-Execute + 语义缓存</td>
+          <td class="e"><span class="badge b-par">设计更详细</span></td>
+        </tr>
+        <tr>
+          <td class="d">Multi-Agent</td>
+          <td class="p">有</td>
+          <td class="u">Supervisor + Specialist 模式</td>
+          <td class="e"><span class="badge b-par">对齐</span></td>
+        </tr>
+        <tr>
+          <td class="d">幻觉检测</td>
+          <td class="p">有</td>
+          <td class="u">对照 Ontology 逐条校验 + Critic Agent</td>
+          <td class="e"><span class="badge b-par">对齐</span></td>
+        </tr>
+        <tr>
+          <td class="d">自然语言→结构化</td>
+          <td class="p">较弱，直接执行</td>
+          <td class="u">NL → CEL → 用户确认 → 保存<br><small>结构化是输出，可审计可复现</small></td>
+          <td class="e"><span class="badge b-up">我们可审计性更强</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="slide-num">05 / 10</div>
+</div>
+
+<!-- 06 Compliance -->
+<div class="slide t-blue">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Layer Comparison · 04</div>
+    <div class="hd-title">合规与治理对比</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <table class="ct">
+      <thead><tr>
+        <th class="th-d">维度</th>
+        <th class="th-p">Palantir 官方</th>
+        <th class="th-u">我们的方案</th>
+        <th class="th-e">评价</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="d">数据分类</td>
+          <td class="p">完善分类体系</td>
+          <td class="u">TBox 字段标签（Public/Internal/Confidential/PII）<br><small>驱动加密、访问控制、保留策略</small></td>
+          <td class="e"><span class="badge b-par">方向一致</span></td>
+        </tr>
+        <tr>
+          <td class="d">审计日志</td>
+          <td class="p">成熟，FedRAMP 认证</td>
+          <td class="u">双写 SurrealDB + WORM + 哈希链<br><small>密码学保证不可篡改</small></td>
+          <td class="e"><span class="badge b-par">架构正确</span></td>
+        </tr>
+        <tr>
+          <td class="d">被遗忘权（GDPR）</td>
+          <td class="p">有实现，方式不公开</td>
+          <td class="u">Crypto-Shredding：删 DEK 而非数据<br><small>审计链不断裂，业界最佳实践</small></td>
+          <td class="e"><span class="badge b-up">我们方案更先进</span></td>
+        </tr>
+        <tr>
+          <td class="d">字段级加密</td>
+          <td class="p">有</td>
+          <td class="u">per-object DEK + KMS/Vault</td>
+          <td class="e"><span class="badge b-par">对齐</span></td>
+        </tr>
+        <tr>
+          <td class="d">合规认证</td>
+          <td class="p">FedRAMP / SOC2 / ISO27001</td>
+          <td class="u">架构符合要求，认证待申请</td>
+          <td class="e"><span class="badge b-dn">Palantir 领先</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="slide-num">06 / 10</div>
+</div>
+
+<!-- 07 Advantages -->
+<div class="slide t-green">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Competitive Advantage</div>
+    <div class="hd-title">我们的核心优势</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <div class="adv-grid">
+      <div class="adv">
+        <div class="adv-ico">🦀</div>
+        <div class="adv-title">全栈 Rust</div>
+        <div class="adv-desc">无 GC 停顿、内存安全、可预测延迟。Palantir 是 Java/Go/TypeScript 多语言碎片化，我们语言一致性极高。</div>
+      </div>
+      <div class="adv">
+        <div class="adv-ico">🗄️</div>
+        <div class="adv-title">SurrealDB 多模型</div>
+        <div class="adv-desc">文档 + 图 + 向量合一。数据血缘天然集成在 Ontology 图中，无需独立血缘系统，无同步问题。</div>
+      </div>
+      <div class="adv">
+        <div class="adv-ico">🔐</div>
+        <div class="adv-title">Crypto-Shredding</div>
+        <div class="adv-desc">解决"被遗忘权 vs 审计完整性"矛盾的最优方案。删除 DEK 而非数据，审计链不断裂。</div>
+      </div>
+      <div class="adv">
+        <div class="adv-ico">💬</div>
+        <div class="adv-title">NL → 结构化确认</div>
+        <div class="adv-desc">自然语言是输入，CEL 结构化定义是输出。用户始终确认结构化结果，可审计、可复现、权限可控。</div>
+      </div>
+      <div class="adv">
+        <div class="adv-ico">🏗️</div>
+        <div class="adv-title">模块化单体起步</div>
+        <div class="adv-desc">先跑通再拆分。Event Bus trait 抽象，in-process → NATS 无缝迁移，前端零感知。</div>
+      </div>
+      <div class="adv">
+        <div class="adv-ico">📐</div>
+        <div class="adv-title">9 条 ADR 文档化</div>
+        <div class="adv-desc">每个决策记录理由、否决方案、触发重评信号。团队协作基础扎实，架构演进有迹可循。</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">07 / 10</div>
+</div>
+
+<!-- 08 Gaps -->
+<div class="slide t-red">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Honest Assessment</div>
+    <div class="hd-title">真实差距</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <div class="gaps">
+      <div class="gap">
+        <div class="gap-n">01</div>
+        <div>
+          <div class="gap-title">规模验证</div>
+          <div class="gap-desc">Palantir 经美国政府、大型金融机构 PB 级生产验证。我们设计正确，但尚未经历大规模生产考验。SurrealDB 在超大规模场景的稳定性仍待观察。</div>
+        </div>
+      </div>
+      <div class="gap">
+        <div class="gap-n">02</div>
+        <div>
+          <div class="gap-title">产品成熟度</div>
+          <div class="gap-desc">Palantir 有十几年积累的 TypeScript SDK、UI/UX 工具链、监控运维体系。我们的 SDK 代码生成、CEL Web IDE 目前是设计完整的方案图纸，需要大量工程投入。</div>
+        </div>
+      </div>
+      <div class="gap">
+        <div class="gap-n">03</div>
+        <div>
+          <div class="gap-title">合规认证</div>
+          <div class="gap-desc">FedRAMP、SOC2 Type II、ISO 27001 是企业客户采购的硬门槛。架构设计满足要求，但拿证需要时间、资源和独立审计投入。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">08 / 10</div>
+</div>
+
+<!-- 09 Score -->
+<div class="slide t-gold">
+  <div class="brand-bar"></div>
+  <div class="hd">
+    <div class="hd-label">Overall Comparison</div>
+    <div class="hd-title">综合评分</div>
+    <div class="accent"></div>
+  </div>
+  <div class="bd">
+    <div class="progs">
+      <div>
+        <div class="prog-hd"><span class="prog-lbl">概念对齐度</span><span class="prog-val">80%</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:80%"></div></div>
+        <div class="prog-note">Ontology / Function / Agent / Workflow 分层、AIP 设计方向高度一致</div>
+      </div>
+      <div>
+        <div class="prog-hd"><span class="prog-lbl">技术现代性</span><span class="prog-val">90%</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:90%"></div></div>
+        <div class="prog-note">全栈 Rust、SurrealDB 多模型、Crypto-Shredding 等在部分维度领先官方</div>
+      </div>
+      <div>
+        <div class="prog-hd"><span class="prog-lbl">规模匹配度</span><span class="prog-val">80%</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:80%"></div></div>
+        <div class="prog-note">企业级中小规模定位准确，非政府 / 超大型金融机构场景</div>
+      </div>
+      <div>
+        <div class="prog-hd"><span class="prog-lbl">工程实现度</span><span class="prog-val">50%</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:50%;background:linear-gradient(90deg,#f7971e,#ffd200)"></div></div>
+        <div class="prog-note">架构设计完整，核心 crate 雏形已有，完整实现需持续工程投入</div>
+      </div>
+      <div>
+        <div class="prog-hd"><span class="prog-lbl">合规成熟度</span><span class="prog-val">40%</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:40%;background:linear-gradient(90deg,#C6426E,#642B73)"></div></div>
+        <div class="prog-note">6 条合规 ADR 架构决策正确，认证体系待建立</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">09 / 10</div>
+</div>
+
+<!-- 10 Closing -->
+<div class="slide t-dark">
+  <div class="brand-bar"></div>
+  <div class="cl-wrap">
+    <div class="cl-ico">🚀</div>
+    <div class="cl-title">设计完整，可以落地</div>
+    <div class="cl-sub">概念层与 Palantir 高度对齐，技术选型更现代。<br>面向企业级中小规模，架构决策文档化，工程路径清晰。</div>
+    <div class="cl-tags">
+      <span class="cl-tag">全栈 Rust</span>
+      <span class="cl-tag">SurrealDB</span>
+      <span class="cl-tag">RustFS</span>
+      <span class="cl-tag">NATS JetStream</span>
+      <span class="cl-tag">Ontology-Grounded AI</span>
+      <span class="cl-tag">Crypto-Shredding</span>
+      <span class="cl-tag">9 条 ADR</span>
+    </div>
+  </div>
+  <div class="slide-num">10 / 10</div>
+</div>
+
+</body>
+</html>

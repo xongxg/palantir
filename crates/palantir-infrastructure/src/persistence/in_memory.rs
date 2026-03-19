@@ -14,7 +14,8 @@ pub struct InMemoryEmployeeRepo {
 
 impl EmployeeRepository for InMemoryEmployeeRepo {
     fn save(&mut self, employee: Employee) {
-        self.store.insert(employee.id.as_str().to_string(), employee);
+        self.store
+            .insert(employee.id.as_str().to_string(), employee);
     }
 
     fn find_by_id(&self, id: &EmployeeId) -> Option<&Employee> {
@@ -47,7 +48,8 @@ impl TransactionRepository for InMemoryTransactionRepo {
     }
 
     fn find_by_employee(&self, employee_id: &EmployeeId) -> Vec<&Transaction> {
-        self.store.values()
+        self.store
+            .values()
             .filter(|t| &t.employee_id == employee_id)
             .collect()
     }

@@ -9,13 +9,16 @@ use super::{
 };
 
 pub struct OntologyGraph {
-    pub objects:       Vec<OntologyObject>,
+    pub objects: Vec<OntologyObject>,
     pub relationships: Vec<Relationship>,
 }
 
 impl OntologyGraph {
     pub fn build(objects: Vec<OntologyObject>, relationships: Vec<Relationship>) -> Self {
-        Self { objects, relationships }
+        Self {
+            objects,
+            relationships,
+        }
     }
 
     pub fn find_object(&self, id: &str) -> Option<&OntologyObject> {
@@ -23,12 +26,16 @@ impl OntologyGraph {
     }
 
     pub fn objects_by_type(&self, type_name: &str) -> Vec<&OntologyObject> {
-        self.objects.iter().filter(|o| o.object_type.0 == type_name).collect()
+        self.objects
+            .iter()
+            .filter(|o| o.object_type.0 == type_name)
+            .collect()
     }
 
     /// All outgoing edges from `from_id`, optionally filtered by relationship kind.
     pub fn outgoing(&self, from_id: &str, kind: Option<&RelationshipKind>) -> Vec<&Relationship> {
-        self.relationships.iter()
+        self.relationships
+            .iter()
             .filter(|r| r.from_id.0 == from_id)
             .filter(|r| kind.map_or(true, |k| &r.kind == k))
             .collect()

@@ -1,0 +1,5 @@
+id,flight_id,delay_minutes,reason,reported_at,status
+dl001,fl002,45,crew_late,2024-04-01T10:15:00,active
+dl002,fl002,20,air_traffic_control,2024-04-01T11:00:00,active
+dl003,fl003,0,weather,2024-04-01T13:45:00,cancelled_with_flight
+dl004,fl006,15,ground_handling,2024-04-01T21:50:00,resolved

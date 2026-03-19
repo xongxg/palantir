@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Palantir 优势：安全 · 成本 · 治理</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0b0d17;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+</style>
+</head>
+<body>
+<svg width="1100" height="820" viewBox="0 0 1100 820" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+    <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#12162a" stroke-width="0.8"/>
+  </pattern>
+
+  <!-- gradients -->
+  <linearGradient id="g-red" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#7f1d1d"/>
+    <stop offset="100%" stop-color="#3b0606"/>
+  </linearGradient>
+  <linearGradient id="g-pu" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#4c1d95"/>
+    <stop offset="100%" stop-color="#1e1035"/>
+  </linearGradient>
+  <linearGradient id="g-pu-bright" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#7c3aed"/>
+    <stop offset="100%" stop-color="#a78bfa"/>
+  </linearGradient>
+  <linearGradient id="g-gr" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#065f46"/>
+    <stop offset="100%" stop-color="#34d399"/>
+  </linearGradient>
+  <linearGradient id="g-bar-trad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#b91c1c"/>
+    <stop offset="100%" stop-color="#ef4444"/>
+  </linearGradient>
+  <linearGradient id="g-bar-pal" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#6d28d9"/>
+    <stop offset="100%" stop-color="#a78bfa"/>
+  </linearGradient>
+  <linearGradient id="g-shield" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#a78bfa"/>
+    <stop offset="100%" stop-color="#4c1d95"/>
+  </linearGradient>
+
+  <!-- glow filters -->
+  <filter id="glow-pu">
+    <feGaussianBlur stdDeviation="8" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="glow-gr">
+    <feGaussianBlur stdDeviation="6" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="glow-re">
+    <feGaussianBlur stdDeviation="5" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="shadow">
+    <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.5"/>
+  </filter>
+</defs>
+
+<!-- bg -->
+<rect width="1100" height="820" fill="#0b0d17"/>
+<rect width="1100" height="820" fill="url(#grid)"/>
+
+<!-- ══════════════════════════════════════
+     TITLE
+══════════════════════════════════════ -->
+<text x="550" y="48" text-anchor="middle" fill="#a78bfa"
+      font-size="22" font-weight="800" letter-spacing="1"
+      filter="url(#glow-pu)">传统方案 vs Palantir</text>
+<text x="550" y="70" text-anchor="middle" fill="#475569" font-size="11">
+  安全 · 成本 · 治理 三维对比
+</text>
+
+<!-- divider -->
+<line x1="60" y1="84" x2="1040" y2="84" stroke="#1e2540" stroke-width="1"/>
+
+<!-- ══════════════════════════════════════
+     TOP SECTION: Architecture contrast
+     Left = Traditional   Right = Palantir
+══════════════════════════════════════ -->
+
+<!-- ── LEFT panel: Traditional ── -->
+<rect x="40" y="96" width="480" height="260" rx="12"
+      fill="#110a0a" stroke="#3b1a1a" stroke-width="1.2" filter="url(#shadow)"/>
+<text x="280" y="120" text-anchor="middle" fill="#f87171"
+      font-size="13" font-weight="700" letter-spacing="0.5">传统方案</text>
+<text x="280" y="136" text-anchor="middle" fill="#47240d" font-size="10">
+  多工具堆叠 · N² 集成 · 安全盲区
+</text>
+
+<!-- 5 system boxes scattered -->
+<!-- HR -->
+<rect x="58"  y="152" width="72" height="36" rx="6" fill="#1f0a0a" stroke="#7f1d1d" stroke-width="1"/>
+<text x="94"  y="167" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700">HR 系统</text>
+<text x="94"  y="179" text-anchor="middle" fill="#6b2222" font-size="8">独立 LDAP</text>
+
+<!-- Finance -->
+<rect x="190" y="148" width="72" height="36" rx="6" fill="#1f0a0a" stroke="#7f1d1d" stroke-width="1"/>
+<text x="226" y="163" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700">Finance</text>
+<text x="226" y="175" text-anchor="middle" fill="#6b2222" font-size="8">独立 OAuth</text>
+
+<!-- Sales -->
+<rect x="340" y="152" width="72" height="36" rx="6" fill="#1f0a0a" stroke="#7f1d1d" stroke-width="1"/>
+<text x="376" y="167" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700">Sales CRM</text>
+<text x="376" y="179" text-anchor="middle" fill="#6b2222" font-size="8">独立 API Key</text>
+
+<!-- IT -->
+<rect x="80"  y="222" width="72" height="36" rx="6" fill="#1f0a0a" stroke="#7f1d1d" stroke-width="1"/>
+<text x="116" y="237" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700">IT 资产库</text>
+<text x="116" y="249" text-anchor="middle" fill="#6b2222" font-size="8">独立 JWT</text>
+
+<!-- Ops -->
+<rect x="318" y="218" width="72" height="36" rx="6" fill="#1f0a0a" stroke="#7f1d1d" stroke-width="1"/>
+<text x="354" y="233" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700">Ops 平台</text>
+<text x="354" y="245" text-anchor="middle" fill="#6b2222" font-size="8">独立 Session</text>
+
+<!-- DW box in center -->
+<rect x="188" y="208" width="88" height="44" rx="6" fill="#2a1010" stroke="#ef4444" stroke-width="1.5"/>
+<text x="232" y="227" text-anchor="middle" fill="#f87171" font-size="9" font-weight="700">数据仓库</text>
+<text x="232" y="240" text-anchor="middle" fill="#7f2020" font-size="8">T+1 批量同步</text>
+
+<!-- ETL arrows (messy, crossing) -->
+<line x1="130" y1="170" x2="190" y2="166" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.5"/>
+<line x1="262" y1="166" x2="340" y2="170" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.5"/>
+<line x1="116" y1="222" x2="188" y2="226" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.5"/>
+<line x1="276" y1="226" x2="318" y2="230" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.5"/>
+<line x1="94"  y1="188" x2="116" y2="222" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.4"/>
+<line x1="376" y1="188" x2="354" y2="218" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.4"/>
+<line x1="226" y1="184" x2="232" y2="208" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.5"/>
+<!-- cross arrows showing chaos -->
+<line x1="94"  y1="170" x2="354" y2="230" stroke="#b91c1c" stroke-width="0.6" stroke-dasharray="3 4" opacity="0.25"/>
+<line x1="376" y1="170" x2="116" y2="236" stroke="#b91c1c" stroke-width="0.6" stroke-dasharray="3 4" opacity="0.25"/>
+
+<!-- vulnerability markers -->
+<circle cx="163" cy="168" r="8" fill="#1a0505" stroke="#ef4444" stroke-width="1.2" filter="url(#glow-re)" opacity="0.9">
+  <animate attributeName="opacity" values="0.9;0.4;0.9" dur="1.6s" repeatCount="indefinite"/>
+</circle>
+<text x="163" y="172" text-anchor="middle" fill="#ef4444" font-size="9" font-weight="800">!</text>
+
+<circle cx="300" cy="168" r="8" fill="#1a0505" stroke="#ef4444" stroke-width="1.2" filter="url(#glow-re)" opacity="0.9">
+  <animate attributeName="opacity" values="0.9;0.4;0.9" dur="1.9s" begin="0.4s" repeatCount="indefinite"/>
+</circle>
+<text x="300" y="172" text-anchor="middle" fill="#ef4444" font-size="9" font-weight="800">!</text>
+
+<circle cx="197" cy="244" r="8" fill="#1a0505" stroke="#ef4444" stroke-width="1.2" filter="url(#glow-re)" opacity="0.9">
+  <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.1s" begin="0.8s" repeatCount="indefinite"/>
+</circle>
+<text x="197" y="248" text-anchor="middle" fill="#ef4444" font-size="9" font-weight="800">!</text>
+
+<!-- pain labels -->
+<rect x="58" y="276" width="140" height="20" rx="4" fill="#1a0808" stroke="#7f1d1d" stroke-width="0.8"/>
+<text x="128" y="290" text-anchor="middle" fill="#f87171" font-size="9">🔴 安全策略分散，审计断裂</text>
+
+<rect x="216" y="276" width="140" height="20" rx="4" fill="#1a0808" stroke="#7f1d1d" stroke-width="0.8"/>
+<text x="286" y="290" text-anchor="middle" fill="#f87171" font-size="9">🔴 ETL 维护成本随系统增长</text>
+
+<rect x="376" y="276" width="128" height="20" rx="4" fill="#1a0808" stroke="#7f1d1d" stroke-width="0.8"/>
+<text x="440" y="290" text-anchor="middle" fill="#f87171" font-size="9">🔴 数据重复，N² 管道</text>
+
+<!-- count label -->
+<text x="280" y="344" text-anchor="middle" fill="#7f2020" font-size="10">
+  5 系统 × 5 系统 = 最多 20 条集成管道，每条独立维护
+</text>
+
+<!-- ── RIGHT panel: Palantir ── -->
+<rect x="580" y="96" width="480" height="260" rx="12"
+      fill="#0e0a1a" stroke="#3b1f6a" stroke-width="1.2" filter="url(#shadow)"/>
+<text x="820" y="120" text-anchor="middle" fill="#a78bfa"
+      font-size="13" font-weight="700" letter-spacing="0.5"
+      filter="url(#glow-pu)">Palantir Ontology</text>
+<text x="820" y="136" text-anchor="middle" fill="#2e1a5e" font-size="10">
+  统一语义层 · Object 级安全 · 完整审计
+</text>
+
+<!-- Central Ontology hub -->
+<circle cx="820" cy="228" r="52" fill="url(#g-pu)" stroke="#7c3aed" stroke-width="2"
+        filter="url(#glow-pu)"/>
+<circle cx="820" cy="228" r="44" fill="none" stroke="#a78bfa" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.4">
+  <animateTransform attributeName="transform" type="rotate"
+                    from="0 820 228" to="360 820 228" dur="18s" repeatCount="indefinite"/>
+</circle>
+<text x="820" y="222" text-anchor="middle" fill="#e9d5ff" font-size="11" font-weight="800">Ontology</text>
+<text x="820" y="236" text-anchor="middle" fill="#9f7aea" font-size="9">统一语义图谱</text>
+
+<!-- Shield overlay on hub -->
+<path d="M820,198 l18,8 0,18 -18,10 -18,-10 0,-18 z"
+      fill="none" stroke="#34d399" stroke-width="1.5" opacity="0.7">
+  <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
+</path>
+<text x="820" y="215" text-anchor="middle" fill="#34d399" font-size="12">🛡</text>
+
+<!-- 5 system nodes around hub -->
+<!-- HR -->
+<circle cx="660" cy="162" r="28" fill="#1a0e2e" stroke="#6d28d9" stroke-width="1.2"/>
+<text x="660" y="158" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="700">HR</text>
+<text x="660" y="170" text-anchor="middle" fill="#6d28d9" font-size="8">Adapter</text>
+<line x1="686" y1="171" x2="773" y2="208" stroke="#7c3aed" stroke-width="1.5" opacity="0.7"/>
+<circle cx="733" cy="191" r="5" fill="#1a0e2e" stroke="#34d399" stroke-width="1">
+  <animate attributeName="r" values="4;6;4" dur="2s" begin="0.0s" repeatCount="indefinite"/>
+</circle>
+
+<!-- Finance -->
+<circle cx="980" cy="162" r="28" fill="#1a0e2e" stroke="#6d28d9" stroke-width="1.2"/>
+<text x="980" y="158" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="700">Finance</text>
+<text x="980" y="170" text-anchor="middle" fill="#6d28d9" font-size="8">Adapter</text>
+<line x1="954" y1="171" x2="867" y2="208" stroke="#7c3aed" stroke-width="1.5" opacity="0.7"/>
+<circle cx="909" cy="191" r="5" fill="#1a0e2e" stroke="#34d399" stroke-width="1">
+  <animate attributeName="r" values="4;6;4" dur="2s" begin="0.4s" repeatCount="indefinite"/>
+</circle>
+
+<!-- Sales -->
+<circle cx="620" cy="260" r="28" fill="#1a0e2e" stroke="#6d28d9" stroke-width="1.2"/>
+<text x="620" y="256" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="700">Sales</text>
+<text x="620" y="268" text-anchor="middle" fill="#6d28d9" font-size="8">Adapter</text>
+<line x1="648" y1="257" x2="769" y2="242" stroke="#7c3aed" stroke-width="1.5" opacity="0.7"/>
+<circle cx="706" cy="249" r="5" fill="#1a0e2e" stroke="#34d399" stroke-width="1">
+  <animate attributeName="r" values="4;6;4" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+</circle>
+
+<!-- IT -->
+<circle cx="1020" cy="260" r="28" fill="#1a0e2e" stroke="#6d28d9" stroke-width="1.2"/>
+<text x="1020" y="256" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="700">IT</text>
+<text x="1020" y="268" text-anchor="middle" fill="#6d28d9" font-size="8">Adapter</text>
+<line x1="993" y1="255" x2="871" y2="242" stroke="#7c3aed" stroke-width="1.5" opacity="0.7"/>
+<circle cx="930" cy="248" r="5" fill="#1a0e2e" stroke="#34d399" stroke-width="1">
+  <animate attributeName="r" values="4;6;4" dur="2s" begin="1.2s" repeatCount="indefinite"/>
+</circle>
+
+<!-- Ops -->
+<circle cx="820" cy="310" r="28" fill="#1a0e2e" stroke="#6d28d9" stroke-width="1.2"/>
+<text x="820" y="306" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="700">Ops</text>
+<text x="820" y="318" text-anchor="middle" fill="#6d28d9" font-size="8">Adapter</text>
+<line x1="820" y1="282" x2="820" y2="282" stroke="#7c3aed" stroke-width="1.5" opacity="0.7"/>
+<line x1="820" y1="282" x2="820" y2="279" stroke="#7c3aed" stroke-width="1.5" opacity="0.7"/>
+
+<!-- advantage labels -->
+<rect x="598" y="332" width="140" height="20" rx="4" fill="#0a1a12" stroke="#065f46" stroke-width="0.8"/>
+<text x="668" y="346" text-anchor="middle" fill="#34d399" font-size="9">✅ 统一 RBAC，Object 级权限</text>
+
+<rect x="752" y="332" width="136" height="20" rx="4" fill="#0a1a12" stroke="#065f46" stroke-width="0.8"/>
+<text x="820" y="346" text-anchor="middle" fill="#34d399" font-size="9">✅ 完整 Audit Trail，合规就绪</text>
+
+<rect x="900" y="332" width="136" height="20" rx="4" fill="#0a1a12" stroke="#065f46" stroke-width="0.8"/>
+<text x="968" y="346" text-anchor="middle" fill="#34d399" font-size="9">✅ 5 条 Adapter 替代 20 管道</text>
+
+<text x="820" y="375" text-anchor="middle" fill="#2e4a38" font-size="10">
+  N 个系统 → 只需 N 条 Adapter，统一安全策略，零盲区
+</text>
+
+<!-- ══════════════════════════════════════
+     VS divider
+══════════════════════════════════════ -->
+<rect x="526" y="156" width="48" height="48" rx="24"
+      fill="#1c1035" stroke="#6d28d9" stroke-width="2" filter="url(#glow-pu)"/>
+<text x="550" y="186" text-anchor="middle" fill="#a78bfa" font-size="16" font-weight="900">VS</text>
+
+<!-- ══════════════════════════════════════
+     SECTION 2: Security comparison bars
+══════════════════════════════════════ -->
+<line x1="60" y1="390" x2="1040" y2="390" stroke="#1e2540" stroke-width="1"/>
+
+<text x="550" y="416" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="700"
+      letter-spacing="1">安全 · 成本 · 治理  量化对比</text>
+
+<!-- ── bar chart rows ── -->
+<!-- Row template: metric label | trad bar | pal bar | delta badge -->
+
+<!-- helper: rows start y=440, row height=46 -->
+
+<!-- Row 1: 安全漏洞暴露面 -->
+<text x="60" y="460" fill="#94a3b8" font-size="11" font-weight="600">安全漏洞暴露面</text>
+<text x="60" y="474" fill="#475569" font-size="9">攻击面数量（越低越好）</text>
+<!-- trad bar 85% -->
+<rect x="200" y="450" width="0" height="14" rx="3" fill="url(#g-bar-trad)">
+  <animate attributeName="width" from="0" to="374" dur="1.2s" fill="freeze"/>
+</rect>
+<rect x="200" y="450" width="374" height="14" rx="3" fill="url(#g-bar-trad)" opacity="0"/>
+<animate xlink:href="#trad1" attributeName="opacity" from="0" to="1" dur="0.1s" fill="freeze"/>
+<text x="582" y="462" fill="#f87171" font-size="10" font-weight="700">85%  高风险</text>
+<!-- pal bar 18% -->
+<rect x="200" y="468" width="0" height="14" rx="3" fill="url(#g-bar-pal)">
+  <animate attributeName="width" from="0" to="79" dur="1.2s" begin="0.3s" fill="freeze"/>
+</rect>
+<text x="287" y="480" fill="#a78bfa" font-size="10" font-weight="700">18%</text>
+<rect x="630" y="450" width="120" height="30" rx="6" fill="#0a0f1e" stroke="#34d399" stroke-width="1"/>
+<text x="690" y="461" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">↓ 79%</text>
+<text x="690" y="474" text-anchor="middle" fill="#065f46" font-size="8">暴露面大幅收窄</text>
+
+<!-- Row 2: 数据治理覆盖率 -->
+<text x="60" y="514" fill="#94a3b8" font-size="11" font-weight="600">数据治理覆盖率</text>
+<text x="60" y="528" fill="#475569" font-size="9">数据血缘 + 审计覆盖比例（越高越好）</text>
+<!-- trad bar 30% -->
+<rect x="200" y="504" width="0" height="14" rx="3" fill="url(#g-bar-trad)">
+  <animate attributeName="width" from="0" to="132" dur="1.2s" begin="0.2s" fill="freeze"/>
+</rect>
+<text x="340" y="516" fill="#f87171" font-size="10" font-weight="700">30%  覆盖不全</text>
+<!-- pal bar 98% -->
+<rect x="200" y="522" width="0" height="14" rx="3" fill="url(#g-bar-pal)">
+  <animate attributeName="width" from="0" to="432" dur="1.2s" begin="0.5s" fill="freeze"/>
+</rect>
+<text x="640" y="534" fill="#a78bfa" font-size="10" font-weight="700">98%</text>
+<rect x="670" y="504" width="120" height="30" rx="6" fill="#0a0f1e" stroke="#34d399" stroke-width="1"/>
+<text x="730" y="515" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">↑ 3.3x</text>
+<text x="730" y="528" text-anchor="middle" fill="#065f46" font-size="8">治理覆盖全面提升</text>
+
+<!-- Row 3: 年度数据工程成本 -->
+<text x="60" y="568" fill="#94a3b8" font-size="11" font-weight="600">年度数据工程成本</text>
+<text x="60" y="582" fill="#475569" font-size="9">相对成本指数（越低越好）</text>
+<!-- trad bar 100% -->
+<rect x="200" y="558" width="0" height="14" rx="3" fill="url(#g-bar-trad)">
+  <animate attributeName="width" from="0" to="440" dur="1.2s" begin="0.4s" fill="freeze"/>
+</rect>
+<text x="648" y="570" fill="#f87171" font-size="10" font-weight="700">100  基准</text>
+<!-- pal bar 35% -->
+<rect x="200" y="576" width="0" height="14" rx="3" fill="url(#g-bar-pal)">
+  <animate attributeName="width" from="0" to="154" dur="1.2s" begin="0.7s" fill="freeze"/>
+</rect>
+<text x="362" y="588" fill="#a78bfa" font-size="10" font-weight="700">35</text>
+<rect x="700" y="558" width="120" height="30" rx="6" fill="#0a0f1e" stroke="#34d399" stroke-width="1"/>
+<text x="760" y="569" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">↓ 65%</text>
+<text x="760" y="582" text-anchor="middle" fill="#065f46" font-size="8">管道维护成本大幅削减</text>
+
+<!-- Row 4: 合规报告生成时间 -->
+<text x="60" y="622" fill="#94a3b8" font-size="11" font-weight="600">合规报告生成时间</text>
+<text x="60" y="636" fill="#475569" font-size="9">从需求到报告完成（越短越好）</text>
+<!-- trad: 3 weeks = 100% -->
+<rect x="200" y="612" width="0" height="14" rx="3" fill="url(#g-bar-trad)">
+  <animate attributeName="width" from="0" to="396" dur="1.2s" begin="0.6s" fill="freeze"/>
+</rect>
+<text x="604" y="624" fill="#f87171" font-size="10" font-weight="700">3 周  手动汇总</text>
+<!-- pal: hours = 5% -->
+<rect x="200" y="630" width="0" height="14" rx="3" fill="url(#g-bar-pal)">
+  <animate attributeName="width" from="0" to="22" dur="1.2s" begin="0.9s" fill="freeze"/>
+</rect>
+<text x="230" y="642" fill="#a78bfa" font-size="10" font-weight="700">数小时</text>
+<rect x="680" y="612" width="130" height="30" rx="6" fill="#0a0f1e" stroke="#34d399" stroke-width="1"/>
+<text x="745" y="623" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">↓ 95%</text>
+<text x="745" y="636" text-anchor="middle" fill="#065f46" font-size="8">自动 Lineage + 一键导出</text>
+
+<!-- legend -->
+<rect x="200" y="660" width="12" height="12" rx="2" fill="url(#g-bar-trad)"/>
+<text x="218" y="671" fill="#f87171" font-size="10">传统方案</text>
+<rect x="320" y="660" width="12" height="12" rx="2" fill="url(#g-bar-pal)"/>
+<text x="338" y="671" fill="#a78bfa" font-size="10">Palantir Ontology</text>
+
+<!-- ══════════════════════════════════════
+     SECTION 3: Key advantage cards
+══════════════════════════════════════ -->
+<line x1="60" y1="688" x2="1040" y2="688" stroke="#1e2540" stroke-width="1"/>
+
+<!-- Card 1: Security -->
+<rect x="60" y="700" width="220" height="96" rx="10"
+      fill="#0e0a1a" stroke="#6d28d9" stroke-width="1.2" filter="url(#shadow)"/>
+<text x="80" y="724" fill="#a78bfa" font-size="22">🛡️</text>
+<text x="114" y="720" fill="#a78bfa" font-size="12" font-weight="800">零信任安全</text>
+<text x="114" y="734" fill="#475569" font-size="9">Object 级 RBAC</text>
+<line x1="80" y1="742" x2="260" y2="742" stroke="#1e2540" stroke-width="0.8"/>
+<text x="80" y="756" fill="#94a3b8" font-size="9">• 统一 Auth，无跨系统盲区</text>
+<text x="80" y="769" fill="#94a3b8" font-size="9">• Action 即安全门，不可绕过</text>
+<text x="80" y="782" fill="#94a3b8" font-size="9">• 数据不动，查询就地执行</text>
+
+<!-- Card 2: Cost -->
+<rect x="310" y="700" width="220" height="96" rx="10"
+      fill="#0e0a1a" stroke="#059669" stroke-width="1.2" filter="url(#shadow)"/>
+<text x="330" y="724" fill="#34d399" font-size="22">💰</text>
+<text x="364" y="720" fill="#34d399" font-size="12" font-weight="800">成本结构重塑</text>
+<text x="364" y="734" fill="#475569" font-size="9">N² → N 线性扩展</text>
+<line x1="330" y1="742" x2="510" y2="742" stroke="#1e2540" stroke-width="0.8"/>
+<text x="330" y="756" fill="#94a3b8" font-size="9">• ETL 管道从 N² 降至 N</text>
+<text x="330" y="769" fill="#94a3b8" font-size="9">• 消除数据重复存储成本</text>
+<text x="330" y="782" fill="#94a3b8" font-size="9">• AI 代替人工写 SQL，效率 10x</text>
+
+<!-- Card 3: Governance -->
+<rect x="560" y="700" width="220" height="96" rx="10"
+      fill="#0e0a1a" stroke="#0284c7" stroke-width="1.2" filter="url(#shadow)"/>
+<text x="580" y="724" fill="#38bdf8" font-size="22">📋</text>
+<text x="614" y="720" fill="#38bdf8" font-size="12" font-weight="800">自动化治理</text>
+<text x="614" y="734" fill="#475569" font-size="9">Lineage + Audit 原生内置</text>
+<line x1="580" y1="742" x2="760" y2="742" stroke="#1e2540" stroke-width="0.8"/>
+<text x="580" y="756" fill="#94a3b8" font-size="9">• 数据血缘自动追踪</text>
+<text x="580" y="769" fill="#94a3b8" font-size="9">• GDPR/SOC2 合规开箱即用</text>
+<text x="580" y="782" fill="#94a3b8" font-size="9">• Schema 版本化，变更可控</text>
+
+<!-- Card 4: AI Ready -->
+<rect x="810" y="700" width="220" height="96" rx="10"
+      fill="#0e0a1a" stroke="#d97706" stroke-width="1.2" filter="url(#shadow)"/>
+<text x="830" y="724" fill="#fbbf24" font-size="22">🤖</text>
+<text x="864" y="720" fill="#fbbf24" font-size="12" font-weight="800">AI 原生就绪</text>
+<text x="864" y="734" fill="#475569" font-size="9">无需额外 AI 集成工程</text>
+<line x1="830" y1="742" x2="1010" y2="742" stroke="#1e2540" stroke-width="0.8"/>
+<text x="830" y="756" fill="#94a3b8" font-size="9">• Ontology 直接作为 LLM 上下文</text>
+<text x="830" y="769" fill="#94a3b8" font-size="9">• NL → 图查询，零编码门槛</text>
+<text x="830" y="782" fill="#94a3b8" font-size="9">• Function/Action 即 Agent Tool</text>
+
+<!-- bottom line -->
+<line x1="60" y1="808" x2="1040" y2="808" stroke="#1e2540" stroke-width="1"/>
+<text x="550" y="818" text-anchor="middle" fill="#1e2540" font-size="9">
+  Palantir Ontology Platform — 安全 · 成本 · 治理 · AI 四维全面领先
+</text>
+
+</svg>
+</body>
+</html>

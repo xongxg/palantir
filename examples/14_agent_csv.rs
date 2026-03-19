@@ -1,4 +1,7 @@
-use palantir_agent::{agent::{Agent, CsvIngestIntent}, tools::LocalIngestTools};
+use palantir_agent::{
+    agent::{Agent, CsvIngestIntent},
+    tools::LocalIngestTools,
+};
 
 fn main() -> anyhow::Result<()> {
     let agent = Agent::new(LocalIngestTools);
@@ -28,4 +31,3 @@ to_key = "id"
     agent.handle_csv_ingest(&intent)?;
     Ok(())
 }
-

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>专利申请书 — 异构数据到语义本体图谱的转化系统及方法</title>
+<style>
+  /* ── A4 Word-like page layout ── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "SimSun", "宋体", "Times New Roman", serif;
+    font-size: 12pt;
+    line-height: 1.8;
+    color: #000;
+    background: #e0e0e0;
+  }
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 12mm auto;
+    padding: 25mm 30mm 25mm 35mm;  /* Word default: top25 right30 bottom25 left35 */
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    page-break-after: always;
+    position: relative;
+  }
+  @media print {
+    body { background: white; }
+    .page { margin: 0; box-shadow: none; page-break-after: always; }
+  }
+
+  /* ── Typography ── */
+  h1 { font-size: 16pt; font-weight: bold; text-align: center; margin-bottom: 6pt; }
+  h2 { font-size: 13pt; font-weight: bold; margin-top: 18pt; margin-bottom: 6pt; }
+  h3 { font-size: 12pt; font-weight: bold; margin-top: 12pt; margin-bottom: 4pt; }
+  p  { text-indent: 2em; margin-bottom: 6pt; }
+  .no-indent { text-indent: 0; }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .underline { text-decoration: underline; }
+
+  /* ── Cover page ── */
+  .cover-title {
+    font-size: 22pt;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 40mm;
+    margin-bottom: 20mm;
+    line-height: 1.6;
+  }
+  .cover-sub {
+    font-size: 13pt;
+    text-align: center;
+    color: #333;
+    margin-bottom: 30mm;
+  }
+  .cover-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10mm;
+    font-size: 11pt;
+  }
+  .cover-table td {
+    padding: 5pt 8pt;
+    border-bottom: 1px solid #bbb;
+  }
+  .cover-table td:first-child { width: 45mm; font-weight: bold; }
+  .footer-note {
+    position: absolute;
+    bottom: 20mm;
+    left: 35mm;
+    right: 30mm;
+    font-size: 9pt;
+    color: #666;
+    text-align: center;
+    border-top: 1px solid #ccc;
+    padding-top: 4pt;
+  }
+
+  /* ── Claims numbering ── */
+  ol.claims { padding-left: 0; list-style: none; }
+  ol.claims > li {
+    margin-bottom: 10pt;
+    text-indent: 0;
+    counter-increment: claim;
+  }
+  ol.claims > li::before {
+    content: counter(claim) "．";
+    font-weight: bold;
+  }
+  ol.claims { counter-reset: claim; }
+
+  /* ── SVG diagram containers ── */
+  .fig-box {
+    border: 1px solid #aaa;
+    padding: 6pt;
+    margin: 12pt 0;
+    text-align: center;
+    background: #fafafa;
+  }
+  .fig-caption {
+    font-size: 10pt;
+    text-align: center;
+    margin-top: 4pt;
+    color: #444;
+  }
+
+  /* ── Code-like blocks for spec ── */
+  .spec-block {
+    background: #f5f5f5;
+    border-left: 3px solid #999;
+    padding: 6pt 10pt;
+    font-family: "Courier New", monospace;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    margin: 8pt 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* ── IPC box ── */
+  .ipc-row { display: flex; gap: 12pt; flex-wrap: wrap; margin: 6pt 0; }
+  .ipc-tag {
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 2pt;
+    padding: 2pt 8pt;
+    font-family: monospace;
+    font-size: 10pt;
+  }
+
+  /* ── Step list ── */
+  .steps { padding-left: 2em; }
+  .steps li { margin-bottom: 5pt; }
+
+  /* ── Page number ── */
+  .page-num {
+    position: absolute;
+    bottom: 12mm;
+    width: calc(210mm - 65mm);
+    text-align: center;
+    font-size: 10pt;
+    color: #555;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     封面
+     ══════════════════════════════════════════════════════════ -->
+<div class="page" id="cover">
+  <div class="cover-title">
+    异构数据到语义本体图谱的<br>转化系统及方法
+  </div>
+  <div class="cover-sub">发明专利申请说明书</div>
+
+  <table class="cover-table">
+    <tr><td>申请类型</td><td>发明专利</td></tr>
+    <tr><td>申请人</td><td>　　　　　　（待填写）</td></tr>
+    <tr><td>发明人</td><td>　　　　　　（待填写）</td></tr>
+    <tr><td>申请日</td><td>　　　年　　月　　日</td></tr>
+    <tr><td>优先权</td><td>无</td></tr>
+    <tr><td>技术领域 IPC</td><td>G06F 16/901 · G06F 16/25 · G06N 5/02 · G06F 16/21</td></tr>
+  </table>
+
+  <div class="footer-note">
+    本文件依据《专利法》及《专利法实施细则》编制，适用于向中国国家知识产权局（CNIPA）提交发明专利申请。
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     权利要求书
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h1>权　利　要　求　书</h1>
+
+  <ol class="claims">
+
+    <!-- ── 独立权利要求 1：方法 ── -->
+    <li>
+      <p class="no-indent">一种将异构原始数据转化为语义本体图谱的方法，其特征在于，包括以下步骤：</p>
+      <p class="no-indent">步骤 S1：通过统一适配器接口（SourceAdapter）接收来自至少一个异构数据源的原始数据，所述异构数据源包括但不限于本地文件系统、关系型数据库及 REST API，所述统一适配器接口以标准化记录流的形式输出所述原始数据；</p>
+      <p class="no-indent">步骤 S2：根据预先存储的声明式映射配置，将所述标准化记录流中的每条记录转化为本体对象实例（ObjectInstance），所述本体对象实例包含对象标识符、对象类型标识符及属性键值映射；</p>
+      <p class="no-indent">步骤 S3：根据所述声明式映射配置中声明的字段关联关系，自动推导所述本体对象实例之间的语义关联关系（LinkInstance），所述语义关联关系包含源对象标识符、目标对象标识符及关联类型标识符；</p>
+      <p class="no-indent">步骤 S4：将所述本体对象实例及所述语义关联关系以事件流的形式写入本体事件总线（OntologyEventBus），所述事件流由本体管理器（OntologyManager）消费并持久化至本体知识库；</p>
+      <p class="no-indent">步骤 S5：通过语义查询接口对所述本体知识库中的对象集合（ObjectSet）执行遍历、过滤及聚合操作，返回结构化查询结果。</p>
+    </li>
+
+    <!-- ── 独立权利要求 2：系统 ── -->
+    <li>
+      <p class="no-indent">一种将异构原始数据转化为语义本体图谱的系统，其特征在于，包括：</p>
+      <p class="no-indent">数据适配层，包括针对不同异构数据源分别实现的多个适配器模块，各适配器模块实现统一适配器接口（SourceAdapter），用于将所述异构数据源的原始数据转化为标准化记录流；</p>
+      <p class="no-indent">映射引擎，用于读取预先存储的声明式映射配置，并根据所述声明式映射配置将所述标准化记录流转化为本体对象实例及语义关联关系；</p>
+      <p class="no-indent">本体事件总线，用于接收所述映射引擎输出的本体对象实例及语义关联关系，并以事件流的形式分发至订阅方；</p>
+      <p class="no-indent">本体管理器，与所述本体事件总线连接，用于消费所述事件流并将所述本体对象实例及所述语义关联关系持久化至本体知识库；</p>
+      <p class="no-indent">语义查询接口，与所述本体知识库连接，用于对所述本体知识库执行对象集合遍历、关系路径导航及属性过滤操作。</p>
+    </li>
+
+    <!-- ── 独立权利要求 3：计算机可读存储介质 ── -->
+    <li>
+      <p class="no-indent">一种计算机可读存储介质，其上存储有计算机程序，其特征在于，所述计算机程序被处理器执行时实现权利要求1所述方法的步骤。</p>
+    </li>
+
+    <!-- ── 从属权利要求 4：增量游标 ── -->
+    <li>
+      <p class="no-indent">根据权利要求1所述的方法，其特征在于，所述步骤 S1 还包括：</p>
+      <p class="no-indent">为每个适配器模块维护一个持久化游标（Cursor），所述游标记录上次同步的偏移量或时间戳；在每次同步时，所述适配器模块仅读取所述游标之后新增或更新的数据记录，并在同步完成后更新所述游标，以实现增量同步而非全量重导入。</p>
+    </li>
+
+    <!-- ── 从属权利要求 5：声明式配置格式 ── -->
+    <li>
+      <p class="no-indent">根据权利要求1所述的方法，其特征在于，所述声明式映射配置以 TOML 格式存储，包含以下字段：数据源标识符、目标对象类型标识符、主键字段名称映射、属性字段名称映射及外键关联字段名称映射；所述映射引擎在运行时动态加载所述 TOML 配置文件，无需修改系统代码即可新增或调整数据源映射规则。</p>
+    </li>
+
+    <!-- ── 从属权利要求 6：外键推导语义关联 ── -->
+    <li>
+      <p class="no-indent">根据权利要求1所述的方法，其特征在于，所述步骤 S3 中自动推导语义关联关系的具体实现方式为：所述映射引擎读取所述声明式映射配置中的外键字段列表，对于每条本体对象实例记录，将外键字段值解析为目标对象标识符，并根据所述声明式映射配置中的关联类型标识符生成对应的语义关联关系实例，从而无需人工编写关联规则代码。</p>
+    </li>
+
+    <!-- ── 从属权利要求 7：事件类型分类 ── -->
+    <li>
+      <p class="no-indent">根据权利要求1所述的方法，其特征在于，所述步骤 S4 中写入本体事件总线的事件流中，每条事件包含以下类型之一：对象创建事件（ObjectCreated）、对象更新事件（ObjectUpdated）、对象删除事件（ObjectDeleted）、关联创建事件（LinkCreated）及关联删除事件（LinkDeleted）；所述本体管理器根据事件类型执行对应的持久化操作，以维护本体知识库的一致性。</p>
+    </li>
+
+    <!-- ── 从属权利要求 8：向量索引 ── -->
+    <li>
+      <p class="no-indent">根据权利要求2所述的系统，其特征在于，还包括向量索引模块；所述向量索引模块在所述本体对象实例写入本体知识库时，对指定属性字段的文本内容进行向量嵌入（Embedding）计算，并将所得向量存储至向量数据库；所述语义查询接口支持以自然语言输入为查询条件，通过所述向量数据库执行近似最近邻搜索得到候选对象集合，再结合图遍历操作精化查询结果。</p>
+    </li>
+
+    <!-- ── 从属权利要求 9：多租户隔离 ── -->
+    <li>
+      <p class="no-indent">根据权利要求2所述的系统，其特征在于，所述本体知识库支持多租户隔离模式，包括：共享表模式（Shared Schema），通过租户标识符列实现行级隔离；独立命名空间模式（Schema Per Tenant），为每个租户创建独立数据库命名空间；及物理隔离模式（Database Per Tenant），为每个租户提供独立数据库实例；所述系统在初始化时根据配置参数选择上述隔离模式之一并在整个运行周期内保持一致。</p>
+    </li>
+
+    <!-- ── 从属权利要求 10：Schema 版本管理 ── -->
+    <li>
+      <p class="no-indent">根据权利要求2所述的系统，其特征在于，还包括本体模式注册表（SchemaRegistry）；所述本体模式注册表存储每个对象类型及关联类型的版本历史记录，每次对所述声明式映射配置的变更均以版本号递增方式写入所述本体模式注册表；所述映射引擎在读取历史数据时能够按照对应版本的映射配置执行转化，确保新旧数据的一致性及可追溯性。</p>
+    </li>
+
+  </ol>
+  <div class="page-num">— 权利要求书 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第1页：技术领域 + 背景技术
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h1>说　明　书</h1>
+
+  <h2>一、技术领域</h2>
+  <p>本发明属于数据工程与知识图谱技术领域，具体涉及一种将来自多个异构数据源的原始数据，通过统一适配器接口、声明式映射配置及本体事件总线，自动转化为语义本体图谱并支持语义查询的系统及方法。</p>
+
+  <h2>二、背景技术</h2>
+  <p>随着企业信息化建设的深入推进，大量业务数据分散存储于关系型数据库（MySQL、PostgreSQL）、文件系统（CSV、JSON）、REST API 等多种异构数据源中。这些数据之间缺乏统一的语义关联，形成"数据孤岛"（Data Silo）现象，给跨系统数据分析与决策支持带来严峻挑战。</p>
+  <p>现有技术存在以下缺陷：</p>
+  <p><span class="bold">缺陷一：集成耦合度高。</span>传统 ETL 工具（如 Informatica、DataStage）采用点对点管道方式，N 个数据源需要 N×(N-1) 条集成链路，每新增一个数据源即需重新开发适配代码，运维成本呈指数级增长。</p>
+  <p><span class="bold">缺陷二：缺乏语义关联。</span>现有数据仓库方案将数据以关系表形式存储，丢失了业务实体之间的语义关联关系，无法支持跨实体的关系路径查询（如"与某高风险供应商存在直接或间接合同关系的所有项目"）。</p>
+  <p><span class="bold">缺陷三：配置与代码耦合。</span>数据源新增或字段变更时，需修改源代码、重新编译部署，响应周期长，无法满足业务敏捷性需求。</p>
+  <div class="page-num">— 说明书 第1页 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第2页：发明内容
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h2>三、发明内容</h2>
+
+  <h3>3.1 技术问题</h3>
+  <p>本发明所要解决的技术问题是：如何在不修改源代码的前提下，通过统一接口与声明式配置，将来自多个异构数据源的原始数据自动转化为带有语义关联的本体图谱，并支持高效的跨实体语义查询。</p>
+
+  <h3>3.2 技术方案</h3>
+  <p>为解决上述技术问题，本发明提供一种将异构原始数据转化为语义本体图谱的系统及方法。</p>
+  <p>其核心技术要点如下：</p>
+  <ul class="steps">
+    <li>设计统一适配器接口（SourceAdapter Trait），以标准化记录流（CanonicalRecord Stream）抽象所有数据源的输出格式，使数据源扩展与核心系统解耦；</li>
+    <li>以声明式 TOML 映射配置文件描述数据源字段到本体对象类型属性的映射关系及外键关联关系，映射引擎在运行时动态加载配置，无需修改代码；</li>
+    <li>映射引擎根据配置自动推导对象实例间的语义关联，生成本体事件（OntologyEvent）并写入事件总线（OntologyEventBus）；</li>
+    <li>本体管理器（OntologyManager）订阅事件总线，将本体对象实例及语义关联持久化至本体知识库；</li>
+    <li>提供面向对象集合（ObjectSet）的链式语义查询 API，支持关系路径导航、属性过滤及聚合计算。</li>
+  </ul>
+
+  <h3>3.3 有益效果</h3>
+  <ul class="steps">
+    <li><span class="bold">降低集成复杂度：</span>采用 Hub-and-Spoke 架构，将 N×(N-1) 条集成链路简化为 N 条适配器链路，显著降低运维成本；</li>
+    <li><span class="bold">消除数据孤岛：</span>通过语义关联推导，将离散数据源中的实体关系显式建模为语义本体图谱，支持跨实体关系路径查询；</li>
+    <li><span class="bold">零代码扩展数据源：</span>新增数据源只需新增一个实现 SourceAdapter 接口的适配器及对应的 TOML 配置文件，无需修改核心系统代码；</li>
+    <li><span class="bold">事件驱动解耦：</span>OntologyEventBus 实现数据采集与数据消费的异步解耦，便于多消费者并行处理（如实时查询、向量索引构建、审计日志）；</li>
+    <li><span class="bold">支持 AI 语义查询：</span>本体知识库结合向量索引，支持自然语言到结构化图查询的转化，为智能决策系统提供数据基础。</li>
+  </ul>
+  <div class="page-num">— 说明书 第2页 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第3页：附图说明 + 系统架构图
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h2>四、附图说明</h2>
+
+  <p>图1为本发明所述系统的整体架构示意图，展示了从异构数据源到本体知识库的完整数据流路径及各核心模块之间的交互关系。</p>
+  <p>图2为声明式映射配置结构示意图，展示了 TOML 配置文件的主要字段及其与本体对象类型之间的对应关系。</p>
+  <p>图3为本体事件总线的事件类型及消费流程示意图，展示了五种事件类型在事件总线中的分发与持久化过程。</p>
+  <p>图4为语义查询 API 的调用链示意图，展示了对象集合链式查询从 API 调用到知识库遍历的执行过程。</p>
+
+  <!-- ── 图1：系统架构图 ── -->
+  <div class="fig-box">
+    <svg width="480" height="300" viewBox="0 0 480 300" xmlns="http://www.w3.org/2000/svg"
+         font-family="SimSun,serif" font-size="10">
+
+      <!-- 背景分区 -->
+      <rect x="0"   y="0"   width="120" height="300" fill="#f0f4ff" rx="4"/>
+      <rect x="130" y="0"   width="90"  height="300" fill="#f5fff0" rx="4"/>
+      <rect x="230" y="0"   width="110" height="300" fill="#fffbf0" rx="4"/>
+      <rect x="350" y="0"   width="130" height="300" fill="#fff0f0" rx="4"/>
+
+      <!-- 分区标题 -->
+      <text x="60"  y="15" text-anchor="middle" font-weight="bold" fill="#334">数据源层</text>
+      <text x="175" y="15" text-anchor="middle" font-weight="bold" fill="#343">适配器层</text>
+      <text x="285" y="15" text-anchor="middle" font-weight="bold" fill="#443">映射 &amp; 事件层</text>
+      <text x="415" y="15" text-anchor="middle" font-weight="bold" fill="#433">知识库层</text>
+
+      <!-- 数据源 -->
+      <rect x="10" y="40"  width="100" height="28" rx="3" fill="#6b7fff" opacity=".85"/>
+      <text x="60" y="59"  text-anchor="middle" fill="white" font-weight="bold">CSV / JSON</text>
+      <rect x="10" y="82"  width="100" height="28" rx="3" fill="#6b7fff" opacity=".85"/>
+      <text x="60" y="101" text-anchor="middle" fill="white" font-weight="bold">关系型数据库</text>
+      <rect x="10" y="124" width="100" height="28" rx="3" fill="#6b7fff" opacity=".85"/>
+      <text x="60" y="143" text-anchor="middle" fill="white" font-weight="bold">REST API</text>
+      <rect x="10" y="166" width="100" height="28" rx="3" fill="#6b7fff" opacity=".55"/>
+      <text x="60" y="185" text-anchor="middle" fill="white">···更多数据源</text>
+
+      <!-- 适配器 -->
+      <rect x="135" y="44"  width="80" height="24" rx="3" fill="#52bb6a"/>
+      <text x="175" y="60"  text-anchor="middle" fill="white">FileAdapter</text>
+      <rect x="135" y="86"  width="80" height="24" rx="3" fill="#52bb6a"/>
+      <text x="175" y="102" text-anchor="middle" fill="white">DBAdapter</text>
+      <rect x="135" y="128" width="80" height="24" rx="3" fill="#52bb6a"/>
+      <text x="175" y="144" text-anchor="middle" fill="white">RestAdapter</text>
+
+      <!-- 接口标注 -->
+      <rect x="133" y="170" width="84" height="18" rx="3" fill="none" stroke="#52bb6a" stroke-dasharray="3"/>
+      <text x="175" y="183" text-anchor="middle" fill="#3a9a52" font-style="italic">SourceAdapter</text>
+      <text x="175" y="196" text-anchor="middle" fill="#3a9a52" font-style="italic">Trait (统一接口)</text>
+
+      <!-- 箭头：数据源 → 适配器 -->
+      <line x1="110" y1="54"  x2="133" y2="56"  stroke="#888" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="110" y1="96"  x2="133" y2="98"  stroke="#888" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="110" y1="138" x2="133" y2="140" stroke="#888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- 标准化记录流 -->
+      <text x="175" y="218" text-anchor="middle" fill="#555" font-style="italic">↓ CanonicalRecord Stream</text>
+
+      <!-- 映射引擎 -->
+      <rect x="235" y="30" width="100" height="36" rx="4" fill="#f0a020"/>
+      <text x="285" y="50" text-anchor="middle" fill="white" font-weight="bold">映射引擎</text>
+      <text x="285" y="62" text-anchor="middle" fill="white" font-size="9">MappingEngine</text>
+
+      <!-- TOML 配置 -->
+      <rect x="235" y="80" width="100" height="28" rx="3" fill="#d0860a" opacity=".8"/>
+      <text x="285" y="96" text-anchor="middle" fill="white">TOML 配置</text>
+      <text x="285" y="108" text-anchor="middle" fill="white" font-size="9">声明式映射规则</text>
+
+      <!-- 事件总线 -->
+      <rect x="235" y="126" width="100" height="36" rx="4" fill="#e06020"/>
+      <text x="285" y="146" text-anchor="middle" fill="white" font-weight="bold">事件总线</text>
+      <text x="285" y="158" text-anchor="middle" fill="white" font-size="9">OntologyEventBus</text>
+
+      <!-- 事件类型标注 -->
+      <text x="285" y="180" text-anchor="middle" fill="#888" font-size="8.5">ObjectCreated | Updated | Deleted</text>
+      <text x="285" y="192" text-anchor="middle" fill="#888" font-size="8.5">LinkCreated | LinkDeleted</text>
+
+      <!-- 箭头：适配器层 → 映射引擎 -->
+      <line x1="215" y1="90" x2="233" y2="58" stroke="#888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- 箭头：TOML → 映射引擎 -->
+      <line x1="285" y1="80" x2="285" y2="68" stroke="#d0860a" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+      <!-- 箭头：映射引擎 → 事件总线 -->
+      <line x1="285" y1="66" x2="285" y2="124" stroke="#e06020" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+      <!-- 知识库层 -->
+      <rect x="356" y="30"  width="115" height="32" rx="4" fill="#d04040"/>
+      <text x="413" y="48"  text-anchor="middle" fill="white" font-weight="bold">本体管理器</text>
+      <text x="413" y="60"  text-anchor="middle" fill="white" font-size="9">OntologyManager</text>
+
+      <rect x="356" y="76"  width="115" height="30" rx="4" fill="#a02020"/>
+      <text x="413" y="94"  text-anchor="middle" fill="white" font-weight="bold">本体知识库</text>
+      <text x="413" y="106" text-anchor="middle" fill="white" font-size="9">Object + Link Store</text>
+
+      <rect x="356" y="120" width="115" height="28" rx="4" fill="#c03060" opacity=".85"/>
+      <text x="413" y="137" text-anchor="middle" fill="white">语义查询接口</text>
+      <text x="413" y="149" text-anchor="middle" fill="white" font-size="9">ObjectSet Query API</text>
+
+      <rect x="356" y="162" width="115" height="28" rx="4" fill="#8030a0" opacity=".85"/>
+      <text x="413" y="179" text-anchor="middle" fill="white">向量索引</text>
+      <text x="413" y="191" text-anchor="middle" fill="white" font-size="9">Embedding + ANN</text>
+
+      <!-- 箭头：事件总线 → 本体管理器 -->
+      <line x1="337" y1="144" x2="354" y2="46" stroke="#888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- 箭头：本体管理器 → 知识库 -->
+      <line x1="413" y1="62" x2="413" y2="74" stroke="#a02020" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+      <!-- 箭头：知识库 → 查询接口 -->
+      <line x1="413" y1="106" x2="413" y2="118" stroke="#c03060" stroke-width="1.5" marker-end="url(#arr5)"/>
+
+      <!-- 箭头：知识库 → 向量索引 -->
+      <line x1="413" y1="108" x2="413" y2="160" stroke="#8030a0" stroke-width="1.2" stroke-dasharray="3" marker-end="url(#arr6)"/>
+
+      <!-- AI Query 标注 -->
+      <rect x="360" y="215" width="107" height="22" rx="3" fill="#8030a0" opacity=".2" stroke="#8030a0" stroke-width=".8"/>
+      <text x="413" y="229" text-anchor="middle" fill="#5a1080" font-size="9">自然语言 → 语义查询</text>
+
+      <!-- 箭头标记定义 -->
+      <defs>
+        <marker id="arr"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#888"/>
+        </marker>
+        <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#d0860a"/>
+        </marker>
+        <marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#e06020"/>
+        </marker>
+        <marker id="arr4" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#a02020"/>
+        </marker>
+        <marker id="arr5" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#c03060"/>
+        </marker>
+        <marker id="arr6" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#8030a0"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="fig-caption">图1 — 系统整体架构示意图</div>
+  </div>
+
+  <div class="page-num">— 说明书 第3页 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第4页：附图2、3、4
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- ── 图2：TOML 配置结构 ── -->
+  <div class="fig-box">
+    <svg width="460" height="150" viewBox="0 0 460 150" xmlns="http://www.w3.org/2000/svg"
+         font-family="Courier New,monospace" font-size="9.5">
+      <!-- 背景 -->
+      <rect x="0" y="0" width="460" height="150" fill="#1e1e2e" rx="6"/>
+      <!-- 注释行 -->
+      <text x="12" y="20" fill="#6a9f6a"># 声明式映射配置示例 (TOML)</text>
+      <text x="12" y="38" fill="#cba4f7">[source]</text>
+      <text x="12" y="53" fill="#89dceb">type   </text><text x="80" y="53" fill="#cdd6f4">= </text><text x="92" y="53" fill="#a6e3a1">"csv"</text>
+      <text x="12" y="68" fill="#89dceb">path   </text><text x="80" y="68" fill="#cdd6f4">= </text><text x="92" y="68" fill="#a6e3a1">"data/employees.csv"</text>
+      <text x="12" y="83" fill="#cba4f7">[mapping]</text>
+      <text x="12" y="98" fill="#89dceb">object_type</text><text x="108" y="98" fill="#cdd6f4"> = </text><text x="120" y="98" fill="#a6e3a1">"Employee"</text>
+      <text x="12" y="113" fill="#89dceb">primary_key</text><text x="108" y="113" fill="#cdd6f4"> = </text><text x="120" y="113" fill="#a6e3a1">"id"</text>
+      <text x="12" y="128" fill="#cba4f7">[mapping.fields]</text>
+      <text x="12" y="143" fill="#89dceb">name       </text><text x="108" y="143" fill="#cdd6f4"> = </text><text x="120" y="143" fill="#a6e3a1">"full_name"</text>
+      <!-- 右侧标注 -->
+      <text x="310" y="38"  fill="#888" font-family="SimSun,serif">▶ 数据源类型 &amp; 路径</text>
+      <text x="310" y="98"  fill="#888" font-family="SimSun,serif">▶ 目标对象类型</text>
+      <text x="310" y="113" fill="#888" font-family="SimSun,serif">▶ 主键字段映射</text>
+      <text x="310" y="128" fill="#888" font-family="SimSun,serif">▶ 属性字段映射</text>
+    </svg>
+    <div class="fig-caption">图2 — 声明式 TOML 映射配置结构示意图</div>
+  </div>
+
+  <!-- ── 图3：事件总线流程 ── -->
+  <div class="fig-box">
+    <svg width="460" height="100" viewBox="0 0 460 100" xmlns="http://www.w3.org/2000/svg"
+         font-family="SimSun,serif" font-size="10">
+      <defs>
+        <marker id="a3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#555"/>
+        </marker>
+      </defs>
+      <!-- 映射引擎 -->
+      <rect x="10" y="30" width="80" height="40" rx="4" fill="#f0a020" opacity=".9"/>
+      <text x="50" y="54" text-anchor="middle" fill="white" font-weight="bold">映射引擎</text>
+      <!-- 箭头 -->
+      <line x1="92" y1="50" x2="118" y2="50" stroke="#555" stroke-width="1.5" marker-end="url(#a3)"/>
+      <!-- 事件总线 -->
+      <rect x="120" y="20" width="160" height="60" rx="4" fill="#e06020" opacity=".9"/>
+      <text x="200" y="43" text-anchor="middle" fill="white" font-weight="bold">OntologyEventBus</text>
+      <text x="200" y="58" text-anchor="middle" fill="#ffe0c0" font-size="9">ObjectCreated / Updated / Deleted</text>
+      <text x="200" y="71" text-anchor="middle" fill="#ffe0c0" font-size="9">LinkCreated / LinkDeleted</text>
+      <!-- 箭头 -->
+      <line x1="282" y1="50" x2="308" y2="50" stroke="#555" stroke-width="1.5" marker-end="url(#a3)"/>
+      <!-- 消费方 -->
+      <rect x="310" y="10" width="140" height="24" rx="3" fill="#d04040" opacity=".85"/>
+      <text x="380" y="26" text-anchor="middle" fill="white">OntologyManager (持久化)</text>
+      <rect x="310" y="40" width="140" height="24" rx="3" fill="#8030a0" opacity=".85"/>
+      <text x="380" y="56" text-anchor="middle" fill="white">向量索引构建器</text>
+      <rect x="310" y="70" width="140" height="24" rx="3" fill="#204080" opacity=".85"/>
+      <text x="380" y="86" text-anchor="middle" fill="white">审计日志记录器</text>
+      <line x1="282" y1="44" x2="308" y2="22" stroke="#d04040" stroke-width="1.2" marker-end="url(#a3)"/>
+      <line x1="282" y1="52" x2="308" y2="52" stroke="#8030a0" stroke-width="1.2" marker-end="url(#a3)"/>
+      <line x1="282" y1="58" x2="308" y2="78" stroke="#204080" stroke-width="1.2" marker-end="url(#a3)"/>
+    </svg>
+    <div class="fig-caption">图3 — 本体事件总线事件类型及多消费者分发示意图</div>
+  </div>
+
+  <!-- ── 图4：语义查询 API 调用链 ── -->
+  <div class="fig-box">
+    <svg width="460" height="60" viewBox="0 0 460 60" xmlns="http://www.w3.org/2000/svg"
+         font-family="Courier New,monospace" font-size="9.5">
+      <defs>
+        <marker id="a4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#555"/>
+        </marker>
+      </defs>
+      <rect x="0"   y="15" width="460" height="30" rx="4" fill="#1e1e2e"/>
+      <text x="8"   y="34" fill="#89dceb">ontology</text>
+      <text x="65"  y="34" fill="#cdd6f4">.</text>
+      <text x="72"  y="34" fill="#f38ba8">object_set</text>
+      <text x="148" y="34" fill="#cdd6f4">(</text>
+      <text x="154" y="34" fill="#a6e3a1">"Employee"</text>
+      <text x="230" y="34" fill="#cdd6f4">).</text>
+      <text x="244" y="34" fill="#f38ba8">filter</text>
+      <text x="280" y="34" fill="#cdd6f4">(|e| e[</text>
+      <text x="330" y="34" fill="#a6e3a1">"dept"</text>
+      <text x="366" y="34" fill="#cdd6f4">] == </text>
+      <text x="395" y="34" fill="#a6e3a1">"Engineering"</text>
+      <text x="454" y="34" fill="#cdd6f4">)</text>
+    </svg>
+    <div class="fig-caption">图4 — ObjectSet 链式语义查询 API 示例</div>
+  </div>
+
+  <div class="page-num">— 说明书 第4页 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第5页：具体实施方式 一
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h2>五、具体实施方式</h2>
+
+  <h3>5.1 实施方式一：统一适配器接口与声明式配置</h3>
+
+  <p>本实施方式描述系统核心接口定义及声明式配置文件格式。</p>
+
+  <p><span class="bold">步骤一：定义统一适配器接口。</span>系统定义 SourceAdapter Trait，规定所有适配器模块必须实现以下方法：</p>
+
+  <div class="spec-block">/// 统一适配器接口（Rust Trait 定义）
+pub trait SourceAdapter: Send + Sync {
+    /// 适配器唯一标识符
+    fn source_id(&amp;self) -> &amp;str;
+
+    /// 同步数据并输出标准化记录流
+    /// cursor: 增量游标，None 表示全量同步
+    fn ingest(
+        &amp;self,
+        cursor: Option&lt;Cursor&gt;,
+    ) -> impl Stream&lt;Item = Result&lt;CanonicalRecord&gt;&gt; + Send;
+}
+
+/// 标准化记录（每条原始数据记录的统一表示）
+pub struct CanonicalRecord {
+    pub source_id  : String,                        // 来源适配器标识
+    pub record_id  : String,                        // 记录唯一标识
+    pub fields     : HashMap&lt;String, FieldValue&gt;,  // 字段键值对
+    pub ingested_at: DateTime&lt;Utc&gt;,                // 采集时间戳
+}</div>
+
+  <p><span class="bold">步骤二：实现文件适配器。</span>以 CSV 文件适配器为例，具体实现如下：</p>
+
+  <div class="spec-block">pub struct FileAdapter {
+    source_id : String,
+    file_path : PathBuf,
+    mapping   : TomlMapping,   // 从 TOML 配置文件加载的映射规则
+}
+
+impl SourceAdapter for FileAdapter {
+    fn source_id(&amp;self) -> &amp;str { &amp;self.source_id }
+
+    fn ingest(
+        &amp;self,
+        _cursor: Option&lt;Cursor&gt;,
+    ) -> impl Stream&lt;Item = Result&lt;CanonicalRecord&gt;&gt; + Send {
+        let path    = self.file_path.clone();
+        let mapping = self.mapping.clone();
+        async_stream::stream! {
+            let mut rdr = csv::Reader::from_path(&amp;path)?;
+            for result in rdr.deserialize::&lt;HashMap&lt;String, String&gt;&gt;() {
+                let row = result?;
+                yield Ok(mapping.to_canonical(row));  // 按 TOML 规则转换
+            }
+        }
+    }
+}</div>
+
+  <p><span class="bold">步骤三：声明式映射配置示例。</span>以下 TOML 配置描述了 CSV 文件到 Employee 对象类型的映射规则及外键关联推导：</p>
+
+  <div class="spec-block">[source]
+type        = "csv"
+path        = "data/employees.csv"
+
+[mapping]
+object_type = "Employee"
+primary_key = "id"
+
+[mapping.fields]
+name        = "full_name"
+department  = "dept"
+salary      = "annual_salary"
+
+[mapping.foreign_keys]
+# 声明外键推导规则：字段 project_id → Employee -[WorksOn]→ Project
+project_id  = { target_type = "Project", link_type = "WorksOn" }</div>
+
+  <p>上述 TOML 配置文件由映射引擎在运行时动态加载。当 CSV 文件中存在 <code>project_id</code> 字段时，映射引擎自动生成 WorksOn 类型的 LinkInstance，无需修改任何核心系统代码。</p>
+
+  <div class="page-num">— 说明书 第5页 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第6页：具体实施方式 二
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h3>5.2 实施方式二：本体事件总线与语义查询</h3>
+
+  <p><span class="bold">步骤四：本体事件定义。</span>映射引擎将每条标准化记录转化为本体事件，写入事件总线：</p>
+
+  <div class="spec-block">/// 本体事件枚举（OntologyEvent）
+pub enum OntologyEvent {
+    ObjectCreated(ObjectInstance),
+    ObjectUpdated { id: ObjectId, diff: PropertyDiff },
+    ObjectDeleted(ObjectId),
+    LinkCreated(LinkInstance),
+    LinkDeleted  { src: ObjectId, dst: ObjectId, link_type: LinkTypeId },
+}
+
+/// 本体对象实例
+pub struct ObjectInstance {
+    pub id          : ObjectId,
+    pub type_id     : ObjectTypeId,
+    pub properties  : HashMap&lt;String, PropertyValue&gt;,
+    pub source_id   : String,
+    pub version     : u64,
+}
+
+/// 语义关联实例
+pub struct LinkInstance {
+    pub src_id    : ObjectId,
+    pub dst_id    : ObjectId,
+    pub link_type : LinkTypeId,
+    pub properties: HashMap&lt;String, PropertyValue&gt;,
+}</div>
+
+  <p><span class="bold">步骤五：本体管理器订阅事件总线并持久化。</span></p>
+
+  <div class="spec-block">impl OntologyManager {
+    pub async fn run(&amp;mut self) {
+        while let Some(event) = self.event_bus.recv().await {
+            match event {
+                OntologyEvent::ObjectCreated(obj) =&gt; {
+                    self.store.upsert_object(obj).await?;
+                }
+                OntologyEvent::LinkCreated(link) =&gt; {
+                    self.store.upsert_link(link).await?;
+                }
+                OntologyEvent::ObjectDeleted(id) =&gt; {
+                    self.store.delete_object(id).await?;
+                }
+                _ =&gt; { /* 处理其余事件类型 */ }
+            }
+        }
+    }
+}</div>
+
+  <p><span class="bold">步骤六：语义查询 API 链式调用。</span>系统提供面向对象集合的链式查询接口，支持关系路径导航：</p>
+
+  <div class="spec-block">// 查询示例：获取所有工程部门员工所参与的高预算项目
+let results = ontology
+    .object_set("Employee")                       // 起始对象类型
+    .filter(|e| e["department"] == "Engineering") // 属性过滤
+    .navigate("WorksOn")                          // 沿 WorksOn 关系遍历
+    .filter(|p| p["budget"].as_f64() &gt; 1_000_000.0)
+    .collect::&lt;Vec&lt;ObjectInstance&gt;&gt;()
+    .await?;</div>
+
+  <p>上述查询无需编写 SQL 或图查询语言，由系统底层将链式 API 调用转化为对本体知识库的遍历操作，返回满足条件的对象集合。</p>
+
+  <div class="page-num">— 说明书 第6页 —</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     说明书 第7页：摘要
+     ══════════════════════════════════════════════════════════ -->
+<div class="page">
+  <h1>说　明　书　摘　要</h1>
+
+  <p>本发明公开了一种将异构原始数据转化为语义本体图谱的系统及方法。所述方法通过统一适配器接口（SourceAdapter Trait）将来自本地文件系统、关系型数据库及 REST API 等多个异构数据源的原始数据转化为标准化记录流；依据声明式 TOML 映射配置，将所述标准化记录流转化为本体对象实例（ObjectInstance）及语义关联关系（LinkInstance），并通过外键字段自动推导对象间的语义关联，无需人工编写关联规则代码；所述本体对象实例及语义关联关系以事件流的形式写入本体事件总线（OntologyEventBus），并由本体管理器（OntologyManager）消费后持久化至本体知识库；系统还提供面向对象集合（ObjectSet）的链式语义查询 API，支持跨实体关系路径导航、属性过滤及聚合操作。</p>
+
+  <p>所述系统采用 Hub-and-Spoke 集成架构，将 N 个数据源的集成链路从 N×(N-1) 条减少为 N 条，显著降低数据集成运维成本；通过声明式配置与核心代码解耦，新增数据源仅需提供适配器实现与 TOML 配置文件，无需修改核心系统代码；本体事件总线支持多消费者并行处理，包括实时查询、向量索引构建及审计日志记录；系统进一步支持向量索引与图遍历的混合查询，为大型语言模型提供结构化数据检索能力，适用于企业级语义数据治理与 AI 增强决策平台。</p>
+
+  <div style="margin-top:24pt;">
+    <p class="no-indent"><span class="bold">IPC 分类号：</span></p>
+    <div class="ipc-row no-indent" style="text-indent:0;margin-top:6pt;">
+      <span class="ipc-tag">G06F 16/901</span>
+      <span class="ipc-tag">G06F 16/25</span>
+      <span class="ipc-tag">G06N 5/02</span>
+      <span class="ipc-tag">G06F 16/21</span>
+    </div>
+  </div>
+
+  <div style="margin-top:20pt;">
+    <p class="no-indent"><span class="bold">摘要附图（图1）：</span></p>
+    <!-- 简化版架构缩略图 -->
+    <div class="fig-box" style="margin-top:8pt;">
+      <svg width="380" height="70" viewBox="0 0 380 70" xmlns="http://www.w3.org/2000/svg"
+           font-family="SimSun,serif" font-size="9">
+        <defs>
+          <marker id="am" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+          </marker>
+        </defs>
+        <rect x="2"   y="10" width="72" height="50" rx="3" fill="#6b7fff" opacity=".85"/>
+        <text x="38"  y="30" text-anchor="middle" fill="white" font-weight="bold">异构数据源</text>
+        <text x="38"  y="46" text-anchor="middle" fill="#ddf" font-size="8">CSV/DB/REST</text>
+
+        <rect x="90"  y="10" width="72" height="50" rx="3" fill="#52bb6a" opacity=".9"/>
+        <text x="126" y="30" text-anchor="middle" fill="white" font-weight="bold">适配器层</text>
+        <text x="126" y="46" text-anchor="middle" fill="#dfd" font-size="8">SourceAdapter</text>
+
+        <rect x="178" y="10" width="72" height="50" rx="3" fill="#f0a020" opacity=".9"/>
+        <text x="214" y="30" text-anchor="middle" fill="white" font-weight="bold">映射引擎</text>
+        <text x="214" y="46" text-anchor="middle" fill="#ffe" font-size="8">TOML Config</text>
+
+        <rect x="266" y="10" width="72" height="50" rx="3" fill="#d04040" opacity=".9"/>
+        <text x="302" y="30" text-anchor="middle" fill="white" font-weight="bold">本体知识库</text>
+        <text x="302" y="46" text-anchor="middle" fill="#fdd" font-size="8">ObjectSet API</text>
+
+        <line x1="74"  y1="35" x2="88"  y2="35" stroke="#555" stroke-width="1.5" marker-end="url(#am)"/>
+        <line x1="162" y1="35" x2="176" y2="35" stroke="#555" stroke-width="1.5" marker-end="url(#am)"/>
+        <line x1="250" y1="35" x2="264" y2="35" stroke="#555" stroke-width="1.5" marker-end="url(#am)"/>
+      </svg>
+      <div class="fig-caption">摘要附图 — 系统整体数据流（简图）</div>
+    </div>
+  </div>
+
+  <div class="page-num">— 说明书摘要 —</div>
+</div>
+
+</body>
+</html>

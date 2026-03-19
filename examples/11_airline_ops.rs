@@ -32,8 +32,8 @@
 use std::collections::HashMap;
 
 use palantir_application::ontology::{
-    bounded_context::BoundedContextDetector, ddd_mapping::DddMapping,
-    discovery::DiscoveryEngine, graph::OntologyGraph, relationship::RelationshipKind,
+    bounded_context::BoundedContextDetector, ddd_mapping::DddMapping, discovery::DiscoveryEngine,
+    graph::OntologyGraph, relationship::RelationshipKind,
 };
 use palantir_domain::flight::{DepartureBoard, FlightEvent, FlightEventStore};
 use palantir_infrastructure::{datasource::CsvLoader, export::JsonExporter};

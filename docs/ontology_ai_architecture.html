@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Palantir Ontology × AI Agent — 架构图</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:  #0b0d17;
+  --bg2: #141726;
+  --bg3: #1c1f30;
+  --bd:  #252a3a;
+  --bd2: #2d3748;
+  --pu:  #a78bfa;
+  --pu2: #7c3aed;
+  --bl:  #38bdf8;
+  --gr:  #34d399;
+  --ye:  #fbbf24;
+  --re:  #f87171;
+  --or:  #fb923c;
+  --tx:  #e2e8f0;
+  --tx2: #94a3b8;
+  --mu:  #475569;
+}
+body {
+  background: var(--bg);
+  color: var(--tx);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+/* ── toolbar ── */
+#toolbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(11,13,23,0.95);
+  border-bottom: 1px solid var(--bd);
+  backdrop-filter: blur(8px);
+  padding: 10px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ttl  { font-size: 13px; font-weight: 700; color: var(--pu); letter-spacing: 0.3px; }
+.sub  { font-size: 10px; color: var(--mu); margin-top: 2px; }
+
+/* ── main canvas ── */
+#canvas {
+  padding: 48px 64px 80px;
+  min-width: 1100px;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── layer ── */
+.layer {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  border-bottom: 1px dashed var(--bd);
+  position: relative;
+}
+.layer:last-child { border-bottom: none; }
+
+.layer-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 8px;
+  border-right: 2px solid var(--bd);
+  gap: 8px;
+}
+.ll-dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800;
+  flex-shrink: 0;
+}
+.ll-name {
+  font-size: 10px; font-weight: 700;
+  writing-mode: vertical-rl;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--tx2);
+}
+
+.layer-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── row of cards ── */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+/* ── card ── */
+.card {
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-width: 130px;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  position: relative;
+}
+.card .c-icon { font-size: 18px; margin-bottom: 6px; }
+.card .c-title {
+  font-size: 12px; font-weight: 700;
+  margin-bottom: 4px;
+}
+.card .c-desc {
+  font-size: 10px; color: var(--tx2);
+  line-height: 1.5;
+}
+.card .tag-row {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-top: 8px;
+}
+.tag {
+  font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+
+/* color variants */
+.c-pu  { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); }
+.c-bl  { background: rgba(56,189,248,0.1);  border-color: rgba(56,189,248,0.3); }
+.c-gr  { background: rgba(52,211,153,0.1);  border-color: rgba(52,211,153,0.3); }
+.c-ye  { background: rgba(251,191,36,0.1);  border-color: rgba(251,191,36,0.3); }
+.c-re  { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); }
+.c-or  { background: rgba(251,146,60,0.1);  border-color: rgba(251,146,60,0.3); }
+.c-mu  { background: rgba(71,85,105,0.15);  border-color: rgba(71,85,105,0.4); }
+
+.t-pu  { background: rgba(167,139,250,0.2); color: var(--pu); }
+.t-bl  { background: rgba(56,189,248,0.2);  color: var(--bl); }
+.t-gr  { background: rgba(52,211,153,0.2);  color: var(--gr); }
+.t-ye  { background: rgba(251,191,36,0.2);  color: var(--ye); }
+.t-re  { background: rgba(248,113,113,0.2); color: var(--re); }
+.t-or  { background: rgba(251,146,60,0.2);  color: var(--or); }
+.t-mu  { background: rgba(71,85,105,0.3);   color: var(--tx2); }
+
+/* ── flow connector ── */
+.flow-arrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--mu);
+  font-size: 10px;
+}
+.arrow-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--bd2), transparent);
+}
+.arrow-label {
+  font-size: 9px;
+  color: var(--tx2);
+  background: var(--bg3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--bd);
+  white-space: nowrap;
+}
+
+/* ── vertical flow between layers ── */
+.v-flow {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  position: relative;
+  height: 28px;
+  align-items: center;
+}
+.v-flow::before {
+  content: '';
+  position: absolute;
+  left: 50%; transform: translateX(-50%);
+  width: 1px;
+  height: 100%;
+  background: var(--bd2);
+}
+.v-flow .vf-label {
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 2px 12px;
+  font-size: 9px;
+  color: var(--tx2);
+  z-index: 1;
+  letter-spacing: 0.3px;
+}
+
+/* ── big flow diagram (bottom section) ── */
+.flow-diagram {
+  margin-top: 48px;
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  background: var(--bg2);
+  padding: 32px 40px;
+}
+.flow-diagram .fd-title {
+  font-size: 13px; font-weight: 700;
+  color: var(--pu);
+  margin-bottom: 24px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bd);
+}
+.flow-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.step-box {
+  width: 120px;
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: center;
+  border: 1px solid transparent;
+}
+.step-box .s-icon { font-size: 20px; margin-bottom: 6px; }
+.step-box .s-title { font-size: 11px; font-weight: 700; }
+.step-box .s-sub   { font-size: 9px; color: var(--tx2); margin-top: 3px; line-height: 1.4; }
+.step-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  flex: 0 0 auto;
+}
+.sc-line {
+  width: 40px; height: 1px;
+  background: var(--bd2);
+}
+.sc-arrow {
+  font-size: 10px; color: var(--tx2);
+  transform: translateX(8px);
+}
+.sc-label {
+  font-size: 8px; color: var(--mu);
+  white-space: nowrap;
+}
+
+/* ── graph section ── */
+.graph-section {
+  margin-top: 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.gs-card {
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  background: var(--bg2);
+  padding: 20px 24px;
+}
+.gs-card .gs-title {
+  font-size: 12px; font-weight: 700;
+  color: var(--bl);
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.gs-card .gs-title span { font-size: 16px; }
+
+/* ── graph visual ── */
+.graph-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gv-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gn-circle {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
+}
+.gn-info { flex: 1; }
+.gn-name { font-size: 11px; font-weight: 700; }
+.gn-props { font-size: 9px; color: var(--tx2); margin-top: 2px; }
+.gn-links {
+  font-size: 9px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-top: 4px;
+}
+.gn-link {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--mu);
+}
+.gn-link span { color: var(--tx2); }
+
+/* ── legend ── */
+.legend {
+  margin-top: 32px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--bg3);
+  border-radius: 10px;
+  border: 1px solid var(--bd);
+}
+.lg-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--tx2);
+}
+.lg-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div>
+    <div class="ttl">Palantir Ontology × AI Agent — 架构图</div>
+    <div class="sub">Ontology 管理 · Function/Action · Graph Query · AI Natural Language Interface</div>
+  </div>
+</div>
+
+<div id="canvas">
+
+  <!-- ════ LAYER 0: NL Interface ════ -->
+  <div class="layer">
+    <div class="layer-label">
+      <div class="ll-dot" style="background:rgba(167,139,250,0.2);color:var(--pu);">0</div>
+      <div class="ll-name" style="color:var(--pu);">NL Interface</div>
+    </div>
+    <div class="layer-body">
+      <div class="row">
+        <div class="card c-pu" style="min-width:220px;">
+          <div class="c-icon">💬</div>
+          <div class="c-title">自然语言输入</div>
+          <div class="c-desc">用户用自然语言描述查询意图或操作指令，例如"找出所有与项目 X 相关的员工"</div>
+          <div class="tag-row">
+            <span class="tag t-pu">NL Query</span>
+            <span class="tag t-pu">NL Action</span>
+          </div>
+        </div>
+        <div class="card c-pu" style="min-width:200px;">
+          <div class="c-icon">🤖</div>
+          <div class="c-title">AI Agent 理解层</div>
+          <div class="c-desc">LLM 理解 Ontology schema 语义，将自然语言映射为结构化意图</div>
+          <div class="tag-row">
+            <span class="tag t-pu">Semantic Parsing</span>
+            <span class="tag t-mu">Schema-aware</span>
+          </div>
+        </div>
+        <div class="card c-mu" style="min-width:200px;">
+          <div class="c-icon">🗂️</div>
+          <div class="c-title">Ontology Schema 上下文</div>
+          <div class="c-desc">AI 加载 Object Types、Link Types、Properties 作为上下文，理解语义关系</div>
+          <div class="tag-row">
+            <span class="tag t-mu">Object Types</span>
+            <span class="tag t-mu">Link Types</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="v-flow">
+    <div class="vf-label">意图识别 → Tool Selection (Function / Action)</div>
+  </div>
+
+  <!-- ════ LAYER 1: AI Agent Tool Layer ════ -->
+  <div class="layer">
+    <div class="layer-label">
+      <div class="ll-dot" style="background:rgba(56,189,248,0.2);color:var(--bl);">1</div>
+      <div class="ll-name" style="color:var(--bl);">Agent Tools</div>
+    </div>
+    <div class="layer-body">
+      <div class="row">
+        <div class="card c-bl" style="min-width:185px;">
+          <div class="c-icon">🔍</div>
+          <div class="c-title">Function (Query Tool)</div>
+          <div class="c-desc">只读计算逻辑，对 Object Set 执行过滤、聚合、图遍历，返回结果集</div>
+          <div class="tag-row">
+            <span class="tag t-bl">Read-Only</span>
+            <span class="tag t-bl">ObjectSet API</span>
+          </div>
+        </div>
+        <div class="card c-or" style="min-width:185px;">
+          <div class="c-icon">⚡</div>
+          <div class="c-title">Action (Write Tool)</div>
+          <div class="c-desc">标准化写操作：Create / Edit / Delete Object，附带权限控制与审计</div>
+          <div class="tag-row">
+            <span class="tag t-or">Write</span>
+            <span class="tag t-or">Audit Log</span>
+            <span class="tag t-or">Permission</span>
+          </div>
+        </div>
+        <div class="card c-ye" style="min-width:185px;">
+          <div class="c-icon">🌐</div>
+          <div class="c-title">Graph Query Tool</div>
+          <div class="c-desc">多跳图遍历：沿 Link 关系跨 Object Type 执行复杂关联查询（multi-hop）</div>
+          <div class="tag-row">
+            <span class="tag t-ye">Multi-hop</span>
+            <span class="tag t-ye">Link Traversal</span>
+          </div>
+        </div>
+        <div class="card c-mu" style="min-width:165px;">
+          <div class="c-icon">📊</div>
+          <div class="c-title">Aggregation Tool</div>
+          <div class="c-desc">大规模数据统计计算，返回数值型摘要结果</div>
+          <div class="tag-row">
+            <span class="tag t-mu">Count / Sum</span>
+            <span class="tag t-mu">Group By</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="v-flow">
+    <div class="vf-label">调用 Ontology API → 读写 Object / Link</div>
+  </div>
+
+  <!-- ════ LAYER 2: Ontology Core ════ -->
+  <div class="layer">
+    <div class="layer-label">
+      <div class="ll-dot" style="background:rgba(52,211,153,0.2);color:var(--gr);">2</div>
+      <div class="ll-name" style="color:var(--gr);">Ontology Core</div>
+    </div>
+    <div class="layer-body">
+      <div class="row">
+        <div class="card c-gr" style="min-width:175px;">
+          <div class="c-icon">🟢</div>
+          <div class="c-title">Object Type</div>
+          <div class="c-desc">实体定义：类型名 + Properties + Primary Key，对应业务概念（员工、项目、资产…）</div>
+          <div class="tag-row">
+            <span class="tag t-gr">Schema</span>
+            <span class="tag t-gr">Properties</span>
+          </div>
+        </div>
+        <div class="card c-gr" style="min-width:175px;">
+          <div class="c-icon">🔗</div>
+          <div class="c-title">Link Type</div>
+          <div class="c-desc">关系定义：两个 Object Type 之间的有向/无向边，构成语义图结构</div>
+          <div class="tag-row">
+            <span class="tag t-gr">Edge</span>
+            <span class="tag t-gr">Cardinality</span>
+          </div>
+        </div>
+        <div class="card c-gr" style="min-width:175px;">
+          <div class="c-icon">📦</div>
+          <div class="c-title">Object Instance</div>
+          <div class="c-desc">运行时数据：具体的实体记录与关联关系，构成完整知识图谱</div>
+          <div class="tag-row">
+            <span class="tag t-gr">Runtime Data</span>
+            <span class="tag t-gr">Graph Node</span>
+          </div>
+        </div>
+        <div class="card c-mu" style="min-width:165px;">
+          <div class="c-icon">🛡️</div>
+          <div class="c-title">Permission Model</div>
+          <div class="c-desc">Action 级权限控制，记录谁在何时对哪个 Object 做了什么操作</div>
+          <div class="tag-row">
+            <span class="tag t-mu">RBAC</span>
+            <span class="tag t-mu">Audit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="v-flow">
+    <div class="vf-label">Action 触发下游 Pipeline / Transform</div>
+  </div>
+
+  <!-- ════ LAYER 3: Data & Side Effects ════ -->
+  <div class="layer">
+    <div class="layer-label">
+      <div class="ll-dot" style="background:rgba(248,113,113,0.2);color:var(--re);">3</div>
+      <div class="ll-name" style="color:var(--re);">Data & Effects</div>
+    </div>
+    <div class="layer-body">
+      <div class="row">
+        <div class="card c-re" style="min-width:175px;">
+          <div class="c-icon">🔄</div>
+          <div class="c-title">下游 Pipeline</div>
+          <div class="c-desc">Action 修改 Object 后自动触发 Foundry Transform，生成衍生数据集</div>
+          <div class="tag-row">
+            <span class="tag t-re">Transform</span>
+            <span class="tag t-re">Auto-trigger</span>
+          </div>
+        </div>
+        <div class="card c-re" style="min-width:175px;">
+          <div class="c-icon">💎</div>
+          <div class="c-title">价值数据产出</div>
+          <div class="c-desc">业务指标、报告、预测结果等高价值衍生数据，反哺 Ontology Object</div>
+          <div class="tag-row">
+            <span class="tag t-re">KPI</span>
+            <span class="tag t-re">Derived Dataset</span>
+          </div>
+        </div>
+        <div class="card c-ye" style="min-width:175px;">
+          <div class="c-icon">📡</div>
+          <div class="c-title">外部系统写回</div>
+          <div class="c-desc">Action Webhook / API 回调，将操作结果同步到 ERP、CRM 等外部系统</div>
+          <div class="tag-row">
+            <span class="tag t-ye">Webhook</span>
+            <span class="tag t-ye">Integration</span>
+          </div>
+        </div>
+        <div class="card c-mu" style="min-width:165px;">
+          <div class="c-icon">📜</div>
+          <div class="c-title">Audit Trail</div>
+          <div class="c-desc">完整操作日志，支持合规审计与变更溯源</div>
+          <div class="tag-row">
+            <span class="tag t-mu">Compliance</span>
+            <span class="tag t-mu">Lineage</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ QUERY FLOW DIAGRAM ════ -->
+  <div class="flow-diagram">
+    <div class="fd-title">▶ 完整调用链：自然语言 → 图查询 → 结果</div>
+    <div class="flow-steps">
+
+      <div class="step">
+        <div class="step-box c-pu">
+          <div class="s-icon">💬</div>
+          <div class="s-title">NL Input</div>
+          <div class="s-sub">用户输入<br>自然语言问题</div>
+        </div>
+      </div>
+
+      <div class="step-connector">
+        <div class="sc-line"></div>
+        <div class="sc-arrow">→</div>
+        <div class="sc-label">Semantic<br>Parsing</div>
+      </div>
+
+      <div class="step">
+        <div class="step-box c-pu">
+          <div class="s-icon">🤖</div>
+          <div class="s-title">AI Agent</div>
+          <div class="s-sub">理解语义<br>选择 Tool</div>
+        </div>
+      </div>
+
+      <div class="step-connector">
+        <div class="sc-line"></div>
+        <div class="sc-arrow">→</div>
+        <div class="sc-label">Tool Call<br>(Function)</div>
+      </div>
+
+      <div class="step">
+        <div class="step-box c-bl">
+          <div class="s-icon">🌐</div>
+          <div class="s-title">Graph Query</div>
+          <div class="s-sub">ObjectSet<br>+ Link Traversal</div>
+        </div>
+      </div>
+
+      <div class="step-connector">
+        <div class="sc-line"></div>
+        <div class="sc-arrow">→</div>
+        <div class="sc-label">Multi-hop<br>Traversal</div>
+      </div>
+
+      <div class="step">
+        <div class="step-box c-gr">
+          <div class="s-icon">🔗</div>
+          <div class="s-title">Ontology Graph</div>
+          <div class="s-sub">Object + Link<br>语义知识图谱</div>
+        </div>
+      </div>
+
+      <div class="step-connector">
+        <div class="sc-line"></div>
+        <div class="sc-arrow">→</div>
+        <div class="sc-label">Result Set<br>返回</div>
+      </div>
+
+      <div class="step">
+        <div class="step-box c-ye">
+          <div class="s-icon">📋</div>
+          <div class="s-title">Result</div>
+          <div class="s-sub">结构化结果<br>返回 Agent</div>
+        </div>
+      </div>
+
+      <div class="step-connector">
+        <div class="sc-line"></div>
+        <div class="sc-arrow">→</div>
+        <div class="sc-label">NL Response<br>生成</div>
+      </div>
+
+      <div class="step">
+        <div class="step-box c-pu">
+          <div class="s-icon">✨</div>
+          <div class="s-title">NL Answer</div>
+          <div class="s-sub">自然语言<br>回答用户</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════ GRAPH SECTION ════ -->
+  <div class="graph-section">
+    <div class="gs-card">
+      <div class="gs-title"><span>🌐</span> Ontology 语义图结构示例</div>
+      <div class="graph-visual">
+        <div class="gv-node">
+          <div class="gn-circle" style="background:rgba(52,211,153,0.2);color:var(--gr);">OT</div>
+          <div class="gn-info">
+            <div class="gn-name" style="color:var(--gr);">Employee</div>
+            <div class="gn-props">name, department, level</div>
+            <div class="gn-links">
+              <span class="gn-link">worksOn → <span>Project</span></span>
+              <span class="gn-link">reportsTo → <span>Employee</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="gv-node">
+          <div class="gn-circle" style="background:rgba(56,189,248,0.2);color:var(--bl);">OT</div>
+          <div class="gn-info">
+            <div class="gn-name" style="color:var(--bl);">Project</div>
+            <div class="gn-props">name, status, budget</div>
+            <div class="gn-links">
+              <span class="gn-link">usesAsset → <span>Asset</span></span>
+              <span class="gn-link">belongsTo → <span>Department</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="gv-node">
+          <div class="gn-circle" style="background:rgba(251,191,36,0.2);color:var(--ye);">OT</div>
+          <div class="gn-info">
+            <div class="gn-name" style="color:var(--ye);">Asset</div>
+            <div class="gn-props">type, value, location</div>
+            <div class="gn-links">
+              <span class="gn-link">ownedBy → <span>Department</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gs-card">
+      <div class="gs-title"><span>⚡</span> Action vs Function 对比</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);color:var(--tx2);">维度</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);color:var(--bl);">Function</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);color:var(--or);">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:7px 8px;color:var(--tx2);border-bottom:1px solid var(--bd);">操作类型</td>
+            <td style="padding:7px 8px;color:var(--bl);border-bottom:1px solid var(--bd);">只读 (Read)</td>
+            <td style="padding:7px 8px;color:var(--or);border-bottom:1px solid var(--bd);">写入 (Write)</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 8px;color:var(--tx2);border-bottom:1px solid var(--bd);">输出</td>
+            <td style="padding:7px 8px;color:var(--bl);border-bottom:1px solid var(--bd);">结果集 / 数值</td>
+            <td style="padding:7px 8px;color:var(--or);border-bottom:1px solid var(--bd);">Object 变更</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 8px;color:var(--tx2);border-bottom:1px solid var(--bd);">副作用</td>
+            <td style="padding:7px 8px;color:var(--bl);border-bottom:1px solid var(--bd);">无</td>
+            <td style="padding:7px 8px;color:var(--or);border-bottom:1px solid var(--bd);">触发 Pipeline</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 8px;color:var(--tx2);border-bottom:1px solid var(--bd);">权限要求</td>
+            <td style="padding:7px 8px;color:var(--bl);border-bottom:1px solid var(--bd);">Read 权限</td>
+            <td style="padding:7px 8px;color:var(--or);border-bottom:1px solid var(--bd);">Action 权限</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 8px;color:var(--tx2);">AI Agent 角色</td>
+            <td style="padding:7px 8px;color:var(--bl);">Query Tool</td>
+            <td style="padding:7px 8px;color:var(--or);">Write Tool</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════ LEGEND ════ -->
+  <div class="legend">
+    <div class="lg-item"><div class="lg-dot" style="background:var(--pu)"></div> AI / NL Layer</div>
+    <div class="lg-item"><div class="lg-dot" style="background:var(--bl)"></div> Function (Query)</div>
+    <div class="lg-item"><div class="lg-dot" style="background:var(--or)"></div> Action (Write)</div>
+    <div class="lg-item"><div class="lg-dot" style="background:var(--ye)"></div> Graph Traversal</div>
+    <div class="lg-item"><div class="lg-dot" style="background:var(--gr)"></div> Ontology Core (Object/Link)</div>
+    <div class="lg-item"><div class="lg-dot" style="background:var(--re)"></div> Data & Side Effects</div>
+    <div class="lg-item"><div class="lg-dot" style="background:var(--mu)"></div> 横切关注点 (Permission/Audit)</div>
+  </div>
+
+</div>
+</body>
+</html>

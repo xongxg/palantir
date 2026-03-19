@@ -12,7 +12,11 @@ pub struct InMemoryRepository {
 }
 
 impl InMemoryRepository {
-    pub fn new() -> Self { Self { events: Mutex::new(Vec::new()) } }
+    pub fn new() -> Self {
+        Self {
+            events: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 #[async_trait::async_trait]

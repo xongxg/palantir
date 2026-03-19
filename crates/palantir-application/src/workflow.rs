@@ -33,8 +33,8 @@ impl StepOutcome {
     pub fn label(&self) -> &str {
         match self {
             Self::Completed(_) => "✓",
-            Self::Skipped(_)   => "○",
-            Self::Failed(_)    => "✗",
+            Self::Skipped(_) => "○",
+            Self::Failed(_) => "✗",
         }
     }
 
@@ -47,7 +47,7 @@ impl StepOutcome {
 
 #[derive(Debug, Clone)]
 pub struct WorkflowStep {
-    pub name:    &'static str,
+    pub name: &'static str,
     pub outcome: StepOutcome,
 }
 
@@ -55,14 +55,17 @@ pub struct WorkflowStep {
 pub struct WorkflowRun {
     pub workflow_name: &'static str,
     /// Human-readable trigger description.
-    pub trigger:       String,
-    pub steps:         Vec<WorkflowStep>,
+    pub trigger: String,
+    pub steps: Vec<WorkflowStep>,
 }
 
 impl WorkflowRun {
     pub fn succeeded(&self) -> bool {
         self.steps.iter().all(|s| {
-            matches!(s.outcome, StepOutcome::Completed(_) | StepOutcome::Skipped(_))
+            matches!(
+                s.outcome,
+                StepOutcome::Completed(_) | StepOutcome::Skipped(_)
+            )
         })
     }
 }
@@ -169,15 +172,21 @@ pub fn run_spend_policy_review(
     let mut steps = Vec::new();
 
     // Step 1: Analyse
-    let severity = if concentration_pct >= 80.0 { "Critical" }
-                   else if concentration_pct >= 60.0 { "High" }
-                   else { "Medium" };
+    let severity = if concentration_pct >= 80.0 {
+        "Critical"
+    } else if concentration_pct >= 60.0 {
+        "High"
+    } else {
+        "Medium"
+    };
     steps.push(WorkflowStep {
         name: "Analyse spend pattern",
         outcome: StepOutcome::Completed(format!(
             "{:.0}% concentrated in \"{}\"  (${:.0} of ${:.0} total)  → severity: {}",
-            concentration_pct, top_category,
-            total_spend * concentration_pct / 100.0, total_spend,
+            concentration_pct,
+            top_category,
+            total_spend * concentration_pct / 100.0,
+            total_spend,
             severity
         )),
     });
@@ -186,7 +195,7 @@ pub fn run_spend_policy_review(
     let report_id = format!(
         "POL-{}-{:04}",
         &employee_id.to_uppercase(),
-        (concentration_pct as u64 * 137) % 10_000   // deterministic mock ID
+        (concentration_pct as u64 * 137) % 10_000 // deterministic mock ID
     );
     steps.push(WorkflowStep {
         name: "Generate policy report",

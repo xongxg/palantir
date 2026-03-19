@@ -15,8 +15,18 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Build OntologyManager with CSV adapters
-    let emp_adapter: Arc<dyn SourceAdapter> = Arc::new(CsvAdapter::new("csv.employees", "data/employees.csv", "csv.employees", "employees_v1"));
-    let tx_adapter: Arc<dyn SourceAdapter> = Arc::new(CsvAdapter::new("csv.transactions", "data/transactions.csv", "csv.transactions", "transactions_v1"));
+    let emp_adapter: Arc<dyn SourceAdapter> = Arc::new(CsvAdapter::new(
+        "csv.employees",
+        "data/employees.csv",
+        "csv.employees",
+        "employees_v1",
+    ));
+    let tx_adapter: Arc<dyn SourceAdapter> = Arc::new(CsvAdapter::new(
+        "csv.transactions",
+        "data/transactions.csv",
+        "csv.transactions",
+        "transactions_v1",
+    ));
 
     let emp_toml = r#"
 version = "v1"
@@ -52,7 +62,10 @@ category = "category|str"
     mappers.insert(tx_adapter.id().to_string(), tx_map);
 
     let repo = Arc::new(InMemoryRepository::new());
-    let schema = OntologySchema { version: "v1".into(), entities: Default::default() };
+    let schema = OntologySchema {
+        version: "v1".into(),
+        entities: Default::default(),
+    };
 
     let mgr = OntologyManager::new(vec![emp_adapter, tx_adapter], mappers, repo.clone(), schema);
     mgr.run(None).await?;

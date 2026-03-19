@@ -1,0 +1,16 @@
+id,employee_id,amount,category
+t01,e1,1200,Software
+t02,e1,350,Travel
+t03,e2,800,Hardware
+t04,e3,2500,Client Entertainment
+t05,e3,450,Office Supplies
+t06,e4,600,Travel
+t07,e5,3100,Marketing Campaign
+t08,e5,200,Office Supplies
+t09,e6,950,Marketing Campaign
+t10,e7,5000,Software
+t11,e7,120,Office Supplies
+t12,e8,700,Equipment
+t13,e8,430,Travel
+t14,e2,525,Training
+t15,e4,180,Travel

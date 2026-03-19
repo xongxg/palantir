@@ -1,0 +1,11 @@
+id,customer_id,status,priority,currency,total_amount
+or1,cu1,Delivered,High,USD,12500
+or2,cu1,Processing,Medium,USD,8300
+or3,cu2,Delivered,Low,EUR,4200
+or4,cu3,Shipped,High,GBP,9800
+or5,cu4,Cancelled,Low,EUR,1500
+or6,cu5,Delivered,Medium,CAD,6700
+or7,cu7,Processing,High,JPY,280000
+or8,cu8,Delivered,High,USD,22000
+or9,cu8,Shipped,Medium,USD,15600
+or10,cu3,Processing,Low,GBP,5400

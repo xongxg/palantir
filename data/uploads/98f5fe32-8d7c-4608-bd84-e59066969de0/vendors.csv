@@ -1,0 +1,6 @@
+id,name,region_id,category,tier
+v1,TechSupply Co,r1,Software,Premium
+v2,CloudBase Inc,r1,Infrastructure,Premium
+v3,EuroData GmbH,r2,Data Services,Standard
+v4,AsiaLogistics Ltd,r3,Logistics,Standard
+v5,GlobalSaaS Corp,r1,Software,Premium

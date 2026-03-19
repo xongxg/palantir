@@ -9,4 +9,6 @@ pub mod workflow;
 // Compatibility re-exports so included source paths like `crate::domain::*`
 // and `crate::infrastructure::pipeline::*` keep compiling in this crate.
 pub use palantir_domain as domain;
-pub mod infrastructure { pub use palantir_pipeline as pipeline; }
+pub mod infrastructure {
+    pub use palantir_pipeline as pipeline;
+}

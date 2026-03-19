@@ -9,15 +9,19 @@ pub struct ObjectType(pub String);
 /// A discovered ontology object — a record with a typed identity.
 #[derive(Debug, Clone)]
 pub struct OntologyObject {
-    pub id:          EntityId,
+    pub id: EntityId,
     pub object_type: ObjectType,
-    pub record:      Record,
+    pub record: Record,
 }
 
 impl OntologyObject {
     pub fn new(object_type: impl Into<String>, record: Record) -> Self {
         let id = EntityId(record.id.clone());
-        Self { id, object_type: ObjectType(object_type.into()), record }
+        Self {
+            id,
+            object_type: ObjectType(object_type.into()),
+            record,
+        }
     }
 
     pub fn get(&self, field: &str) -> Option<&Value> {

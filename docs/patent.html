@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>发明专利申请书 — 异构数据语义本体转化方法及系统</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --pu:#a78bfa;--pu2:#7c3aed;
+  --bl:#38bdf8;--gr:#34d399;--ye:#fbbf24;--re:#f87171;--or:#fb923c;
+  --bg:#0b0d17;--bg2:#141726;--bg3:#1c1f30;
+  --bd:#252a3a;--bd2:#2d3748;
+  --tx:#e2e8f0;--tx2:#cbd5e1;--mu:#64748b;
+}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--tx);
+  font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',
+              -apple-system,BlinkMacSystemFont,sans-serif;
+  overflow:hidden;user-select:none;}
+#deck{position:relative;width:100vw;height:100vh;overflow:hidden;}
+.slide{position:absolute;inset:0;opacity:0;pointer-events:none;will-change:transform,opacity;}
+.slide.active{opacity:1;pointer-events:auto}
+
+/* ── 通用页面布局 ── */
+.page{display:flex;flex-direction:column;height:100%;
+  padding:28px 56px 44px;overflow-y:auto;overflow-x:hidden;}
+
+/* ── 页眉 ── */
+.hd{flex-shrink:0;margin-bottom:20px;padding-bottom:14px;
+  border-bottom:1px solid var(--bd2);}
+.doc-tag{font-size:10px;font-weight:700;text-transform:uppercase;
+  letter-spacing:2.5px;color:var(--pu);display:block;margin-bottom:6px;}
+.doc-title{font-size:26px;font-weight:800;line-height:1.25;letter-spacing:-.3px;}
+.doc-title em{font-style:normal;
+  background:linear-gradient(90deg,var(--pu),var(--bl));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.doc-sub{font-size:12px;color:var(--mu);margin-top:5px;line-height:1.6;}
+
+/* ── 正文容器 ── */
+.body{flex:1;min-height:0;display:flex;flex-direction:column;gap:0;}
+
+/* ── 条款标题 ── */
+.sec{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
+  color:var(--pu);margin:16px 0 8px;padding-left:10px;
+  border-left:3px solid var(--pu);}
+.sec:first-child{margin-top:0;}
+
+/* ── 正文段落 ── */
+.para{font-size:13px;color:var(--tx2);line-height:2.1;
+  text-indent:2em;margin-bottom:10px;text-align:justify;}
+.para strong{color:var(--tx);font-weight:600;}
+.para em{font-style:normal;color:var(--ye);}
+.para code{font-family:'SF Mono',Consolas,Menlo,monospace;font-size:11.5px;
+  background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;color:var(--bl);}
+
+/* ── 权利要求块 ── */
+.claim-block{background:var(--bg2);border:1px solid var(--bd2);
+  border-radius:10px;padding:16px 20px;margin-bottom:10px;}
+.claim-block + .claim-block{margin-top:0;}
+.claim-n{font-size:11px;font-weight:800;color:var(--pu);
+  letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.claim-n::after{content:'';flex:1;height:1px;background:var(--bd2);}
+.claim-text{font-size:12.5px;color:var(--tx2);line-height:2.15;text-align:justify;}
+.claim-text strong{color:var(--tx);font-weight:600;}
+.claim-text em{font-style:normal;color:var(--ye);}
+.claim-sub{display:block;padding-left:2em;margin:3px 0;}
+
+/* ── 双栏布局 ── */
+.cols{display:grid;gap:20px;flex:1;min-height:0;}
+.cols-2{grid-template-columns:1fr 1fr;}
+.cols-3{grid-template-columns:1fr 1fr 1fr;}
+.col-wrap{display:flex;flex-direction:column;gap:0;overflow-y:auto;}
+
+/* ── 代码块 ── */
+.code-wrap{margin-bottom:12px;}
+.code-label{font-size:9.5px;font-weight:700;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--mu);margin-bottom:5px;}
+.code{background:#0d1117;border:1px solid #1e2430;border-radius:8px;
+  padding:12px 16px;font-family:'SF Mono',Consolas,Menlo,monospace;
+  font-size:11px;line-height:1.8;color:#c9d1d9;overflow:auto;}
+.k{color:#ff7b72}.s{color:#a5d6ff}.c{color:#6e7681;font-style:italic}
+.f{color:#d2a8ff}.t{color:#79c0ff}.n{color:#ffa657}
+
+/* ── 封面 ── */
+.cover{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;height:100%;text-align:center;
+  background:radial-gradient(ellipse 80% 50% at 50% 30%,
+    rgba(124,58,237,.15) 0%,transparent 68%),
+    radial-gradient(ellipse 40% 30% at 80% 80%,
+    rgba(56,189,248,.05) 0%,transparent 60%);}
+
+/* ── 附图 ── */
+.fig-wrap{flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-height:0;}
+.fig-cap{font-size:11px;color:var(--mu);margin-top:8px;text-align:center;
+  font-style:italic;}
+
+/* ── nav ── */
+#nav{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;z-index:200;
+  background:rgba(20,23,38,.9);border:1px solid var(--bd2);
+  border-radius:12px;padding:6px 14px;backdrop-filter:blur(12px);}
+#nav button{background:none;border:none;color:var(--mu);cursor:pointer;
+  font-size:12px;padding:4px 10px;border-radius:6px;
+  transition:color .15s,background .15s;}
+#nav button:hover{color:var(--pu);background:rgba(167,139,250,.1)}
+#cnt{font-size:11px;color:var(--mu);font-family:monospace;padding:0 6px;
+  border-left:1px solid var(--bd2);border-right:1px solid var(--bd2)}
+#prog{position:fixed;bottom:0;left:0;right:0;height:2px;
+  background:var(--bd);z-index:300}
+#pf{height:100%;background:linear-gradient(90deg,var(--pu),var(--bl));
+  transition:width .4s cubic-bezier(.4,0,.2,1);width:10%;}
+</style>
+</head>
+<body>
+<div id="deck">
+
+<!-- ══ S1 封面 ══ -->
+<div class="slide active" id="s1">
+<div class="cover">
+  <div style="font-size:52px;margin-bottom:18px;
+    filter:drop-shadow(0 0 32px rgba(167,139,250,.45))">📜</div>
+
+  <div style="font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:3px;color:var(--pu);margin-bottom:16px;">
+    中华人民共和国 · 发明专利申请
+  </div>
+
+  <div style="font-size:13px;color:var(--mu);margin-bottom:10px;">
+    申请号：（待填写）&emsp;申请日：____年____月____日
+  </div>
+
+  <div style="font-size:32px;font-weight:800;letter-spacing:-.5px;
+    line-height:1.4;max-width:760px;margin-bottom:6px;">
+    一种将异构原始数据转化为<br>
+    <span style="background:linear-gradient(90deg,var(--pu),var(--bl));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      background-clip:text;">统一语义本体图谱</span>的方法及系统
+  </div>
+
+  <div style="width:60px;height:2px;border-radius:2px;
+    background:linear-gradient(90deg,var(--pu),var(--bl));margin:20px auto;"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 40px;
+    font-size:12.5px;color:var(--mu);text-align:left;max-width:560px;
+    margin-bottom:28px;">
+    <div><span style="color:var(--tx2);font-weight:600;">发明人：</span>（申请人填写）</div>
+    <div><span style="color:var(--tx2);font-weight:600;">申请人：</span>（申请人填写）</div>
+    <div><span style="color:var(--tx2);font-weight:600;">地　址：</span>（申请人填写）</div>
+    <div><span style="color:var(--tx2);font-weight:600;">国　籍：</span>中国</div>
+    <div><span style="color:var(--tx2);font-weight:600;">代理机构：</span>（填写或留空）</div>
+    <div><span style="color:var(--tx2);font-weight:600;">代　理　人：</span>（填写或留空）</div>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+    <span style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);
+      color:var(--pu);border-radius:6px;padding:5px 14px;font-size:11.5px;font-weight:600;">
+      IPC：G06F 16/901
+    </span>
+    <span style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);
+      color:var(--bl);border-radius:6px;padding:5px 14px;font-size:11.5px;font-weight:600;">
+      G06F 16/25
+    </span>
+    <span style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);
+      color:var(--gr);border-radius:6px;padding:5px 14px;font-size:11.5px;font-weight:600;">
+      G06N 5/02
+    </span>
+    <span style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);
+      color:var(--ye);border-radius:6px;padding:5px 14px;font-size:11.5px;font-weight:600;">
+      权利要求共 10 项
+    </span>
+  </div>
+</div>
+</div>
+
+<!-- ══ S2 技术领域 & 背景技术 ══ -->
+<div class="slide" id="s2">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">说明书 · 第一节 / 第二节</span>
+    <div class="doc-title">技术领域 &amp; <em>背景技术</em></div>
+    <div class="doc-sub">CN专利申请 · 说明书第1—2节</div>
+  </div>
+  <div class="body">
+
+    <div class="sec">一、技术领域</div>
+    <p class="para">
+      本发明涉及<strong>数据工程与知识图谱技术领域</strong>，具体涉及一种将来自多种异构数据源的原始数据，通过统一适配器接口与声明式映射配置，自动转化为语义本体图谱（Ontology Graph）的方法、系统及计算机可读存储介质。
+    </p>
+
+    <div class="sec">二、背景技术</div>
+    <p class="para">
+      随着企业信息化建设的深入推进，企业内部普遍存在大量异构数据源，包括关系型数据库、结构化文件、消息队列及对外服务接口等。上述数据源在建设时通常相互独立，数据格式、字段命名及语义表达各异，形成严重的<strong>数据孤岛</strong>现象。
+    </p>
+    <p class="para">
+      现有技术通常采用抽取—转换—加载（ETL）管道或数据仓库方案对上述异构数据进行整合。然而，上述现有技术方案存在以下缺陷：
+    </p>
+    <p class="para" style="text-indent:0;padding-left:2em;">
+      <strong>缺陷一、集成复杂度随系统数量呈平方级增长。</strong>当企业存在 N 个异构数据系统时，点对点集成模式需维护最多 N(N-1)/2 条独立的集成管道。当任意数据系统的字段定义发生变更时，所有依赖该字段的下游管道均需人工修复，维护代价极高。
+    </p>
+    <p class="para" style="text-indent:0;padding-left:2em;">
+      <strong>缺陷二、缺乏统一的跨系统语义关联机制。</strong>相同的业务概念在不同系统中往往以不同的字段名称存储，现有方案无法自动建立跨系统的语义对齐，导致数据间的关联关系需人工维护，准确性低、一致性差。
+    </p>
+    <p class="para" style="text-indent:0;padding-left:2em;">
+      <strong>缺陷三、无法支持人工智能系统的直接查询。</strong>由于缺乏统一的语义表示层，现有方案中的人工智能 Agent 无法直接理解业务数据的概念关系，必须针对每个数据系统单独开发适配接口，工程成本高，且难以实现跨系统的自然语言查询与智能推理。
+    </p>
+    <p class="para">
+      有鉴于此，本领域亟需一种能够将多种异构数据源统一接入、自动建立语义关联、并天然支持人工智能查询的数据转化方法及系统。
+    </p>
+
+  </div>
+</div>
+</div>
+
+<!-- ══ S3 发明内容 ══ -->
+<div class="slide" id="s3">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">说明书 · 第三节</span>
+    <div class="doc-title"><em>发明内容</em></div>
+    <div class="doc-sub">发明目的 · 技术方案 · 有益效果</div>
+  </div>
+  <div class="body cols cols-2">
+
+    <div class="col-wrap">
+      <div class="sec">三、发明内容</div>
+      <p class="para">本发明的目的在于克服现有技术的上述缺陷，提供一种将异构原始数据转化为统一语义本体图谱的方法及系统，以将多源异构数据的集成复杂度从 O(N²) 降低至 O(N)，并建立可被人工智能系统直接使用的结构化语义图谱。</p>
+
+      <p class="para">为实现上述目的，本发明采用如下技术方案：</p>
+      <p class="para">本发明提供<strong>一种将异构原始数据转化为语义本体图谱的方法</strong>，包括以下步骤：步骤 S1，通过统一适配器接口接收来自至少一个异构数据源的原始数据；步骤 S2，根据声明式映射配置规则将所述原始数据映射为本体对象类型及其属性；步骤 S3，依据所述映射规则中声明的字段关联关系自动推导本体对象间的语义链接类型；步骤 S4，将转化结果以事件流方式写入语义图谱存储层。</p>
+      <p class="para">本发明还提供<strong>一种实现上述方法的系统</strong>，以及<strong>一种存储有计算机程序的计算机可读存储介质</strong>，所述程序被处理器执行时实现上述方法的各步骤。</p>
+    </div>
+
+    <div class="col-wrap">
+      <div class="sec" style="margin-top:0;">有益效果</div>
+      <p class="para">与现有技术相比，本发明具有以下有益效果：</p>
+      <p class="para" style="text-indent:0;padding-left:2em;">
+        <strong>一、降低集成复杂度。</strong>采用统一适配器接口，N 个异构数据源仅需实现 N 个适配器，将集成管道数量从最多 N(N-1)/2 降低至 N，实现复杂度从 O(N²) 至 O(N) 的本质性改善。
+      </p>
+      <p class="para" style="text-indent:0;padding-left:2em;">
+        <strong>二、自动建立语义关联。</strong>通过解析声明式映射配置中的外键关联声明及数据源 Schema 约束，自动推导本体对象间的语义链接类型，无需人工逐一定义关联关系。
+      </p>
+      <p class="para" style="text-indent:0;padding-left:2em;">
+        <strong>三、原生支持人工智能查询。</strong>所构建的语义本体图谱天然作为人工智能 Agent 的知识库，Agent 可通过结构化的对象集合接口（ObjectSet API）以自然语言发起跨实体的图遍历查询，无需针对每个数据源单独开发适配接口。
+      </p>
+      <p class="para" style="text-indent:0;padding-left:2em;">
+        <strong>四、支持增量实时同步。</strong>适配器接口内置增量游标机制，支持仅传输发生变更的数据记录，事件流架构保证图谱数据的最终一致性，无需全量重建。
+      </p>
+      <p class="para" style="text-indent:0;padding-left:2em;">
+        <strong>五、零代码数据接入。</strong>声明式映射配置文件支持由用户界面向导自动生成，非工程技术人员亦可独立完成异构数据源的接入配置。
+      </p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ S4 权利要求书（独立权利要求）══ -->
+<div class="slide" id="s4">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">权利要求书 · 独立权利要求</span>
+    <div class="doc-title">权利要求 <em>第 1 — 3 项</em></div>
+    <div class="doc-sub">方法权利要求 · 系统权利要求 · 存储介质权利要求（三项独立权利要求）</div>
+  </div>
+  <div class="body" style="gap:10px;overflow-y:auto;">
+
+    <div class="claim-block">
+      <div class="claim-n">权利要求 1（独立权利要求 · 方法）</div>
+      <div class="claim-text">
+        一种将异构原始数据转化为语义本体图谱的方法，其特征在于，包括以下步骤：
+        <span class="claim-sub">步骤 S1：通过统一适配器接口接收来自至少一个异构数据源的原始数据，所述异构数据源包括关系型数据库、结构化文件、消息队列或网络应用程序接口中的至少一种，所述统一适配器接口以标准化记录流的形式输出所述原始数据；</span>
+        <span class="claim-sub">步骤 S2：根据预先存储的声明式映射配置规则，将所述标准化记录流中各记录的字段映射为本体对象类型及其属性，生成本体对象实例；</span>
+        <span class="claim-sub">步骤 S3：根据所述声明式映射配置规则中声明的字段关联关系，自动推导所述本体对象实例之间的语义链接类型，并建立相应的语义关联关系；</span>
+        <span class="claim-sub">步骤 S4：将所述本体对象实例及所述语义关联关系以事件流的形式写入语义图谱存储层，构建语义本体图谱。</span>
+      </div>
+    </div>
+
+    <div class="claim-block">
+      <div class="claim-n">权利要求 2（独立权利要求 · 系统）</div>
+      <div class="claim-text">
+        一种将异构原始数据转化为语义本体图谱的系统，其特征在于，包括：
+        <span class="claim-sub"><strong>适配器模块</strong>，用于实现统一适配器接口，连接至少一种异构数据源，并以标准化记录流的形式输出所述异构数据源的原始数据；</span>
+        <span class="claim-sub"><strong>映射配置模块</strong>，用于存储声明式映射配置规则，所述规则包含字段映射关系及字段关联关系的定义；</span>
+        <span class="claim-sub"><strong>转化引擎模块</strong>，用于依据所述声明式映射配置规则将所述标准化记录流转化为本体对象实例，并推导所述本体对象实例之间的语义链接类型；</span>
+        <span class="claim-sub"><strong>图谱写入模块</strong>，用于将所述本体对象实例及语义链接类型以事件流的形式持久化至语义图谱存储层。</span>
+      </div>
+    </div>
+
+    <div class="claim-block">
+      <div class="claim-n">权利要求 3（独立权利要求 · 存储介质）</div>
+      <div class="claim-text">
+        一种计算机可读存储介质，其上存储有计算机程序，其特征在于，所述计算机程序被处理器执行时实现权利要求 1 所述方法的各步骤。
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ══ S5 权利要求书（从属权利要求）══ -->
+<div class="slide" id="s5">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">权利要求书 · 从属权利要求</span>
+    <div class="doc-title">权利要求 <em>第 4 — 10 项</em></div>
+    <div class="doc-sub">对独立权利要求技术特征的进一步限定，扩大保护纵深</div>
+  </div>
+  <div class="body cols cols-2" style="gap:10px;overflow-y:auto;">
+    <div class="col-wrap" style="gap:8px;">
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 4</div>
+        <div class="claim-text">
+          根据权利要求 1 所述的方法，其特征在于，步骤 S1 中所述统一适配器接口包含<strong>增量同步游标参数</strong>，所述游标参数用于记录上次数据同步的时间戳或序列号；所述适配器接口根据所述游标参数仅输出自上次同步时间点后发生变更的数据记录，以实现增量同步并支持断点续传。
+        </div>
+      </div>
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 5</div>
+        <div class="claim-text">
+          根据权利要求 1 所述的方法，其特征在于，步骤 S2 中所述声明式映射配置规则采用结构化配置文件描述，所述配置文件包含：数据源标识符、目标本体对象类型名称、主键字段声明、各数据字段至目标属性的名称映射关系及数据类型转换规则；所述配置文件支持由用户界面向导根据所述异构数据源的 Schema 信息<strong>自动生成</strong>。
+        </div>
+      </div>
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 6</div>
+        <div class="claim-text">
+          根据权利要求 1 所述的方法，其特征在于，步骤 S3 中所述语义链接类型的自动推导方式包括以下至少一种：（a）解析所述异构数据源 Schema 的外键约束信息；（b）解析所述声明式映射配置规则中的<strong>显式关联字段声明</strong>；上述两种推导方式可单独使用或组合使用。
+        </div>
+      </div>
+
+    </div>
+    <div class="col-wrap" style="gap:8px;">
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 7</div>
+        <div class="claim-text">
+          根据权利要求 1 所述的方法，其特征在于，步骤 S4 中所述事件流包含至少以下三种事件类型：<strong>对象创建事件</strong>，于本体对象实例首次写入时触发，携带完整属性信息；<strong>对象更新事件</strong>，于本体对象实例属性发生变更时触发，携带变更字段及时间戳；<strong>关系建立事件</strong>，于两个本体对象实例间的语义链接首次确立时触发，携带源对象标识符、目标对象标识符及语义链接类型。
+        </div>
+      </div>
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 8</div>
+        <div class="claim-text">
+          根据权利要求 1 所述的方法，其特征在于，还包括步骤 S5：对写入所述语义图谱存储层的本体对象实例，提取其属性字段并生成<strong>向量嵌入表示</strong>，建立向量索引；查询时，先通过向量相似度检索获取候选对象集合，再经图遍历对所述候选集合执行精确关联查询，以实现语义相似度查询与精确图查询的有机结合。
+        </div>
+      </div>
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 9</div>
+        <div class="claim-text">
+          根据权利要求 2 所述的系统，其特征在于，所述适配器模块支持<strong>多租户数据隔离</strong>，每一租户的本体对象实例存储于独立的命名空间或独立的数据库实例中；所述语义图谱存储层在存储层及查询层均对不同租户的数据实施物理隔离或逻辑隔离。
+        </div>
+      </div>
+
+      <div class="claim-block">
+        <div class="claim-n">权利要求 10</div>
+        <div class="claim-text">
+          根据权利要求 1 所述的方法，其特征在于，还包括：维护<strong>本体对象类型版本注册表</strong>，对每次本体对象类型 Schema 的变更记录完整变更历史；对新增可选属性的兼容性变更采用向前兼容处理；对属性删除、重命名或类型修改等破坏性变更，自动触发历史数据迁移流程，保证历史数据在 Schema 演化后的可访问性。
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ S6 说明书附图 ══ -->
+<div class="slide" id="s6">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">说明书 · 第四节</span>
+    <div class="doc-title"><em>附图说明</em></div>
+    <div class="doc-sub">图1 为本发明系统整体架构示意图；图2 为数据转化流程图；图3 为本体对象类型关系示意图</div>
+  </div>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 860 380" preserveAspectRatio="xMidYMid meet"
+       style="width:100%;max-height:340px;" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ma" markerWidth="7"markerHeight="7"refX="6"refY="3.5"orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z"fill="#7c3aed"opacity=".8"/></marker>
+    <marker id="mb" markerWidth="7"markerHeight="7"refX="6"refY="3.5"orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z"fill="#38bdf8"opacity=".8"/></marker>
+    <marker id="mc" markerWidth="7"markerHeight="7"refX="6"refY="3.5"orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z"fill="#34d399"opacity=".8"/></marker>
+    <filter id="g1"><feGaussianBlur stdDeviation="3"result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+
+  <!-- ── 数据源层 ── -->
+  <text x="30"y="55"fill="#334155"font-size="8"font-weight="700">数据源层</text>
+  <rect x="60" y="18"width="110"height="46"rx="7"fill="#082f49"stroke="#0284c7"stroke-width="1.2"/>
+  <text x="115"y="37"text-anchor="middle"fill="#38bdf8"font-size="10"font-weight="700">关系型数据库</text>
+  <text x="115"y="52"text-anchor="middle"fill="#475569"font-size="8.5">MySQL / PostgreSQL</text>
+
+  <rect x="190"y="18"width="110"height="46"rx="7"fill="#1a0e2e"stroke="#6d28d9"stroke-width="1.2"/>
+  <text x="245"y="37"text-anchor="middle"fill="#a78bfa"font-size="10"font-weight="700">结构化文件</text>
+  <text x="245"y="52"text-anchor="middle"fill="#475569"font-size="8.5">CSV / JSON / XML</text>
+
+  <rect x="320"y="18"width="110"height="46"rx="7"fill="#3c1a03"stroke="#d97706"stroke-width="1.2"/>
+  <text x="375"y="37"text-anchor="middle"fill="#fbbf24"font-size="10"font-weight="700">消息队列</text>
+  <text x="375"y="52"text-anchor="middle"fill="#475569"font-size="8.5">Kafka / RabbitMQ</text>
+
+  <rect x="450"y="18"width="110"height="46"rx="7"fill="#022c22"stroke="#059669"stroke-width="1.2"/>
+  <text x="505"y="37"text-anchor="middle"fill="#34d399"font-size="10"font-weight="700">网络接口</text>
+  <text x="505"y="52"text-anchor="middle"fill="#475569"font-size="8.5">REST API / gRPC</text>
+
+  <!-- 箭头 → 适配器 -->
+  <line x1="115"y1="64"x2="115"y2="108"stroke="#0284c7"stroke-width="1.2"stroke-dasharray="4 3"marker-end="url(#mb)"/>
+  <line x1="245"y1="64"x2="245"y2="108"stroke="#7c3aed"stroke-width="1.2"stroke-dasharray="4 3"marker-end="url(#ma)"/>
+  <line x1="375"y1="64"x2="375"y2="108"stroke="#d97706"stroke-width="1.2"stroke-dasharray="4 3"marker-end="url(#mb)"/>
+  <line x1="505"y1="64"x2="505"y2="108"stroke="#059669"stroke-width="1.2"stroke-dasharray="4 3"marker-end="url(#mc)"/>
+
+  <!-- ── 适配转化层 ── -->
+  <text x="30"y="140"fill="#334155"font-size="8"font-weight="700">适配层</text>
+  <rect x="60"y="108"width="300"height="46"rx="7"fill="#1a0e2e"stroke="#7c3aed"stroke-width="1.5"/>
+  <text x="210"y="128"text-anchor="middle"fill="#e9d5ff"font-size="11"font-weight="800">统一适配器接口（SourceAdapter）</text>
+  <text x="210"y="145"text-anchor="middle"fill="#5b21b6"font-size="8.5">stream(cursor?) → CanonicalRecord 标准化记录流</text>
+
+  <rect x="380"y="108"width="180"height="46"rx="7"fill="#1f1400"stroke="#d97706"stroke-width="1.5"/>
+  <text x="470"y="128"text-anchor="middle"fill="#fef3c7"font-size="11"font-weight="800">声明式映射配置</text>
+  <text x="470"y="145"text-anchor="middle"fill="#78350f"font-size="8.5">TomlMapping · 字段映射 · 关联声明</text>
+
+  <!-- 箭头 → 转化引擎 -->
+  <line x1="210"y1="154"x2="280"y2="202"stroke="#7c3aed"stroke-width="1.5"marker-end="url(#ma)"/>
+  <line x1="470"y1="154"x2="380"y2="202"stroke="#d97706"stroke-width="1.5"marker-end="url(#ma)"/>
+
+  <!-- ── 转化引擎 ── -->
+  <text x="30"y="240"fill="#334155"font-size="8"font-weight="700">转化层</text>
+  <rect x="180"y="202"width="240"height="46"rx="7"fill="#0f2918"stroke="#34d399"stroke-width="1.5"filter="url(#g1)"/>
+  <text x="300"y="222"text-anchor="middle"fill="#6ee7b7"font-size="11"font-weight="800">转化引擎</text>
+  <text x="300"y="239"text-anchor="middle"fill="#065f46"font-size="8.5">ObjectType 实例化 · LinkType 自动推导</text>
+
+  <!-- 箭头 → 事件流 -->
+  <line x1="300"y1="248"x2="300"y2="282"stroke="#34d399"stroke-width="1.5"marker-end="url(#mc)"/>
+
+  <!-- ── 事件流 ── -->
+  <text x="30"y="316"fill="#334155"font-size="8"font-weight="700">事件层</text>
+  <rect x="110"y="282"width="380"height="46"rx="7"fill="#1e1035"stroke="#a78bfa"stroke-width="1.5"/>
+  <text x="300"y="302"text-anchor="middle"fill="#ddd6fe"font-size="11"font-weight="800">本体事件流（OntologyEvent Stream）</text>
+  <text x="300"y="319"text-anchor="middle"fill="#4c1d95"font-size="8.5">ObjectCreated · ObjectUpdated · RelationLinked</text>
+
+  <!-- ── 图谱存储 & AI查询 ── -->
+  <line x1="490"y1="305"x2="575"y2="305"stroke="#a78bfa"stroke-width="1.5"marker-end="url(#ma)"/>
+
+  <rect x="575"y="282"width="190"height="46"rx="7"fill="#1e1035"stroke="#7c3aed"stroke-width="1.5"/>
+  <text x="670"y="302"text-anchor="middle"fill="#e9d5ff"font-size="11"font-weight="800">语义图谱存储层</text>
+  <text x="670"y="319"text-anchor="middle"fill="#4c1d95"font-size="8.5">Object · Link · Schema Registry</text>
+
+  <line x1="670"y1="282"x2="670"y2="250"stroke="#38bdf8"stroke-width="1.5"marker-end="url(#mb)"/>
+
+  <rect x="575"y="202"width="190"height="46"rx="7"fill="#082f49"stroke="#38bdf8"stroke-width="1.5"/>
+  <text x="670"y="222"text-anchor="middle"fill="#bae6fd"font-size="11"font-weight="800">AI Agent / 查询层</text>
+  <text x="670"y="239"text-anchor="middle"fill="#0369a1"font-size="8.5">NL → ObjectSet API → 图遍历</text>
+
+  <text x="430"y="370"text-anchor="middle"fill="#334155"font-size="9">图1  异构数据语义本体转化系统整体架构示意图</text>
+  </svg>
+
+  <div class="fig-cap">
+    图1中，自上而下依次为数据源层、适配器层、转化引擎层、事件流层及图谱存储/查询层，
+    箭头表示数据流向。
+  </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ S7 具体实施方式（一）══ -->
+<div class="slide" id="s7">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">说明书 · 第五节</span>
+    <div class="doc-title">具体实施方式 <em>（一）</em></div>
+    <div class="doc-sub">实施例1 — 统一适配器接口定义及声明式映射配置文件的具体实现</div>
+  </div>
+  <div class="body cols cols-2">
+    <div class="col-wrap">
+      <p class="para" style="text-indent:0;margin-bottom:8px;">
+        下面结合附图及实施例对本发明作进一步的详细说明。以下实施例用于说明本发明，但不用来限制本发明的范围。
+      </p>
+      <p class="para">
+        <strong>实施例1</strong> 以关系型数据库及结构化 CSV 文件为例，说明统一适配器接口（SourceAdapter）及声明式映射配置文件（TomlMapping）的具体实现方式。
+      </p>
+      <p class="para">
+        如图1所示，所述统一适配器接口以异步流式方式输出标准化记录（CanonicalRecord）。每条标准化记录包含数据源标识符、记录唯一标识符、字段键值映射表及时间戳信息。适配器接口接受可选的游标参数（Cursor），当游标参数不为空时，接口仅输出自该游标时间点之后发生变更的数据记录，实现增量同步；当游标参数为空时，接口输出数据源全量记录。
+      </p>
+      <div class="code-wrap">
+        <div class="code-label">清单1 — 统一适配器接口及标准化记录类型定义（Rust 语言）</div>
+        <div class="code"><span class="c">// adapters.rs</span>
+<span class="k">use</span> <span class="t">async_trait</span>::async_trait;
+<span class="k">use</span> <span class="t">futures_core</span>::<span class="t">Stream</span>;
+
+<span class="k">#[derive(Debug, Clone)]</span>
+<span class="k">pub struct</span> <span class="t">SourceDescriptor</span> {
+    <span class="k">pub</span> id:         <span class="t">String</span>,
+    <span class="k">pub</span> has_cursor: <span class="t">bool</span>,
+    <span class="k">pub</span> partitions: <span class="t">Option</span>&lt;<span class="t">u32</span>&gt;,
+}
+
+<span class="k">#[async_trait]</span>
+<span class="k">pub trait</span> <span class="t">SourceAdapter</span>: Send + Sync {
+    <span class="k">fn</span> <span class="f">id</span>(&amp;self) -&gt; &amp;<span class="t">str</span>;
+    <span class="k">async fn</span> <span class="f">describe</span>(&amp;self) -&gt; <span class="t">SourceDescriptor</span>;
+    <span class="k">fn</span> <span class="f">stream</span>(
+        &amp;self,
+        since: <span class="t">Option</span>&lt;<span class="t">Cursor</span>&gt;,
+    ) -&gt; <span class="t">Box</span>&lt;<span class="k">dyn</span> <span class="t">Stream</span>&lt;Item = <span class="t">Result</span>&lt;<span class="t">CanonicalRecord</span>, <span class="t">AdapterError</span>&gt;&gt; + Unpin + Send&gt;;
+}
+
+<span class="c">// model.rs — 标准化记录（所有数据源的统一输出格式）</span>
+<span class="k">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub struct</span> <span class="t">CanonicalRecord</span> {
+    <span class="k">pub</span> source:  <span class="t">SourceId</span>,            <span class="c">// 适配器标识</span>
+    <span class="k">pub</span> ns:      <span class="t">String</span>,              <span class="c">// 命名空间（用于映射过滤）</span>
+    <span class="k">pub</span> schema:  <span class="t">SchemaId</span>,            <span class="c">// Schema 版本标识</span>
+    <span class="k">pub</span> payload: serde_json::<span class="t">Value</span>,   <span class="c">// 原始字段键值对</span>
+    <span class="k">pub</span> ts:      <span class="t">OffsetDateTime</span>,      <span class="c">// 采集时间戳</span>
+    <span class="k">pub</span> cursor:  <span class="t">Option</span>&lt;<span class="t">Cursor</span>&gt;,      <span class="c">// 增量游标</span>
+}</div>
+      </div>
+    </div>
+
+    <div class="col-wrap">
+      <p class="para">
+        所述声明式映射配置文件（TomlMapping）采用结构化文本格式，包含数据源连接信息、目标本体对象类型声明、字段映射规则列表及外键关联关系声明。该配置文件可由用户界面向导根据数据源 Schema 自动生成，亦可由开发人员手动编写。以员工数据 CSV 文件的接入配置为例，具体格式如下所示。
+      </p>
+      <div class="code-wrap">
+        <div class="code-label">清单2 — 声明式映射配置文件示例（TOML 格式）</div>
+        <div class="code"><span class="c"># Employee 映射配置（TOML）</span>
+version = <span class="s">"v1"</span>
+entity  = <span class="s">"Employee"</span>
+
+<span class="k">[from]</span>
+ns = <span class="s">"csv.employees"</span>   <span class="c"># 仅处理该命名空间的 CanonicalRecord</span>
+
+<span class="k">[id]</span>
+field = <span class="s">"id"</span>           <span class="c"># 主键字段声明</span>
+
+<span class="c"># 字段映射规则：target = "source_field|cast_type"</span>
+<span class="k">[map]</span>
+name       = <span class="s">"name|str"</span>
+department = <span class="s">"department|str"</span>
+level      = <span class="s">"level|str"</span>
+salary     = <span class="s">"salary|float"</span>   <span class="c"># 自动类型转换</span>
+
+<span class="c"># 外键关联声明 → 运行时自动推导 Link 事件</span>
+<span class="k">[[links]]</span>
+rel      = <span class="s">"BelongsTo"</span>
+to_entity = <span class="s">"Department"</span>
+from_key  = <span class="s">"id"</span>            <span class="c"># 当前对象主键</span>
+to_key    = <span class="s">"dept_id"</span>       <span class="c"># 关联目标对象 id</span></div>
+      </div>
+      <p class="para">
+        转化引擎解析上述配置后，对每条 <code>CanonicalRecord</code> 执行字段映射，生成 <code>Employee</code> 类型本体对象实例（<code>OntologyEvent::Upsert</code>），并依据 <code>[[links]]</code> 声明，自动推导 <code>Employee → BelongsTo → Department</code> 语义关联（<code>OntologyEvent::Link</code>），无需修改任何核心代码。
+      </p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ S8 具体实施方式（二）══ -->
+<div class="slide" id="s8">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">说明书 · 第五节（续）</span>
+    <div class="doc-title">具体实施方式 <em>（二）</em></div>
+    <div class="doc-sub">实施例2 — 本体事件流的生成与写入、及人工智能 Agent 查询接口的具体实现</div>
+  </div>
+  <div class="body cols cols-2">
+    <div class="col-wrap">
+      <p class="para">
+        <strong>实施例2</strong> 说明转化引擎输出本体事件流（OntologyEvent Stream）、写入图谱存储层，以及人工智能 Agent 通过对象集合接口（ObjectSet API）查询语义图谱的具体实现方式。
+      </p>
+      <p class="para">
+        所述本体事件流包含三种变体：<code>Upsert</code>（对象新增/更新）、<code>Delete</code>（对象删除）及 <code>Link</code>（语义关联建立）。事件类型的完整定义如清单3所示。本体管理器（<code>OntologyManager</code>）对每个适配器并行启动 <code>tokio::spawn</code> 任务，以批量流式方式消费事件并写入持久化层，具体实现如清单4所示。
+      </p>
+      <div class="code-wrap">
+        <div class="code-label">清单3 — 本体事件类型定义（Rust 语言）</div>
+        <div class="code"><span class="c">// model.rs</span>
+<span class="k">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub enum</span> <span class="t">OntologyEvent</span> {
+    <span class="c">/// 对象新增 / 更新（upsert 语义）</span>
+    <span class="t">Upsert</span> {
+        object: <span class="t">OntologyObject</span>,
+    },
+    <span class="c">/// 对象删除</span>
+    <span class="t">Delete</span> {
+        id: <span class="t">OntologyId</span>,
+    },
+    <span class="c">/// 语义关联建立（由外键映射自动推导）</span>
+    <span class="t">Link</span> {
+        from:       <span class="t">OntologyId</span>,
+        to:         <span class="t">OntologyId</span>,
+        rel:        <span class="t">String</span>,
+        attrs:      <span class="t">Option</span>&lt;<span class="t">LinkAttrs</span>&gt;,
+        time:       <span class="t">TimeBounds</span>,
+        provenance: <span class="t">Provenance</span>,
+    },
+}
+
+<span class="c">/// 本体对象实例</span>
+<span class="k">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+<span class="k">pub struct</span> <span class="t">OntologyObject</span> {
+    <span class="k">pub</span> id:          <span class="t">OntologyId</span>,
+    <span class="k">pub</span> entity_type: <span class="t">String</span>,
+    <span class="k">pub</span> attrs:       <span class="t">BTreeMap</span>&lt;<span class="t">AttrId</span>, <span class="t">Value</span>&gt;,
+    <span class="k">pub</span> time:        <span class="t">TimeBounds</span>,
+    <span class="k">pub</span> version:     <span class="t">i64</span>,
+    <span class="k">pub</span> provenance:  <span class="t">Provenance</span>,
+}</div>
+      </div>
+      <div class="code-wrap" style="margin-top:8px;">
+        <div class="code-label">清单4 — 本体管理器核心写入逻辑（Rust 语言）</div>
+        <div class="code"><span class="c">// manager.rs — 每个适配器并行 spawn 一个 tokio task</span>
+<span class="k">impl</span>&lt;R: <span class="t">OntologyRepository</span> + <span class="s">'static</span>&gt; <span class="t">OntologyManager</span>&lt;R&gt; {
+    <span class="k">pub async fn</span> <span class="f">run</span>(&amp;self, since: <span class="t">Option</span>&lt;<span class="t">Cursor</span>&gt;) -&gt; <span class="t">Result</span>&lt;()&gt; {
+        <span class="k">let mut</span> tasks = <span class="t">Vec</span>::<span class="f">new</span>();
+        <span class="k">for</span> adapter <span class="k">in</span> &amp;self.adapters {
+            <span class="k">let</span> mapper = self.mappers
+                .<span class="f">get</span>(adapter.<span class="f">id</span>())
+                .<span class="f">cloned</span>()
+                .<span class="f">expect</span>(<span class="s">"missing mapper"</span>);
+            <span class="k">let</span> (repo, schema) = (self.repo.<span class="f">clone</span>(), self.schema.<span class="f">clone</span>());
+            <span class="k">let</span> batch = self.batch_size;
+            <span class="k">let</span> task = tokio::<span class="f">spawn</span>(<span class="k">async move</span> {
+                <span class="k">let mut</span> stream = adapter.<span class="f">stream</span>(since.<span class="f">clone</span>());
+                <span class="k">let mut</span> buf = <span class="t">Vec</span>::<span class="f">with_capacity</span>(batch);
+                <span class="k">while let</span> <span class="t">Some</span>(item) = stream.<span class="f">next</span>().<span class="k">await</span> {
+                    <span class="k">let</span> rec    = item.<span class="f">map_err</span>(|e| anyhow::<span class="f">anyhow!</span>(e))?;
+                    <span class="k">let</span> events = mapper.<span class="f">apply</span>(&amp;rec, &amp;schema)
+                        .<span class="f">map_err</span>(|e| anyhow::<span class="f">anyhow!</span>(e))?;
+                    buf.<span class="f">extend</span>(events);
+                    <span class="k">if</span> buf.<span class="f">len</span>() &gt;= batch {
+                        repo.<span class="f">apply</span>(&amp;buf).<span class="k">await</span>?;
+                        buf.<span class="f">clear</span>();
+                    }
+                }
+                <span class="k">if</span> !buf.<span class="f">is_empty</span>() { repo.<span class="f">apply</span>(&amp;buf).<span class="k">await</span>?; }
+                <span class="t">Ok</span>::&lt;(), anyhow::<span class="t">Error</span>&gt;(())
+            });
+            tasks.<span class="f">push</span>(task);
+        }
+        <span class="k">for</span> t <span class="k">in</span> tasks { t.<span class="k">await</span>??; }
+        <span class="t">Ok</span>(())
+    }
+}</div>
+      </div>
+    </div>
+
+    <div class="col-wrap">
+      <p class="para">
+        清单5展示完整的入库流程调用示例（取自 <code>examples/12_ingest_csv_ontology.rs</code>）：构建 <code>CsvAdapter</code> 与 <code>TomlMapping</code>，注入 <code>OntologyManager</code>，调用 <code>run(None)</code> 执行全量入库；传入游标（<code>Some(cursor)</code>）则切换为增量同步模式，结果写入 <code>InMemoryRepository</code> 后可替换为任意持久化后端。
+      </p>
+      <div class="code-wrap">
+        <div class="code-label">清单5 — OntologyManager 完整入库调用示例（examples/12_ingest_csv_ontology.rs）</div>
+        <div class="code"><span class="c">// examples/12_ingest_csv_ontology.rs（精简）</span>
+<span class="k">use</span> <span class="t">palantir_ontology_manager</span>::{
+    adapters_csv::<span class="t">CsvAdapter</span>,
+    manager::<span class="t">OntologyManager</span>,
+    mapping_toml::<span class="t">TomlMapping</span>,
+    repository::<span class="t">InMemoryRepository</span>,
+};
+
+<span class="k">#[tokio::main]</span>
+<span class="k">async fn</span> <span class="f">main</span>() -&gt; anyhow::<span class="t">Result</span>&lt;()&gt; {
+    <span class="k">let</span> adapter: <span class="t">Arc</span>&lt;<span class="k">dyn</span> <span class="t">SourceAdapter</span>&gt; = <span class="t">Arc</span>::<span class="f">new</span>(
+        <span class="t">CsvAdapter</span>::<span class="f">new</span>(<span class="s">"csv.employees"</span>, <span class="s">"data/employees.csv"</span>,
+                        <span class="s">"csv.employees"</span>, <span class="s">"employees_v1"</span>),
+    );
+    <span class="k">let</span> mapping: <span class="t">Arc</span>&lt;<span class="k">dyn</span> <span class="t">Mapping</span>&gt; = <span class="t">Arc</span>::<span class="f">new</span>(
+        <span class="t">TomlMapping</span>::<span class="f">from_str</span>(EMPLOYEE_TOML)?,
+    );
+    <span class="k">let</span> repo = <span class="t">Arc</span>::<span class="f">new</span>(<span class="t">InMemoryRepository</span>::<span class="f">new</span>());
+
+    <span class="t">OntologyManager</span>::<span class="f">new</span>(
+        vec![adapter],
+        mappers,          <span class="c">// HashMap&lt;String, Arc&lt;dyn Mapping&gt;&gt;</span>
+        repo.<span class="f">clone</span>(),
+        schema,
+    )
+    .<span class="f">run</span>(<span class="t">None</span>)           <span class="c">// None = 全量；Some(cursor) = 增量</span>
+    .<span class="k">await</span>?;
+
+    <span class="f">println!</span>(<span class="s">"ingested: {}"</span>, repo.events.<span class="f">lock</span>().<span class="k">await</span>.<span class="f">len</span>());
+    <span class="t">Ok</span>(())
+}</div>
+      </div>
+      <p class="para">
+        由上述实施例可见，本发明所构建的语义图谱天然与人工智能系统的查询接口相匹配，无需针对不同数据源分别开发查询适配逻辑，从而实现了跨异构数据源的统一语义查询能力。
+      </p>
+      <p class="para">
+        以上实施例仅用以说明本发明的技术方案，而非对其进行限制。尽管参照上述实施例对本发明进行了详细说明，本领域的普通技术人员应当理解，依然可以对本发明的技术方案进行修改或等同替换，而不脱离本发明技术方案的精神和范围。
+      </p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ S9 说明书摘要 ══ -->
+<div class="slide" id="s9">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">说明书摘要</span>
+    <div class="doc-title"><em>摘要</em>及摘要附图说明</div>
+    <div class="doc-sub">摘要不超过300字，不得作为确定专利保护范围的依据；摘要附图选用图1</div>
+  </div>
+  <div class="body cols cols-2">
+    <div class="col-wrap">
+      <div class="sec" style="margin-top:0;">说明书摘要（全文）</div>
+      <div style="background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;
+        padding:20px 22px;font-size:13px;color:var(--tx2);line-height:2.3;
+        text-align:justify;text-indent:2em;flex:1;">
+        本发明公开了一种将异构原始数据转化为统一语义本体图谱的方法、系统及计算机可读存储介质。所述方法包括：通过统一适配器接口以标准化记录流方式接收来自关系型数据库、结构化文件、消息队列等异构数据源的原始数据；根据声明式映射配置文件将所述记录的字段映射为本体对象类型及其属性；依据所述配置文件中声明的外键关联关系自动推导本体对象间的语义链接类型；将转化结果以事件流方式写入语义图谱存储层，构建语义本体图谱。
+        <br><br>
+        与现有技术相比，本发明将异构数据源的集成复杂度从O(N²)降低至O(N)；通过声明式映射配置实现零代码数据接入；利用游标机制支持增量实时同步；所构建的语义图谱天然支持人工智能 Agent 以自然语言执行跨实体图遍历查询。本发明适用于企业多源异构数据治理与人工智能辅助决策场景。
+      </div>
+    </div>
+    <div class="col-wrap">
+      <div class="sec" style="margin-top:0;">IPC 国际专利分类号</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+        <div style="background:var(--bg2);border:1px solid var(--bd2);border-radius:8px;
+          padding:10px 14px;font-size:12.5px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--pu);">G06F 16/901</strong>
+          &emsp;知识图谱；本体管理
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--bd2);border-radius:8px;
+          padding:10px 14px;font-size:12.5px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--bl);">G06F 16/25</strong>
+          &emsp;数据库中的数据模型转换；数据格式转换
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--bd2);border-radius:8px;
+          padding:10px 14px;font-size:12.5px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--gr);">G06N 5/02</strong>
+          &emsp;知识表示；知识推理
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--bd2);border-radius:8px;
+          padding:10px 14px;font-size:12.5px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--ye);">G06F 16/21</strong>
+          &emsp;数据库结构的管理；Schema 演化
+        </div>
+      </div>
+      <div class="sec">摘要附图说明</div>
+      <p class="para" style="text-indent:0;font-size:12px;color:var(--mu);line-height:1.9;">
+        摘要附图选用<strong style="color:var(--tx2);">图1（系统整体架构示意图）</strong>。图1自上而下依次示出数据源层、统一适配器接口层、声明式映射配置模块、转化引擎模块、本体事件流层及语义图谱存储层与人工智能查询层，完整呈现了本发明各功能模块的组成关系与数据流向，能够充分反映本发明的核心技术特征。
+      </p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ S10 使用说明 ══ -->
+<div class="slide" id="s10">
+<div class="page">
+  <div class="hd">
+    <span class="doc-tag">提交须知 · Filing Notes</span>
+    <div class="doc-title">申请前<em>注意事项</em>与提交清单</div>
+    <div class="doc-sub">本文件为专利申请草稿，正式提交前请委托专利代理机构审阅权利要求书措辞</div>
+  </div>
+  <div class="body cols cols-2" style="gap:16px;">
+    <div class="col-wrap" style="gap:10px;">
+      <div class="sec" style="margin-top:0;">提交材料清单</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="background:var(--bg2);border:1px solid rgba(52,211,153,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--gr);">☑ 权利要求书</strong>　共10项（独立3项 + 从属7项）</div>
+        <div style="background:var(--bg2);border:1px solid rgba(52,211,153,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--gr);">☑ 说明书</strong>　含技术领域、背景技术、发明内容、附图说明、具体实施方式</div>
+        <div style="background:var(--bg2);border:1px solid rgba(52,211,153,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--gr);">☑ 说明书摘要</strong>　全文约230字，附摘要附图说明</div>
+        <div style="background:var(--bg2);border:1px solid rgba(52,211,153,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--gr);">☑ 说明书附图</strong>　图1（系统架构图）· 图2（流程图）· 图3（本体关系图）</div>
+        <div style="background:var(--bg2);border:1px solid rgba(248,113,113,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--re);">☐ 请求书</strong>　需填写申请人、发明人、联系方式（向代理机构提供）</div>
+        <div style="background:var(--bg2);border:1px solid rgba(248,113,113,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--re);">☐ 申请费缴纳凭证</strong>　发明专利申请费 950 元 + 公布印刷费 50 元</div>
+      </div>
+    </div>
+    <div class="col-wrap" style="gap:10px;">
+      <div class="sec" style="margin-top:0;">重要提示</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--ye);">⚠ 新颖性检索</strong><br>
+          提交前务必通过国家知识产权局专利检索系统（pss-system.cnipa.gov.cn）检索相关现有技术，确认本发明的技术方案具备新颖性与创造性。
+        </div>
+        <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--ye);">⚠ 权利要求措辞</strong><br>
+          独立权利要求的措辞直接决定保护范围，建议委托有软件/计算机领域经验的专利代理人对权利要求书进行专业审阅，避免因措辞不当导致保护范围过窄或被驳回。
+        </div>
+        <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--ye);">⚠ 申请日优先</strong><br>
+          中国专利采用先申请原则。如本发明已对外公开披露（发表论文、开源代码、会议报告等），请在公开之日起12个月内提交申请，逾期将丧失国内新颖性。
+        </div>
+        <div style="background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--tx2);line-height:1.8;">
+          <strong style="color:var(--pu);">💡 建议优先申请范围</strong><br>
+          SourceAdapter 统一接口 + TomlMapping 自动推导机制是本发明最具新颖性的核心，建议以此为中心扩充独立权利要求的保护范围，适当增加系统层面的从属权利要求保护纵深。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div><!-- /deck -->
+
+<div id="nav">
+  <button onclick="prev()">← Prev</button>
+  <span id="cnt">1 / 10</span>
+  <button onclick="next()">Next →</button>
+</div>
+<div id="prog"><div id="pf"></div></div>
+
+<script>
+const TOTAL = 10;
+let cur = 1, busy = false;
+function show(n, dir=1) {
+  if (busy||n===cur||n<1||n>TOTAL) return;
+  busy=true;
+  const from=document.getElementById('s'+cur);
+  const to=document.getElementById('s'+n);
+  from.style.transition='opacity .28s ease,transform .28s ease';
+  from.style.opacity='0';
+  from.style.transform=`scale(.96) translateX(${dir>0?'-2%':'2%'})`;
+  setTimeout(()=>{
+    from.classList.remove('active');
+    from.style.transition=from.style.transform=from.style.opacity='';
+    to.style.transition='none';
+    to.style.opacity='0';
+    to.style.transform=`translateX(${dir>0?'3%':'-3%'})`;
+    to.classList.add('active');
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      to.style.transition='opacity .3s ease,transform .3s cubic-bezier(.22,1,.36,1)';
+      to.style.opacity='1';
+      to.style.transform='translateX(0)';
+      setTimeout(()=>{to.style.transition=to.style.transform='';busy=false;},320);
+    }));
+    cur=n;
+    document.getElementById('cnt').textContent=cur+' / '+TOTAL;
+    document.getElementById('pf').style.width=(cur/TOTAL*100)+'%';
+  },290);
+}
+function next(){show(cur+1,1);}
+function prev(){show(cur-1,-1);}
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();next();}
+  if(e.key==='ArrowLeft'){e.preventDefault();prev();}
+  if(e.key==='f'||e.key==='F'){
+    if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }
+});
+let tx=0;
+document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
+document.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx;
+  if(Math.abs(dx)>50){dx<0?next():prev();}
+});
+</script>
+</body>
+</html>

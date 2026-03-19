@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>数据孤岛</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0b0d17;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+}
+</style>
+</head>
+<body>
+<svg width="1000" height="480" viewBox="0 0 1000 480" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+    <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#151a2e" stroke-width="0.8"/>
+  </pattern>
+
+  <!-- HR purple -->
+  <linearGradient id="g-hr" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#6d28d9"/>
+    <stop offset="100%" stop-color="#3b0764"/>
+  </linearGradient>
+  <linearGradient id="g-hr-lid" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#a78bfa"/>
+    <stop offset="100%" stop-color="#7c3aed"/>
+  </linearGradient>
+
+  <!-- Finance blue -->
+  <linearGradient id="g-fin" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#0369a1"/>
+    <stop offset="100%" stop-color="#0c4a6e"/>
+  </linearGradient>
+  <linearGradient id="g-fin-lid" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#38bdf8"/>
+    <stop offset="100%" stop-color="#0284c7"/>
+  </linearGradient>
+
+  <!-- Sales green -->
+  <linearGradient id="g-sal" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#047857"/>
+    <stop offset="100%" stop-color="#022c22"/>
+  </linearGradient>
+  <linearGradient id="g-sal-lid" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#34d399"/>
+    <stop offset="100%" stop-color="#059669"/>
+  </linearGradient>
+
+  <!-- IT yellow -->
+  <linearGradient id="g-it" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#b45309"/>
+    <stop offset="100%" stop-color="#451a03"/>
+  </linearGradient>
+  <linearGradient id="g-it-lid" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#fbbf24"/>
+    <stop offset="100%" stop-color="#d97706"/>
+  </linearGradient>
+
+  <!-- Ops orange -->
+  <linearGradient id="g-ops" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#c2410c"/>
+    <stop offset="100%" stop-color="#431407"/>
+  </linearGradient>
+  <linearGradient id="g-ops-lid" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#fb923c"/>
+    <stop offset="100%" stop-color="#ea580c"/>
+  </linearGradient>
+
+  <!-- Highlight overlay for 3D left-edge effect -->
+  <linearGradient id="g-shine" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="white" stop-opacity="0.12"/>
+    <stop offset="40%"  stop-color="white" stop-opacity="0.04"/>
+    <stop offset="100%" stop-color="white" stop-opacity="0"/>
+  </linearGradient>
+
+  <!-- Red glow for barriers -->
+  <filter id="red-glow">
+    <feGaussianBlur stdDeviation="3" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+
+  <!-- Title glow -->
+  <filter id="title-glow">
+    <feGaussianBlur stdDeviation="6" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+
+<!-- ── Background ── -->
+<rect width="1000" height="480" fill="#0b0d17"/>
+<rect width="1000" height="480" fill="url(#grid)"/>
+
+<!-- ── Subtle vignette ── -->
+<radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+  <stop offset="0%"   stop-color="transparent"/>
+  <stop offset="100%" stop-color="#000" stop-opacity="0.5"/>
+</radialGradient>
+<rect width="1000" height="480" fill="url(#vignette)"/>
+
+<!-- ── Title ── -->
+<text x="500" y="52" text-anchor="middle"
+      fill="#f87171" font-size="26" font-weight="800" letter-spacing="4"
+      filter="url(#title-glow)">数据孤岛</text>
+<text x="500" y="76" text-anchor="middle"
+      fill="#475569" font-size="12" letter-spacing="0.5">
+  企业各部门数据封闭于独立筒仓，无法互通，形成跨系统数据割裂困境
+</text>
+
+<!-- ══════════════════════════════════════════
+     MACRO: each cylinder at cx, colors, label
+     body_top=165  body_bottom=310  lid_top=138
+     rx_body=40 ry_ell=11 rx_lid=43
+     ══════════════════════════════════════════ -->
+
+<!-- ─── SILO 1 : HR  cx=130 ─── -->
+<g>
+  <!-- ground shadow -->
+  <ellipse cx="130" cy="318" rx="45" ry="8" fill="#000" opacity="0.35"/>
+  <!-- body -->
+  <rect x="90" y="165" width="80" height="145" fill="url(#g-hr)"/>
+  <!-- shine -->
+  <rect x="90" y="165" width="80" height="145" fill="url(#g-shine)"/>
+  <!-- bottom ellipse -->
+  <ellipse cx="130" cy="310" rx="40" ry="11" fill="#2e1065" opacity="0.95"/>
+  <!-- body top rim -->
+  <ellipse cx="130" cy="165" rx="40" ry="11" fill="#5b21b6" opacity="0.85"/>
+  <!-- lid body -->
+  <rect x="87" y="140" width="86" height="26" fill="url(#g-hr-lid)"/>
+  <!-- lid bottom rim -->
+  <ellipse cx="130" cy="166" rx="43" ry="12" fill="#7c3aed"/>
+  <!-- lid top rim -->
+  <ellipse cx="130" cy="140" rx="43" ry="12" fill="#c4b5fd"/>
+  <!-- data rows -->
+  <rect x="104" y="185" width="52" height="3" rx="1" fill="#ddd6fe" opacity="0.45"/>
+  <rect x="104" y="194" width="38" height="3" rx="1" fill="#ddd6fe" opacity="0.35"/>
+  <rect x="104" y="203" width="46" height="3" rx="1" fill="#ddd6fe" opacity="0.45"/>
+  <rect x="104" y="212" width="30" height="3" rx="1" fill="#ddd6fe" opacity="0.30"/>
+  <rect x="104" y="221" width="52" height="3" rx="1" fill="#ddd6fe" opacity="0.40"/>
+  <rect x="104" y="230" width="42" height="3" rx="1" fill="#ddd6fe" opacity="0.30"/>
+  <rect x="104" y="239" width="48" height="3" rx="1" fill="#ddd6fe" opacity="0.40"/>
+  <rect x="104" y="248" width="34" height="3" rx="1" fill="#ddd6fe" opacity="0.30"/>
+  <rect x="104" y="257" width="52" height="3" rx="1" fill="#ddd6fe" opacity="0.35"/>
+  <!-- animated dots -->
+  <circle cx="130" cy="290" r="3" fill="#a78bfa" opacity="0.8">
+    <animate attributeName="cy" values="290;268;290" dur="2.8s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="116" cy="278" r="2" fill="#c4b5fd" opacity="0.6">
+    <animate attributeName="cy" values="278;258;278" dur="2.2s" begin="0.6s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.05;0.6" dur="2.2s" begin="0.6s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="144" cy="283" r="2" fill="#a78bfa" opacity="0.5">
+    <animate attributeName="cy" values="283;263;283" dur="3.1s" begin="1.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0.05;0.5" dur="3.1s" begin="1.2s" repeatCount="indefinite"/>
+  </circle>
+  <!-- lock -->
+  <text x="130" y="136" text-anchor="middle" font-size="13">🔒</text>
+  <!-- labels -->
+  <text x="130" y="342" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">HR</text>
+  <text x="130" y="357" text-anchor="middle" fill="#4b5563" font-size="10">人力资源</text>
+</g>
+
+<!-- ─── BARRIER 1  x=207 ─── -->
+<g filter="url(#red-glow)">
+  <line x1="207" y1="132" x2="207" y2="325"
+        stroke="#ef4444" stroke-width="1.5" stroke-dasharray="7 4" opacity="0.55">
+    <animate attributeName="opacity" values="0.55;0.9;0.55" dur="1.8s" repeatCount="indefinite"/>
+  </line>
+  <circle cx="207" cy="230" r="13" fill="#1a0505" stroke="#ef4444" stroke-width="1.5"/>
+  <line x1="200" y1="223" x2="214" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="214" y1="223" x2="200" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+</g>
+
+<!-- ─── SILO 2 : Finance  cx=285 ─── -->
+<g>
+  <ellipse cx="285" cy="318" rx="45" ry="8" fill="#000" opacity="0.35"/>
+  <rect x="245" y="165" width="80" height="145" fill="url(#g-fin)"/>
+  <rect x="245" y="165" width="80" height="145" fill="url(#g-shine)"/>
+  <ellipse cx="285" cy="310" rx="40" ry="11" fill="#082f49" opacity="0.95"/>
+  <ellipse cx="285" cy="165" rx="40" ry="11" fill="#0369a1" opacity="0.85"/>
+  <rect x="242" y="140" width="86" height="26" fill="url(#g-fin-lid)"/>
+  <ellipse cx="285" cy="166" rx="43" ry="12" fill="#0284c7"/>
+  <ellipse cx="285" cy="140" rx="43" ry="12" fill="#7dd3fc"/>
+  <rect x="259" y="185" width="52" height="3" rx="1" fill="#bae6fd" opacity="0.45"/>
+  <rect x="259" y="194" width="38" height="3" rx="1" fill="#bae6fd" opacity="0.35"/>
+  <rect x="259" y="203" width="46" height="3" rx="1" fill="#bae6fd" opacity="0.45"/>
+  <rect x="259" y="212" width="30" height="3" rx="1" fill="#bae6fd" opacity="0.30"/>
+  <rect x="259" y="221" width="52" height="3" rx="1" fill="#bae6fd" opacity="0.40"/>
+  <rect x="259" y="230" width="42" height="3" rx="1" fill="#bae6fd" opacity="0.30"/>
+  <rect x="259" y="239" width="48" height="3" rx="1" fill="#bae6fd" opacity="0.40"/>
+  <rect x="259" y="248" width="34" height="3" rx="1" fill="#bae6fd" opacity="0.30"/>
+  <rect x="259" y="257" width="52" height="3" rx="1" fill="#bae6fd" opacity="0.35"/>
+  <circle cx="285" cy="290" r="3" fill="#38bdf8" opacity="0.8">
+    <animate attributeName="cy" values="290;268;290" dur="2.4s" begin="0.3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2.4s" begin="0.3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="271" cy="275" r="2" fill="#7dd3fc" opacity="0.6">
+    <animate attributeName="cy" values="275;255;275" dur="2.9s" begin="0.9s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.05;0.6" dur="2.9s" begin="0.9s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="299" cy="282" r="2" fill="#38bdf8" opacity="0.5">
+    <animate attributeName="cy" values="282;262;282" dur="2.1s" begin="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0.05;0.5" dur="2.1s" begin="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <text x="285" y="136" text-anchor="middle" font-size="13">🔒</text>
+  <text x="285" y="342" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">Finance</text>
+  <text x="285" y="357" text-anchor="middle" fill="#4b5563" font-size="10">财务</text>
+</g>
+
+<!-- ─── BARRIER 2  x=362 ─── -->
+<g filter="url(#red-glow)">
+  <line x1="362" y1="132" x2="362" y2="325"
+        stroke="#ef4444" stroke-width="1.5" stroke-dasharray="7 4" opacity="0.55">
+    <animate attributeName="opacity" values="0.55;0.9;0.55" dur="2.1s" begin="0.4s" repeatCount="indefinite"/>
+  </line>
+  <circle cx="362" cy="230" r="13" fill="#1a0505" stroke="#ef4444" stroke-width="1.5"/>
+  <line x1="355" y1="223" x2="369" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="369" y1="223" x2="355" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+</g>
+
+<!-- ─── SILO 3 : Sales  cx=440 ─── -->
+<g>
+  <ellipse cx="440" cy="318" rx="45" ry="8" fill="#000" opacity="0.35"/>
+  <rect x="400" y="165" width="80" height="145" fill="url(#g-sal)"/>
+  <rect x="400" y="165" width="80" height="145" fill="url(#g-shine)"/>
+  <ellipse cx="440" cy="310" rx="40" ry="11" fill="#022c22" opacity="0.95"/>
+  <ellipse cx="440" cy="165" rx="40" ry="11" fill="#047857" opacity="0.85"/>
+  <rect x="397" y="140" width="86" height="26" fill="url(#g-sal-lid)"/>
+  <ellipse cx="440" cy="166" rx="43" ry="12" fill="#059669"/>
+  <ellipse cx="440" cy="140" rx="43" ry="12" fill="#6ee7b7"/>
+  <rect x="414" y="185" width="52" height="3" rx="1" fill="#a7f3d0" opacity="0.45"/>
+  <rect x="414" y="194" width="38" height="3" rx="1" fill="#a7f3d0" opacity="0.35"/>
+  <rect x="414" y="203" width="46" height="3" rx="1" fill="#a7f3d0" opacity="0.45"/>
+  <rect x="414" y="212" width="30" height="3" rx="1" fill="#a7f3d0" opacity="0.30"/>
+  <rect x="414" y="221" width="52" height="3" rx="1" fill="#a7f3d0" opacity="0.40"/>
+  <rect x="414" y="230" width="42" height="3" rx="1" fill="#a7f3d0" opacity="0.30"/>
+  <rect x="414" y="239" width="48" height="3" rx="1" fill="#a7f3d0" opacity="0.40"/>
+  <rect x="414" y="248" width="34" height="3" rx="1" fill="#a7f3d0" opacity="0.30"/>
+  <rect x="414" y="257" width="52" height="3" rx="1" fill="#a7f3d0" opacity="0.35"/>
+  <circle cx="440" cy="290" r="3" fill="#34d399" opacity="0.8">
+    <animate attributeName="cy" values="290;268;290" dur="3.0s" begin="0.8s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="3.0s" begin="0.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="426" cy="278" r="2" fill="#6ee7b7" opacity="0.6">
+    <animate attributeName="cy" values="278;258;278" dur="2.3s" begin="0.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.05;0.6" dur="2.3s" begin="0.2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="454" cy="283" r="2" fill="#34d399" opacity="0.5">
+    <animate attributeName="cy" values="283;263;283" dur="2.7s" begin="1.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0.05;0.5" dur="2.7s" begin="1.4s" repeatCount="indefinite"/>
+  </circle>
+  <text x="440" y="136" text-anchor="middle" font-size="13">🔒</text>
+  <text x="440" y="342" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">Sales</text>
+  <text x="440" y="357" text-anchor="middle" fill="#4b5563" font-size="10">销售</text>
+</g>
+
+<!-- ─── BARRIER 3  x=517 ─── -->
+<g filter="url(#red-glow)">
+  <line x1="517" y1="132" x2="517" y2="325"
+        stroke="#ef4444" stroke-width="1.5" stroke-dasharray="7 4" opacity="0.55">
+    <animate attributeName="opacity" values="0.55;0.9;0.55" dur="1.6s" begin="0.7s" repeatCount="indefinite"/>
+  </line>
+  <circle cx="517" cy="230" r="13" fill="#1a0505" stroke="#ef4444" stroke-width="1.5"/>
+  <line x1="510" y1="223" x2="524" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="524" y1="223" x2="510" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+</g>
+
+<!-- ─── SILO 4 : IT  cx=595 ─── -->
+<g>
+  <ellipse cx="595" cy="318" rx="45" ry="8" fill="#000" opacity="0.35"/>
+  <rect x="555" y="165" width="80" height="145" fill="url(#g-it)"/>
+  <rect x="555" y="165" width="80" height="145" fill="url(#g-shine)"/>
+  <ellipse cx="595" cy="310" rx="40" ry="11" fill="#3c1a03" opacity="0.95"/>
+  <ellipse cx="595" cy="165" rx="40" ry="11" fill="#92400e" opacity="0.85"/>
+  <rect x="552" y="140" width="86" height="26" fill="url(#g-it-lid)"/>
+  <ellipse cx="595" cy="166" rx="43" ry="12" fill="#d97706"/>
+  <ellipse cx="595" cy="140" rx="43" ry="12" fill="#fde68a"/>
+  <rect x="569" y="185" width="52" height="3" rx="1" fill="#fef3c7" opacity="0.45"/>
+  <rect x="569" y="194" width="38" height="3" rx="1" fill="#fef3c7" opacity="0.35"/>
+  <rect x="569" y="203" width="46" height="3" rx="1" fill="#fef3c7" opacity="0.45"/>
+  <rect x="569" y="212" width="30" height="3" rx="1" fill="#fef3c7" opacity="0.30"/>
+  <rect x="569" y="221" width="52" height="3" rx="1" fill="#fef3c7" opacity="0.40"/>
+  <rect x="569" y="230" width="42" height="3" rx="1" fill="#fef3c7" opacity="0.30"/>
+  <rect x="569" y="239" width="48" height="3" rx="1" fill="#fef3c7" opacity="0.40"/>
+  <rect x="569" y="248" width="34" height="3" rx="1" fill="#fef3c7" opacity="0.30"/>
+  <rect x="569" y="257" width="52" height="3" rx="1" fill="#fef3c7" opacity="0.35"/>
+  <circle cx="595" cy="290" r="3" fill="#fbbf24" opacity="0.8">
+    <animate attributeName="cy" values="290;268;290" dur="2.6s" begin="0.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2.6s" begin="0.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="581" cy="276" r="2" fill="#fcd34d" opacity="0.6">
+    <animate attributeName="cy" values="276;256;276" dur="3.2s" begin="1.1s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.05;0.6" dur="3.2s" begin="1.1s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="609" cy="284" r="2" fill="#fbbf24" opacity="0.5">
+    <animate attributeName="cy" values="284;264;284" dur="2.0s" begin="0.0s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0.05;0.5" dur="2.0s" begin="0.0s" repeatCount="indefinite"/>
+  </circle>
+  <text x="595" y="136" text-anchor="middle" font-size="13">🔒</text>
+  <text x="595" y="342" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">IT</text>
+  <text x="595" y="357" text-anchor="middle" fill="#4b5563" font-size="10">信息技术</text>
+</g>
+
+<!-- ─── BARRIER 4  x=672 ─── -->
+<g filter="url(#red-glow)">
+  <line x1="672" y1="132" x2="672" y2="325"
+        stroke="#ef4444" stroke-width="1.5" stroke-dasharray="7 4" opacity="0.55">
+    <animate attributeName="opacity" values="0.55;0.9;0.55" dur="2.3s" begin="1.0s" repeatCount="indefinite"/>
+  </line>
+  <circle cx="672" cy="230" r="13" fill="#1a0505" stroke="#ef4444" stroke-width="1.5"/>
+  <line x1="665" y1="223" x2="679" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="679" y1="223" x2="665" y2="237" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+</g>
+
+<!-- ─── SILO 5 : Ops  cx=750 ─── -->
+<g>
+  <ellipse cx="750" cy="318" rx="45" ry="8" fill="#000" opacity="0.35"/>
+  <rect x="710" y="165" width="80" height="145" fill="url(#g-ops)"/>
+  <rect x="710" y="165" width="80" height="145" fill="url(#g-shine)"/>
+  <ellipse cx="750" cy="310" rx="40" ry="11" fill="#431407" opacity="0.95"/>
+  <ellipse cx="750" cy="165" rx="40" ry="11" fill="#9a3412" opacity="0.85"/>
+  <rect x="707" y="140" width="86" height="26" fill="url(#g-ops-lid)"/>
+  <ellipse cx="750" cy="166" rx="43" ry="12" fill="#ea580c"/>
+  <ellipse cx="750" cy="140" rx="43" ry="12" fill="#fed7aa"/>
+  <rect x="724" y="185" width="52" height="3" rx="1" fill="#ffedd5" opacity="0.45"/>
+  <rect x="724" y="194" width="38" height="3" rx="1" fill="#ffedd5" opacity="0.35"/>
+  <rect x="724" y="203" width="46" height="3" rx="1" fill="#ffedd5" opacity="0.45"/>
+  <rect x="724" y="212" width="30" height="3" rx="1" fill="#ffedd5" opacity="0.30"/>
+  <rect x="724" y="221" width="52" height="3" rx="1" fill="#ffedd5" opacity="0.40"/>
+  <rect x="724" y="230" width="42" height="3" rx="1" fill="#ffedd5" opacity="0.30"/>
+  <rect x="724" y="239" width="48" height="3" rx="1" fill="#ffedd5" opacity="0.40"/>
+  <rect x="724" y="248" width="34" height="3" rx="1" fill="#ffedd5" opacity="0.30"/>
+  <rect x="724" y="257" width="52" height="3" rx="1" fill="#ffedd5" opacity="0.35"/>
+  <circle cx="750" cy="290" r="3" fill="#fb923c" opacity="0.8">
+    <animate attributeName="cy" values="290;268;290" dur="2.9s" begin="1.0s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2.9s" begin="1.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="736" cy="277" r="2" fill="#fdba74" opacity="0.6">
+    <animate attributeName="cy" values="277;257;277" dur="2.5s" begin="0.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.05;0.6" dur="2.5s" begin="0.4s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="764" cy="283" r="2" fill="#fb923c" opacity="0.5">
+    <animate attributeName="cy" values="283;263;283" dur="3.3s" begin="1.6s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0.05;0.5" dur="3.3s" begin="1.6s" repeatCount="indefinite"/>
+  </circle>
+  <text x="750" y="136" text-anchor="middle" font-size="13">🔒</text>
+  <text x="750" y="342" text-anchor="middle" fill="#fb923c" font-size="13" font-weight="700">Ops</text>
+  <text x="750" y="357" text-anchor="middle" fill="#4b5563" font-size="10">运营</text>
+</g>
+
+<!-- ── Pain point badges ── -->
+<!-- left -->
+<rect x="22" y="382" width="206" height="44" rx="8"
+      fill="#1a0808" stroke="#ef4444" stroke-width="1" opacity="0.85"/>
+<text x="125" y="401" text-anchor="middle" fill="#f87171" font-size="10" font-weight="700">⚠  数据无法跨部门共享</text>
+<text x="125" y="417" text-anchor="middle" fill="#475569" font-size="9">重复建设，信息不一致</text>
+
+<!-- center -->
+<rect x="393" y="382" width="206" height="44" rx="8"
+      fill="#1a0808" stroke="#ef4444" stroke-width="1" opacity="0.85"/>
+<text x="496" y="401" text-anchor="middle" fill="#f87171" font-size="10" font-weight="700">⚠  业务洞察难以形成</text>
+<text x="496" y="417" text-anchor="middle" fill="#475569" font-size="9">跨系统分析耗时数周</text>
+
+<!-- right -->
+<rect x="764" y="382" width="214" height="44" rx="8"
+      fill="#1a0808" stroke="#ef4444" stroke-width="1" opacity="0.85"/>
+<text x="871" y="401" text-anchor="middle" fill="#f87171" font-size="10" font-weight="700">⚠  AI 无法访问全局数据</text>
+<text x="871" y="417" text-anchor="middle" fill="#475569" font-size="9">智能决策受数据边界限制</text>
+
+<!-- connector dots from silos to badges -->
+<line x1="130" y1="366" x2="125" y2="380" stroke="#ef4444" stroke-width="1" stroke-dasharray="3 3" opacity="0.3"/>
+<line x1="440" y1="366" x2="496" y2="380" stroke="#ef4444" stroke-width="1" stroke-dasharray="3 3" opacity="0.3"/>
+<line x1="750" y1="366" x2="871" y2="380" stroke="#ef4444" stroke-width="1" stroke-dasharray="3 3" opacity="0.3"/>
+
+</svg>
+</body>
+</html>

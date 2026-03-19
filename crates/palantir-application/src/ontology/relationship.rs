@@ -17,8 +17,8 @@ impl RelationshipKind {
     pub fn label(&self) -> &str {
         match self {
             Self::BelongsTo => "BELONGS_TO",
-            Self::Has       => "HAS",
-            Self::LinkedTo  => "LINKED_TO",
+            Self::Has => "HAS",
+            Self::LinkedTo => "LINKED_TO",
             Self::SimilarTo => "SIMILAR_TO",
         }
     }
@@ -26,8 +26,8 @@ impl RelationshipKind {
     pub fn action_category(&self) -> &str {
         match self {
             Self::BelongsTo => "Logic",
-            Self::Has       => "Integration",
-            Self::LinkedTo  => "Workflow",
+            Self::Has => "Integration",
+            Self::LinkedTo => "Workflow",
             Self::SimilarTo => "Search",
         }
     }
@@ -35,10 +35,10 @@ impl RelationshipKind {
 
 #[derive(Debug, Clone)]
 pub struct Relationship {
-    pub from_id:   EntityId,
+    pub from_id: EntityId,
     pub from_type: ObjectType,
-    pub to_id:     EntityId,
-    pub to_type:   ObjectType,
-    pub kind:      RelationshipKind,
+    pub to_id: EntityId,
+    pub to_type: ObjectType,
+    pub kind: RelationshipKind,
     pub via_field: String,
 }

@@ -1,0 +1,16 @@
+id,name,role,flight_id,airline,certification
+cr001,James Wilson,captain,fl001,SkyAir,A
+cr002,Sarah Davis,copilot,fl001,SkyAir,A
+cr003,Tom Brown,attendant,fl001,SkyAir,A
+cr004,Lisa Garcia,captain,fl002,SkyAir,A
+cr005,Mike Johnson,copilot,fl002,SkyAir,A
+cr006,Anna White,attendant,fl003,OceanAir,B
+cr007,Chris Lee,captain,fl003,OceanAir,B
+cr008,Paula Kim,copilot,fl004,OceanAir,B
+cr009,Steve Chen,attendant,fl004,OceanAir,B
+cr010,Maria Lopez,captain,fl005,SkyAir,A
+cr011,Kevin Park,copilot,fl005,SkyAir,A
+cr012,Diana Ross,captain,fl006,SkyAir,A
+cr013,Eric Wang,attendant,fl007,OceanAir,B
+cr014,Fiona Tan,captain,fl007,OceanAir,B
+cr015,George Yu,copilot,fl008,SkyAir,A

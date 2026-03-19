@@ -1,0 +1,13 @@
+id,name,department_id,level,salary,country
+em1,Alice Chen,dep1,Staff,145000,USA
+em2,Bob Martinez,dep1,Senior,120000,USA
+em3,Carol White,dep2,Senior,115000,Germany
+em4,David Kim,dep3,Mid,85000,South Korea
+em5,Eva Patel,dep3,Staff,140000,India
+em6,Frank Lee,dep4,Junior,68000,USA
+em7,Grace Nguyen,dep4,Senior,95000,Vietnam
+em8,Henry Brown,dep5,Mid,78000,UK
+em9,Ivan Russo,dep5,Senior,98000,Italy
+em10,Julia Santos,dep6,Junior,62000,Brazil
+em11,Karl Muller,dep2,Mid,88000,Germany
+em12,Laura Kim,dep1,Senior,118000,USA

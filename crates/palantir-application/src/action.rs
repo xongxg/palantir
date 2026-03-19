@@ -13,7 +13,7 @@ use super::ontology::graph::OntologyGraph;
 
 #[derive(Debug, Clone)]
 pub struct ActionSummary {
-    pub category:    &'static str,
+    pub category: &'static str,
     pub description: String,
 }
 
@@ -52,23 +52,28 @@ pub fn derive_actions(graph: &OntologyGraph) -> Vec<ActionSummary> {
             ),
             _ => continue,
         };
-        actions.push(ActionSummary { category, description });
+        actions.push(ActionSummary {
+            category,
+            description,
+        });
     }
 
     let n_emp = graph.objects_by_type("Employee").len();
-    let n_tx  = graph.objects_by_type("Transaction").len();
+    let n_tx = graph.objects_by_type("Transaction").len();
 
     if n_emp > 0 {
         actions.push(ActionSummary {
             category: "Logic",
             description: format!(
-                "Compute salary bands for {} employees across department groups", n_emp
+                "Compute salary bands for {} employees across department groups",
+                n_emp
             ),
         });
         actions.push(ActionSummary {
             category: "Workflow",
             description: format!(
-                "Flag high-value transactions (>$500) for manager approval  ({} candidates)", n_tx
+                "Flag high-value transactions (>$500) for manager approval  ({} candidates)",
+                n_tx
             ),
         });
         actions.push(ActionSummary {
@@ -79,11 +84,11 @@ pub fn derive_actions(graph: &OntologyGraph) -> Vec<ActionSummary> {
     }
 
     actions.sort_by_key(|a| match a.category {
-        "Logic"       => 0u8,
+        "Logic" => 0u8,
         "Integration" => 1,
-        "Workflow"    => 2,
-        "Search"      => 3,
-        _             => 4,
+        "Workflow" => 2,
+        "Search" => 3,
+        _ => 4,
     });
     actions
 }

@@ -64,8 +64,12 @@ pub struct LinkAttrs(pub BTreeMap<AttrId, Value>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OntologyEvent {
-    Upsert { object: OntologyObject },
-    Delete { id: OntologyId },
+    Upsert {
+        object: OntologyObject,
+    },
+    Delete {
+        id: OntologyId,
+    },
     Link {
         from: OntologyId,
         to: OntologyId,

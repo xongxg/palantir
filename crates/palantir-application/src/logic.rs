@@ -15,38 +15,38 @@
 
 use std::collections::HashMap;
 
-use crate::ontology::{graph::OntologyGraph, relationship::RelationshipKind};
 use crate::domain::calculations;
 use crate::infrastructure::pipeline::dataset::Value;
+use crate::ontology::{graph::OntologyGraph, relationship::RelationshipKind};
 
 // ─── Output types ─────────────────────────────────────────────────────────────
 
 /// Result of the "salary band" Logic action.
 pub struct SalaryBandGroup {
-    pub band:    &'static str,
+    pub band: &'static str,
     /// Employee names in this band, sorted alphabetically.
     pub members: Vec<String>,
 }
 
 /// Result of the "spend metrics" Logic action — one row per employee.
 pub struct SpendMetrics {
-    pub employee_id:     String,
-    pub name:            String,
-    pub department:      String,
-    pub annual_salary:   f64,
-    pub total_spend:     f64,
+    pub employee_id: String,
+    pub name: String,
+    pub department: String,
+    pub annual_salary: f64,
+    pub total_spend: f64,
     /// spend / salary * 100
     pub spend_ratio_pct: f64,
-    pub risk_level:      &'static str,
+    pub risk_level: &'static str,
 }
 
 /// Result of the "category concentration" Logic action — one row per employee.
 pub struct CategoryConcentration {
-    pub employee_id:      String,
-    pub name:             String,
-    pub top_category:     String,
-    pub top_amount:       f64,
-    pub total_spend:      f64,
+    pub employee_id: String,
+    pub name: String,
+    pub top_category: String,
+    pub top_amount: f64,
+    pub total_spend: f64,
     /// top_category_amount / total_spend
     pub concentration_pct: f64,
 }
@@ -62,15 +62,20 @@ pub fn calc_salary_bands(graph: &OntologyGraph) -> Vec<SalaryBandGroup> {
 
     for emp in graph.objects_by_type("Employee") {
         let salary = emp.get("salary").and_then(Value::as_f64).unwrap_or(0.0);
-        let name   = emp.label();
-        let band   = calculations::salary_band(salary);
+        let name = emp.label();
+        let band = calculations::salary_band(salary);
         groups.entry(band).or_default().push(name);
     }
 
     // Sort band keys by minimum salary threshold (highest first)
-    let band_order = ["Staff Band    ($130k+)", "Senior Band   ($100k–$130k)",
-                      "Mid Band      ($70k–$100k)", "Junior Band   ($0–$70k)"];
-    let mut result: Vec<SalaryBandGroup> = band_order.iter()
+    let band_order = [
+        "Staff Band    ($130k+)",
+        "Senior Band   ($100k–$130k)",
+        "Mid Band      ($70k–$100k)",
+        "Junior Band   ($0–$70k)",
+    ];
+    let mut result: Vec<SalaryBandGroup> = band_order
+        .iter()
         .filter_map(|&band| {
             groups.remove(band).map(|mut members| {
                 members.sort();
@@ -93,7 +98,8 @@ pub fn calc_salary_bands(graph: &OntologyGraph) -> Vec<SalaryBandGroup> {
 /// Joins Employee → Transaction via HAS edges, then calls domain calculation rules
 /// to produce spend ratio and risk level for each employee.
 pub fn calc_spend_metrics(graph: &OntologyGraph) -> Vec<SpendMetrics> {
-    let mut rows: Vec<SpendMetrics> = graph.objects_by_type("Employee")
+    let mut rows: Vec<SpendMetrics> = graph
+        .objects_by_type("Employee")
         .into_iter()
         .map(|emp| {
             let salary = emp.get("salary").and_then(Value::as_f64).unwrap_or(0.0);
@@ -114,7 +120,8 @@ pub fn calc_spend_metrics(graph: &OntologyGraph) -> Vec<SpendMetrics> {
                 let mut by_cat: HashMap<String, f64> = HashMap::new();
                 for rel in graph.outgoing(&emp.id.0, Some(&RelationshipKind::Has)) {
                     if let Some(tx) = graph.find_object(&rel.to_id.0) {
-                        let cat = tx.get("category")
+                        let cat = tx
+                            .get("category")
                             .and_then(Value::as_str)
                             .unwrap_or("Other")
                             .to_string();
@@ -134,10 +141,10 @@ pub fn calc_spend_metrics(graph: &OntologyGraph) -> Vec<SpendMetrics> {
                 .unwrap_or_default();
 
             SpendMetrics {
-                employee_id:     emp.id.0.clone(),
-                name:            emp.label(),
+                employee_id: emp.id.0.clone(),
+                name: emp.label(),
                 department,
-                annual_salary:   salary,
+                annual_salary: salary,
                 total_spend,
                 spend_ratio_pct,
                 risk_level: calculations::expense_risk_level(spend_ratio_pct, concentration),
@@ -145,7 +152,11 @@ pub fn calc_spend_metrics(graph: &OntologyGraph) -> Vec<SpendMetrics> {
         })
         .collect();
 
-    rows.sort_by(|a, b| b.spend_ratio_pct.partial_cmp(&a.spend_ratio_pct).unwrap_or(std::cmp::Ordering::Equal));
+    rows.sort_by(|a, b| {
+        b.spend_ratio_pct
+            .partial_cmp(&a.spend_ratio_pct)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     rows
 }
 
@@ -154,13 +165,15 @@ pub fn calc_spend_metrics(graph: &OntologyGraph) -> Vec<SpendMetrics> {
 /// For each employee, finds the top spend category and computes the fraction
 /// of total spend it represents (using `domain::calculations::concentration_ratio`).
 pub fn calc_category_concentration(graph: &OntologyGraph) -> Vec<CategoryConcentration> {
-    let mut rows: Vec<CategoryConcentration> = graph.objects_by_type("Employee")
+    let mut rows: Vec<CategoryConcentration> = graph
+        .objects_by_type("Employee")
         .into_iter()
         .filter_map(|emp| {
             let mut by_cat: HashMap<String, f64> = HashMap::new();
             for rel in graph.outgoing(&emp.id.0, Some(&RelationshipKind::Has)) {
                 if let Some(tx) = graph.find_object(&rel.to_id.0) {
-                    let cat = tx.get("category")
+                    let cat = tx
+                        .get("category")
                         .and_then(Value::as_str)
                         .unwrap_or("Other")
                         .to_string();
@@ -172,7 +185,8 @@ pub fn calc_category_concentration(graph: &OntologyGraph) -> Vec<CategoryConcent
                 return None;
             }
             let total_spend: f64 = by_cat.values().sum();
-            let (top_category, &top_amount) = by_cat.iter()
+            let (top_category, &top_amount) = by_cat
+                .iter()
                 .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(k, v)| (k, v))
                 .unwrap();
@@ -181,9 +195,9 @@ pub fn calc_category_concentration(graph: &OntologyGraph) -> Vec<CategoryConcent
                 calculations::concentration_ratio(top_amount, total_spend) * 100.0;
 
             Some(CategoryConcentration {
-                employee_id:      emp.id.0.clone(),
-                name:             emp.label(),
-                top_category:     top_category.clone(),
+                employee_id: emp.id.0.clone(),
+                name: emp.label(),
+                top_category: top_category.clone(),
                 top_amount,
                 total_spend,
                 concentration_pct,
@@ -191,6 +205,10 @@ pub fn calc_category_concentration(graph: &OntologyGraph) -> Vec<CategoryConcent
         })
         .collect();
 
-    rows.sort_by(|a, b| b.concentration_pct.partial_cmp(&a.concentration_pct).unwrap_or(std::cmp::Ordering::Equal));
+    rows.sort_by(|a, b| {
+        b.concentration_pct
+            .partial_cmp(&a.concentration_pct)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     rows
 }

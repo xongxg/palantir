@@ -1,0 +1,9 @@
+id,name,department,salary,level
+e1,Alice Chen,Engineering,120000,Senior
+e2,Bob Martinez,Engineering,95000,Mid
+e3,Carol White,Sales,85000,Senior
+e4,David Kim,Sales,72000,Mid
+e5,Eva Patel,Marketing,90000,Senior
+e6,Frank Lee,Marketing,68000,Junior
+e7,Grace Nguyen,Engineering,145000,Staff
+e8,Henry Brown,Operations,78000,Mid

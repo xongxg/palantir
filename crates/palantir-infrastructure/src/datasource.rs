@@ -14,8 +14,8 @@ pub struct CsvLoader;
 
 impl CsvLoader {
     pub fn load(path: &str, object_type: &str) -> Result<Dataset, String> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| format!("Cannot read {}: {}", path, e))?;
+        let content =
+            fs::read_to_string(path).map_err(|e| format!("Cannot read {}: {}", path, e))?;
 
         let mut lines = content.lines();
 
@@ -28,17 +28,23 @@ impl CsvLoader {
         let mut dataset = Dataset::new(path, object_type);
 
         for (row_idx, line) in lines.enumerate() {
-            if line.trim().is_empty() { continue; }
+            if line.trim().is_empty() {
+                continue;
+            }
 
             let values: Vec<&str> = line.split(',').collect();
             if values.len() != headers.len() {
                 return Err(format!(
                     "Row {} has {} columns, expected {}",
-                    row_idx + 2, values.len(), headers.len()
+                    row_idx + 2,
+                    values.len(),
+                    headers.len()
                 ));
             }
 
-            let id = headers.iter().position(|h| *h == "id")
+            let id = headers
+                .iter()
+                .position(|h| *h == "id")
                 .and_then(|i| values.get(i).copied())
                 .unwrap_or("unknown")
                 .trim()
@@ -58,9 +64,17 @@ impl CsvLoader {
 }
 
 fn infer_value(raw: &str) -> Value {
-    if let Ok(i) = raw.parse::<i64>() { return Value::Int(i); }
-    if let Ok(f) = raw.parse::<f64>() { return Value::Float(f); }
-    if raw == "true"  { return Value::Bool(true); }
-    if raw == "false" { return Value::Bool(false); }
+    if let Ok(i) = raw.parse::<i64>() {
+        return Value::Int(i);
+    }
+    if let Ok(f) = raw.parse::<f64>() {
+        return Value::Float(f);
+    }
+    if raw == "true" {
+        return Value::Bool(true);
+    }
+    if raw == "false" {
+        return Value::Bool(false);
+    }
     Value::String(raw.to_string())
 }

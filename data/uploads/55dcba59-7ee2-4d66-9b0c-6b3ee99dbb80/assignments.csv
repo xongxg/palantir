@@ -1,0 +1,14 @@
+id,project_id,employee_id,role,allocation_pct
+a1,p1,e1,Lead,100
+a2,p1,e2,Engineer,80
+a3,p1,e12,Engineer,60
+a4,p2,e3,Lead,100
+a5,p2,e11,Designer,70
+a6,p3,e5,Lead,100
+a7,p3,e4,Analyst,80
+a8,p4,e7,Lead,100
+a9,p4,e6,Coordinator,90
+a10,p5,e9,Lead,100
+a11,p5,e8,Operator,80
+a12,p7,e2,Lead,20
+a13,p7,e12,Engineer,40

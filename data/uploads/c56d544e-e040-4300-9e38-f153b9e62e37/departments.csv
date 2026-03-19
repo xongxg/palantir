@@ -1,0 +1,7 @@
+id,name,headcount,budget,status,country
+dep1,Engineering,18,2000000,Active,USA
+dep2,Product,9,800000,Active,Germany
+dep3,Sales,14,1200000,Active,South Korea
+dep4,Marketing,7,600000,Active,USA
+dep5,Logistics,11,500000,Active,UK
+dep6,Support,5,300000,Review,Brazil

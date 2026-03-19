@@ -20,9 +20,9 @@ pub enum DddLayer {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DddConcept {
     // Domain layer
-    AggregateRoot,  // owns child entities; no parent owner
-    Entity,         // has identity; owned by an aggregate
-    ValueObject,    // grouping dimension; identity-free, value-based
+    AggregateRoot, // owns child entities; no parent owner
+    Entity,        // has identity; owned by an aggregate
+    ValueObject,   // grouping dimension; identity-free, value-based
 
     // Application layer
     DomainService,      // Logic  — cross-entity computation within domain
@@ -30,28 +30,29 @@ pub enum DddConcept {
     QueryHandler,       // Search  — CQRS read side
 
     // Infrastructure layer
-    Repository,             // Integration — data access port
-    AntiCorruptionLayer,    // Dataset adapter — keeps domain model pure
+    Repository,          // Integration — data access port
+    AntiCorruptionLayer, // Dataset adapter — keeps domain model pure
 }
 
 impl DddConcept {
     pub fn label(&self) -> &str {
         match self {
-            Self::AggregateRoot         => "Aggregate Root",
-            Self::Entity                => "Entity",
-            Self::ValueObject           => "Value Object",
-            Self::DomainService         => "Domain Service",
-            Self::ApplicationService    => "Application Service",
-            Self::QueryHandler          => "Query Handler",
-            Self::Repository            => "Repository",
-            Self::AntiCorruptionLayer   => "Anti-Corruption Layer",
+            Self::AggregateRoot => "Aggregate Root",
+            Self::Entity => "Entity",
+            Self::ValueObject => "Value Object",
+            Self::DomainService => "Domain Service",
+            Self::ApplicationService => "Application Service",
+            Self::QueryHandler => "Query Handler",
+            Self::Repository => "Repository",
+            Self::AntiCorruptionLayer => "Anti-Corruption Layer",
         }
     }
 
     pub fn layer(&self) -> DddLayer {
         match self {
-            Self::AggregateRoot | Self::Entity | Self::ValueObject
-            | Self::DomainService => DddLayer::Domain,
+            Self::AggregateRoot | Self::Entity | Self::ValueObject | Self::DomainService => {
+                DddLayer::Domain
+            }
 
             Self::ApplicationService | Self::QueryHandler => DddLayer::Application,
 
@@ -65,16 +66,16 @@ impl DddConcept {
 #[derive(Debug, Clone)]
 pub struct ObjectClassification {
     pub object_type: String,
-    pub concept:     DddConcept,
-    pub reason:      &'static str,
+    pub concept: DddConcept,
+    pub reason: &'static str,
 }
 
 #[derive(Debug, Clone)]
 pub struct ActionClassification {
     pub relationship_kind: String, // "BELONGS_TO" | "HAS" | "LINKED_TO" | "SIMILAR_TO"
-    pub concept:           DddConcept,
-    pub palantir_action:   &'static str,
-    pub ddd_pattern:       &'static str,
+    pub concept: DddConcept,
+    pub palantir_action: &'static str,
+    pub ddd_pattern: &'static str,
 }
 
 #[derive(Debug)]
@@ -120,7 +121,9 @@ fn classify_objects(graph: &OntologyGraph) -> Vec<ObjectClassification> {
     // Classify concrete entity types
     for obj in &graph.objects {
         let t = &obj.object_type.0;
-        if !seen.insert(t.clone()) { continue; }
+        if !seen.insert(t.clone()) {
+            continue;
+        }
 
         let (concept, reason) = match (owns_children.contains(t), is_owned.contains(t)) {
             (true, false) => (
@@ -140,7 +143,11 @@ fn classify_objects(graph: &OntologyGraph) -> Vec<ObjectClassification> {
                 "has identity; standalone entity with no ownership edges",
             ),
         };
-        out.push(ObjectClassification { object_type: t.clone(), concept, reason });
+        out.push(ObjectClassification {
+            object_type: t.clone(),
+            concept,
+            reason,
+        });
     }
 
     // Classify grouping dimensions (Value Objects)
@@ -155,8 +162,8 @@ fn classify_objects(graph: &OntologyGraph) -> Vec<ObjectClassification> {
     }
 
     out.sort_by_key(|c| match c.concept.layer() {
-        DddLayer::Domain         => 0u8,
-        DddLayer::Application    => 1,
+        DddLayer::Domain => 0u8,
+        DddLayer::Application => 1,
         DddLayer::Infrastructure => 2,
     });
     out
@@ -166,27 +173,27 @@ fn classify_actions() -> Vec<ActionClassification> {
     vec![
         ActionClassification {
             relationship_kind: "BELONGS_TO".into(),
-            concept:           DddConcept::DomainService,
-            palantir_action:   "Logic",
-            ddd_pattern:       "Domain Service — stateless cross-entity computation",
+            concept: DddConcept::DomainService,
+            palantir_action: "Logic",
+            ddd_pattern: "Domain Service — stateless cross-entity computation",
         },
         ActionClassification {
             relationship_kind: "HAS".into(),
-            concept:           DddConcept::Repository,
-            palantir_action:   "Integration",
-            ddd_pattern:       "Repository + ACL — join across bounded contexts",
+            concept: DddConcept::Repository,
+            palantir_action: "Integration",
+            ddd_pattern: "Repository + ACL — join across bounded contexts",
         },
         ActionClassification {
             relationship_kind: "LINKED_TO".into(),
-            concept:           DddConcept::ApplicationService,
-            palantir_action:   "Workflow",
-            ddd_pattern:       "Application Service — command handler, dispatches domain ops",
+            concept: DddConcept::ApplicationService,
+            palantir_action: "Workflow",
+            ddd_pattern: "Application Service — command handler, dispatches domain ops",
         },
         ActionClassification {
             relationship_kind: "SIMILAR_TO".into(),
-            concept:           DddConcept::QueryHandler,
-            palantir_action:   "Search",
-            ddd_pattern:       "Query Handler — CQRS read side, no domain state mutation",
+            concept: DddConcept::QueryHandler,
+            palantir_action: "Search",
+            ddd_pattern: "Query Handler — CQRS read side, no domain state mutation",
         },
     ]
 }

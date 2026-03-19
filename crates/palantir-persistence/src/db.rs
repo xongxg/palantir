@@ -133,9 +133,15 @@ impl Db {
         .await?;
 
         // Add metadata columns to connectors (idempotent — ignore if already exist)
-        let _ = sqlx::query("ALTER TABLE connectors ADD COLUMN headers        TEXT DEFAULT NULL").execute(&self.pool).await;
-        let _ = sqlx::query("ALTER TABLE connectors ADD COLUMN samples        TEXT DEFAULT NULL").execute(&self.pool).await;
-        let _ = sqlx::query("ALTER TABLE connectors ADD COLUMN mapping_config TEXT DEFAULT NULL").execute(&self.pool).await;
+        let _ = sqlx::query("ALTER TABLE connectors ADD COLUMN headers        TEXT DEFAULT NULL")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE connectors ADD COLUMN samples        TEXT DEFAULT NULL")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE connectors ADD COLUMN mapping_config TEXT DEFAULT NULL")
+            .execute(&self.pool)
+            .await;
 
         // Enable foreign key enforcement
         sqlx::query("PRAGMA foreign_keys = ON")
@@ -155,18 +161,21 @@ impl Db {
     // ── Projects ──────────────────────────────────────────────────────────────
 
     pub async fn create_project(&self, name: &str) -> Result<ProjectRow> {
-        let id  = Uuid::new_v4().to_string();
+        let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
-        sqlx::query(
-            "INSERT INTO projects (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(name)
-        .bind(&now)
-        .bind(&now)
-        .execute(&self.pool)
-        .await?;
-        Ok(ProjectRow { id, name: name.to_string(), created_at: now.clone(), updated_at: now })
+        sqlx::query("INSERT INTO projects (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)")
+            .bind(&id)
+            .bind(name)
+            .bind(&now)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        Ok(ProjectRow {
+            id,
+            name: name.to_string(),
+            created_at: now.clone(),
+            updated_at: now,
+        })
     }
 
     pub async fn list_projects(&self) -> Result<Vec<ProjectRow>> {
@@ -187,12 +196,10 @@ impl Db {
     }
 
     pub async fn get_project(&self, id: &str) -> Result<Option<ProjectRow>> {
-        let row = sqlx::query(
-            "SELECT id, name, created_at, updated_at FROM projects WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query("SELECT id, name, created_at, updated_at FROM projects WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(|r| ProjectRow {
             id: r.get("id"),
             name: r.get("name"),
@@ -241,16 +248,17 @@ impl Db {
     }
 
     pub async fn update_connector_metadata(
-        &self, id: &str, headers: &str, samples: &str,
+        &self,
+        id: &str,
+        headers: &str,
+        samples: &str,
     ) -> Result<()> {
-        sqlx::query(
-            "UPDATE connectors SET headers = ?, samples = ? WHERE id = ?",
-        )
-        .bind(headers)
-        .bind(samples)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE connectors SET headers = ?, samples = ? WHERE id = ?")
+            .bind(headers)
+            .bind(samples)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -394,15 +402,18 @@ impl Db {
         .bind(project_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(|r| BuildRow {
-            id: r.get("id"),
-            project_id: r.get("project_id"),
-            created_at: r.get("created_at"),
-            entities: r.get("entities"),
-            relationships: r.get("relationships"),
-            bounded_contexts: r.get("bounded_contexts"),
-            applied_events: r.get("applied_events"),
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| BuildRow {
+                id: r.get("id"),
+                project_id: r.get("project_id"),
+                created_at: r.get("created_at"),
+                entities: r.get("entities"),
+                relationships: r.get("relationships"),
+                bounded_contexts: r.get("bounded_contexts"),
+                applied_events: r.get("applied_events"),
+            })
+            .collect())
     }
 
     pub async fn clear_project_graph(&self, project_id: &str) -> Result<()> {

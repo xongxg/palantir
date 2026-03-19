@@ -20,13 +20,18 @@ pub struct Record {
 
 impl Record {
     pub fn new(id: impl Into<String>) -> Self {
-        Self { id: id.into(), fields: HashMap::new() }
+        Self {
+            id: id.into(),
+            fields: HashMap::new(),
+        }
     }
     pub fn set(mut self, key: &str, value: Value) -> Self {
         self.fields.insert(key.to_string(), value);
         self
     }
-    pub fn get(&self, key: &str) -> Option<&Value> { self.fields.get(key) }
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.fields.get(key)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,18 +43,37 @@ pub struct Dataset {
 
 impl Dataset {
     pub fn new(name: &str, object_type: &str) -> Self {
-        Self { name: name.into(), object_type: object_type.into(), records: Vec::new() }
+        Self {
+            name: name.into(),
+            object_type: object_type.into(),
+            records: Vec::new(),
+        }
     }
-    pub fn push(&mut self, record: Record) { self.records.push(record); }
-    pub fn len(&self) -> usize { self.records.len() }
-    pub fn is_empty(&self) -> bool { self.records.is_empty() }
+    pub fn push(&mut self, record: Record) {
+        self.records.push(record);
+    }
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
 }
 
 impl Value {
     pub fn as_f64(&self) -> Option<f64> {
-        match self { Value::Float(f) => Some(*f), Value::Int(n) => Some(*n as f64), _ => None }
+        match self {
+            Value::Float(f) => Some(*f),
+            Value::Int(n) => Some(*n as f64),
+            _ => None,
+        }
     }
-    pub fn as_str(&self) -> Option<&str> { match self { Value::String(s) => Some(s), _ => None } }
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Value::String(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Value {

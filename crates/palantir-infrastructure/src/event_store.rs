@@ -29,45 +29,42 @@ pub struct StoredEvent {
     /// Position in the store's Vec — purely a Vec index, NOT a shared counter.
     /// Useful for "catch-up" slicing and for reading the global append order.
     /// Unique across ALL aggregates (Vec index), but carries no domain meaning.
-    pub store_pos:    usize,
+    pub store_pos: usize,
 
     /// Per-aggregate monotonic sequence (1, 2, 3 … for THIS aggregate only).
     /// Each aggregate has its own independent counter — they never compete.
     /// Uniqueness: only within ONE aggregate.  Always use (aggregate_id, sequence)
     /// as a composite key, never sequence alone.
-    pub sequence:     u32,
+    pub sequence: u32,
 
     /// The aggregate this event belongs to (e.g. "o01").
     pub aggregate_id: String,
     /// Human-readable event type name.
-    pub event_type:   &'static str,
+    pub event_type: &'static str,
     /// The actual domain event.
-    pub event:        OrderEvent,
+    pub event: OrderEvent,
     /// ISO 8601 wall-clock time when the business fact occurred.
-    pub occurred_at:  String,
+    pub occurred_at: String,
 }
 
 // ─── Event Store ──────────────────────────────────────────────────────────────
 
 #[derive(Default)]
 pub struct EventStore {
-    events:   Vec<StoredEvent>,
+    events: Vec<StoredEvent>,
     /// Per-aggregate sequence counter — each aggregate owns its own counter.
     counters: HashMap<String, u32>,
 }
 
 impl EventStore {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Append a single domain event.
     /// Returns the per-aggregate sequence number assigned to this event.
-    pub fn append(
-        &mut self,
-        aggregate_id: &str,
-        occurred_at:  &str,
-        event:        OrderEvent,
-    ) -> u32 {
-        let store_pos = self.events.len();   // Vec index before push — no shared counter
+    pub fn append(&mut self, aggregate_id: &str, occurred_at: &str, event: OrderEvent) -> u32 {
+        let store_pos = self.events.len(); // Vec index before push — no shared counter
 
         let seq = {
             let counter = self.counters.entry(aggregate_id.to_string()).or_default();
@@ -77,21 +74,24 @@ impl EventStore {
 
         self.events.push(StoredEvent {
             store_pos,
-            sequence:     seq,
+            sequence: seq,
             aggregate_id: aggregate_id.to_string(),
-            event_type:   event.event_type(),
+            event_type: event.event_type(),
             event,
-            occurred_at:  occurred_at.to_string(),
+            occurred_at: occurred_at.to_string(),
         });
         seq
     }
 
     /// All stored events in append order (Vec index = insertion order).
-    pub fn all(&self) -> &[StoredEvent] { &self.events }
+    pub fn all(&self) -> &[StoredEvent] {
+        &self.events
+    }
 
     /// All events for a given aggregate, in the order they were appended.
     pub fn load(&self, aggregate_id: &str) -> Vec<&StoredEvent> {
-        self.events.iter()
+        self.events
+            .iter()
             .filter(|e| e.aggregate_id == aggregate_id)
             .collect()
     }
@@ -99,7 +99,8 @@ impl EventStore {
     /// Events for `aggregate_id` with `occurred_at` ≤ `until_time`.
     /// Used for time-travel: "what was state at time T?"
     pub fn load_until_time(&self, aggregate_id: &str, until_time: &str) -> Vec<&StoredEvent> {
-        self.events.iter()
+        self.events
+            .iter()
             .filter(|e| e.aggregate_id == aggregate_id && e.occurred_at.as_str() <= until_time)
             .collect()
     }
@@ -107,7 +108,8 @@ impl EventStore {
     /// Events for `aggregate_id` with per-aggregate sequence > `after_seq`.
     /// Used to load the delta on top of a snapshot.
     pub fn load_since_version(&self, aggregate_id: &str, after_seq: u32) -> Vec<&StoredEvent> {
-        self.events.iter()
+        self.events
+            .iter()
             .filter(|e| e.aggregate_id == aggregate_id && e.sequence > after_seq)
             .collect()
     }
@@ -122,10 +124,14 @@ impl EventStore {
     /// All distinct aggregate IDs in first-seen order.
     pub fn aggregate_ids(&self) -> Vec<String> {
         let mut seen = std::collections::HashSet::new();
-        self.events.iter()
+        self.events
+            .iter()
             .filter_map(|e| {
-                if seen.insert(e.aggregate_id.clone()) { Some(e.aggregate_id.clone()) }
-                else { None }
+                if seen.insert(e.aggregate_id.clone()) {
+                    Some(e.aggregate_id.clone())
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -135,8 +141,12 @@ impl EventStore {
         self.counters.get(aggregate_id).copied().unwrap_or(0)
     }
 
-    pub fn len(&self) -> usize { self.events.len() }
-    pub fn is_empty(&self) -> bool { self.events.is_empty() }
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
+    }
 }
 
 // ─── Optimistic Concurrency ───────────────────────────────────────────────────
@@ -151,16 +161,18 @@ impl EventStore {
 pub struct ConcurrencyError {
     pub aggregate_id: String,
     /// The version the caller assumed was current.
-    pub expected:     u32,
+    pub expected: u32,
     /// The version actually in the store (someone else wrote first).
-    pub actual:       u32,
+    pub actual: u32,
 }
 
 impl std::fmt::Display for ConcurrencyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,
+        write!(
+            f,
             "[{}] concurrency conflict: expected v{} but store is at v{} — reload and retry",
-            self.aggregate_id, self.expected, self.actual)
+            self.aggregate_id, self.expected, self.actual
+        )
     }
 }
 
@@ -173,16 +185,16 @@ impl EventStore {
     /// Use this whenever two writers may race on the same aggregate.
     pub fn append_expected(
         &mut self,
-        aggregate_id:     &str,
-        occurred_at:      &str,
-        event:            OrderEvent,
+        aggregate_id: &str,
+        occurred_at: &str,
+        event: OrderEvent,
         expected_version: u32,
     ) -> Result<u32, ConcurrencyError> {
         let actual = self.version_of(aggregate_id);
         if actual != expected_version {
             return Err(ConcurrencyError {
                 aggregate_id: aggregate_id.to_string(),
-                expected:     expected_version,
+                expected: expected_version,
                 actual,
             });
         }
@@ -198,11 +210,11 @@ impl EventStore {
 pub struct Snapshot {
     pub aggregate_id: String,
     /// The per-aggregate sequence of the last event included in this snapshot.
-    pub version:      u32,
+    pub version: u32,
     /// The reconstructed state at that version.
-    pub state:        OrderState,
+    pub state: OrderState,
     /// When the snapshot was taken (wall-clock).
-    pub taken_at:     String,
+    pub taken_at: String,
 }
 
 #[derive(Default)]
@@ -211,7 +223,9 @@ pub struct SnapshotStore {
 }
 
 impl SnapshotStore {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn save(&mut self, snap: Snapshot) {
         self.snapshots.insert(snap.aggregate_id.clone(), snap);
@@ -223,14 +237,10 @@ impl SnapshotStore {
 
     /// Rebuild an Order — uses snapshot if available, then replays delta from EventStore.
     /// Delta = events whose per-aggregate sequence > snapshot.version.
-    pub fn rebuild(
-        &self,
-        aggregate_id: &str,
-        store:        &EventStore,
-    ) -> (OrderState, Vec<String>) {
+    pub fn rebuild(&self, aggregate_id: &str, store: &EventStore) -> (OrderState, Vec<String>) {
         let (mut state, after_version) = match self.load(aggregate_id) {
             Some(snap) => (snap.state.clone(), snap.version),
-            None       => (OrderState::draft(aggregate_id), 0),
+            None => (OrderState::draft(aggregate_id), 0),
         };
 
         let mut violations = Vec::new();
