@@ -120,6 +120,7 @@ palantir/
 | [ADR-23](adr/ADR-23-gateway-security.md) | Gateway 安全防御 | 五层防御：TLS + Rate Limiting + JWT + auth-svc + 审计 | ✅ |
 | [ADR-24](adr/ADR-24-frontend-backend-security.md) | 前后端通信安全 | Access Token 存内存，Refresh Token 存 HttpOnly Cookie，CSP + DOMPurify | ✅ |
 | [ADR-25](adr/ADR-25-agent-tool-protocol.md) | Agent 工具调用协议 | 内部 API → Tool Calling；外部集成 → MCP Client | ✅ 决策，暂不实现 |
+| [ADR-26](adr/ADR-26-ontology-identity-permission.md) | Ontology 身份与数据权限 | 四粒度：RBAC(EntityType)→ReBAC(Object)→ABAC(Row)→Classification(Field) | ✅ |
 
 ---
 
@@ -145,4 +146,5 @@ palantir/
 | 共享库 | [crates/arch_v0.1.0.md](crates/arch_v0.1.0.md) |
 | 基础设施 | [infrastructure/arch_v0.1.0.md](infrastructure/arch_v0.1.0.md) |
 | 各服务 | [services/](services/) |
+| 领域模型 | [domain/](domain/) |
 | ADR | [adr/](adr/) |
