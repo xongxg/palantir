@@ -112,12 +112,56 @@ ontology-svc 调 auth-svc.authorize()：
 ontology-svc 过滤字段后返回
 ```
 
+## 缓存策略
+
+### 缓存什么
+
+| 缓存项 | Key | TTL | 失效方式 |
+|--------|-----|-----|---------|
+| EnrichedIdentity | `identity:{user_id}` | 5min | 事件驱动 |
+| RBAC 结果 | `rbac:{role}:{entity_type}:{op}` | 30min | schema 变更事件 |
+| AccessDecision | `authz:{user_id}:{object_id}:{op}` | 1-2min | 对象/关系变更事件 |
+
+### 不缓存什么
+
+| 项目 | 原因 |
+|------|------|
+| ReBAC 边单独结果 | 关系变化频繁，失效代价 > 计算代价，AccessDecision 整体缓存已覆盖 |
+| ABAC CEL 结果 | 对象属性随时变，失效代价高 |
+| Field Visibility Matrix | 纯内存静态矩阵，μs 级计算，无需缓存 |
+
+### 事件驱动失效（订阅 NATS）
+
+```rust
+match event.op {
+    Upsert if entity_type == "User"  => del("identity:{id}", "authz:{id}:*"),
+    Link   if rel == "MANAGES"       => del("identity:{from}", "authz:{from}:*"),
+    Link   if rel == "BELONGS_TO"    => del("identity:{user_id}"),
+    SchemaUpdated { entity_type }    => del("rbac:*:{entity_type}:*"),
+    Upsert                           => del("authz:*:{id}:*"),
+}
+```
+
+### 性能收益
+
+```
+无缓存：图遍历 ~10ms + 四层评估 ~5ms = ~15ms/请求
+全缓存命中：Redis 单次查询 < 1ms
+典型场景（用户连续操作同一批对象）：
+  第 1 次 ~15ms（冷）→ 后续 < 1ms（热）
+```
+
 ## 领域模型
 
-见 [../domain/ontology-permission-domain.md](../domain/ontology-permission-domain.md)
+见 [../domain/ontology-permission-domain_v0.1.0.md](../domain/ontology-permission-domain_v0.1.0.md)
+
+## 交互流程
+
+见 [../domain/ontology-permission-interactions_v0.1.1.md](../domain/ontology-permission-interactions_v0.1.1.md)
 
 ## 版本历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|---------|
 | v1.0 | 2026-03-19 | 初始决策 |
+| v1.1 | 2026-03-19 | 补充缓存策略：EnrichedIdentity/RBAC/AccessDecision 三级缓存 + 事件驱动失效 |

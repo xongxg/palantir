@@ -1,20 +1,20 @@
 # Ontology 身份与权限 — 交互流程图
 
-> 版本：v0.1.0 | 日期：2026-03-19 | 关联：ADR-26、domain/ontology-permission-domain_v0.1.0.md
+> 版本：v0.1.1 | 日期：2026-03-19 | 关联：ADR-26、domain/ontology-permission-domain_v0.1.0.md
 
 ---
 
 ## Flow 1：用户登录与身份增强
 
-> JWT 颁发 + 从 Ontology 图派生 EnrichedIdentity
+> JWT 颁发 + 从 Ontology 图派生 EnrichedIdentity + 写入缓存
 
 ```mermaid
 sequenceDiagram
     actor Client
-    participant GW   as api-gateway
-    participant Auth as auth-svc
-    participant Onto as ontology-svc
-    participant DB   as SurrealDB
+    participant GW    as api-gateway
+    participant Auth  as auth-svc
+    participant Onto  as ontology-svc
+    participant DB    as SurrealDB
     participant Cache as Redis
 
     Client->>GW: POST /auth/login { username, password }
@@ -24,11 +24,18 @@ sequenceDiagram
     DB-->>Auth: User { id, password_hash, status }
     Auth->>Auth: verify password_hash
 
+    Note over Auth,Cache: 检查 EnrichedIdentity 缓存
+    Auth->>Cache: GET identity:{user_id}
+    Cache-->>Auth: nil（首次登录，未缓存）
+
     Note over Auth,DB: 图遍历：派生 EnrichedIdentity
     Auth->>Onto: GET /internal/identity/{user_id}/context
     Onto->>DB: MATCH (u:User)-[:BELONGS_TO]->(ou:OrgUnit)\nMATCH (u)-[:MANAGES]->(reports)\nMATCH (u)-[:MEMBER_OF]->(groups)\nMATCH (u)-[:HAS_ROLE]->(roles)
     DB-->>Onto: departments[], manages[], groups[], roles[]
     Onto-->>Auth: EnrichedIdentity
+
+    Auth->>Cache: SET identity:{user_id} TTL 5min
+    Note over Cache: EnrichedIdentity 已缓存\n后续请求跳过图遍历
 
     Auth->>Auth: 生成 Access Token（15min, RS256）\n生成 Refresh Token（7天, 单次）
     Auth->>Cache: SET refresh_token:{jti} TTL 7d
@@ -39,9 +46,9 @@ sequenceDiagram
 
 ---
 
-## Flow 2：对象读取（四粒度权限评估）
+## Flow 2：对象读取（三级缓存 + 四粒度权限评估）
 
-> 核心流程，逐层短路评估
+> 优先命中缓存短路，miss 时逐层评估
 
 ```mermaid
 sequenceDiagram
@@ -54,50 +61,77 @@ sequenceDiagram
 
     Client->>GW: GET /v1/objects/Employee:456\nAuthorization: Bearer {token}
 
-    GW->>GW: JWT 验证（签名 + exp + 黑名单）
+    GW->>GW: JWT 验证（签名 + exp）
     GW->>Cache: GET blacklist:{jti}
     Cache-->>GW: nil（未吊销）
-    GW->>GW: 提取 static_roles, user_id
     GW->>Onto: forward + X-User-Id / X-Roles header
 
-    Onto->>Auth: authorize(\n  subject: user-123,\n  object: Employee:456,\n  op: Read\n)
+    Onto->>Auth: authorize(user-123, Employee:456, Read)
 
-    rect rgb(240, 248, 255)
-        Note over Auth,DB: Step 1 — EntityType RBAC
-        Auth->>DB: SELECT permissions FROM entity_type\nWHERE name='Employee'
-        DB-->>Auth: [{role:'analyst', ops:['read']}...]
-        Auth->>Auth: role='analyst' ∈ Read ops? ✅
-    end
-
-    rect rgb(240, 255, 240)
-        Note over Auth,DB: Step 2 — Object ReBAC
+    rect rgb(230, 245, 255)
+        Note over Auth,Cache: 🚀 Level 1 — AccessDecision 整体缓存
         Auth->>Cache: GET authz:{user-123}:{Employee:456}:read
-        Cache-->>Auth: nil（未缓存）
-        Auth->>DB: MATCH (u:User {id:'user-123'})\n-[:MANAGES]->(e:Employee {id:'456'})
-        DB-->>Auth: Edge found ✅
-        Auth->>Cache: SET authz:{user-123}:{Employee:456}:read TTL 60s
+        Cache-->>Auth: HIT → AccessDecision(AllowWithMask)
+        Note over Auth: 直接返回，跳过所有评估步骤 < 1ms
     end
 
-    rect rgb(255, 255, 240)
-        Note over Auth,DB: Step 3 — Row ABAC
-        Auth->>DB: SELECT * FROM abac_policy\nWHERE entity_type='Employee'
-        DB-->>Auth: [policy: dept IN subject.depts]
-        Auth->>Auth: CEL eval:\n  Employee:456.dept ∈ user.depts? ✅
+    alt AccessDecision 缓存 miss
+        rect rgb(230, 255, 230)
+            Note over Auth,Cache: 🚀 Level 2 — EnrichedIdentity 缓存
+            Auth->>Cache: GET identity:{user-123}
+            Cache-->>Auth: HIT → EnrichedIdentity\n{ roles, depts, manages }
+            Note over Auth: 跳过图遍历，直接进入评估
+        end
+
+        alt EnrichedIdentity 缓存 miss
+            Auth->>Onto: GET /internal/identity/user-123/context
+            Onto->>DB: 图遍历 MANAGES / BELONGS_TO / MEMBER_OF
+            DB-->>Onto: departments[], manages[], groups[]
+            Onto-->>Auth: EnrichedIdentity
+            Auth->>Cache: SET identity:{user-123} TTL 5min
+        end
+
+        rect rgb(240, 248, 255)
+            Note over Auth,Cache: Step 1 — EntityType RBAC
+            Auth->>Cache: GET rbac:analyst:Employee:read
+            Cache-->>Auth: HIT ✅
+        end
+
+        alt RBAC 缓存 miss
+            Auth->>DB: SELECT permissions FROM entity_type WHERE name='Employee'
+            DB-->>Auth: permissions[]
+            Auth->>Cache: SET rbac:analyst:Employee:read TTL 30min
+        end
+
+        rect rgb(240, 255, 240)
+            Note over Auth,DB: Step 2 — ReBAC（依赖 EnrichedIdentity.manages）
+            Auth->>Auth: Employee:456 ∈ manages? ✅
+            Note over Auth: manages 已在 EnrichedIdentity 里，无需额外查询
+        end
+
+        rect rgb(255, 255, 240)
+            Note over Auth,DB: Step 3 — ABAC
+            Auth->>DB: SELECT * FROM abac_policy WHERE entity_type='Employee'
+            DB-->>Auth: policies[]
+            Auth->>Auth: CEL eval: dept ∈ subject.depts? ✅
+        end
+
+        rect rgb(255, 240, 240)
+            Note over Auth: Step 4 — Field Classification（内存矩阵，μs）
+            Auth->>Auth: hidden: ['salary','id_number']
+        end
+
+        Auth->>Cache: SET authz:{user-123}:{Employee:456}:read\n  TTL 2min
     end
 
-    rect rgb(255, 240, 240)
-        Note over Auth: Step 4 — Field Classification
-        Auth->>Auth: FieldVisibilityMatrix:\n  analyst 不见 Confidential/PII\n  hidden: ['salary','id_number']
-    end
-
-    Auth-->>Onto: AccessDecision {\n  decision: AllowWithMask,\n  hidden_fields: ['salary','id_number']\n}
+    Auth-->>Onto: AccessDecision { AllowWithMask, hidden_fields }
 
     Onto->>DB: SELECT * FROM Employee WHERE id='456'
     DB-->>Onto: OntologyObject { all fields }
     Onto->>Onto: 过滤 hidden_fields
 
     par 异步写审计
-        Onto->>DB: INSERT audit_log {\n  who, ip, what:Read,\n  target:Employee:456,\n  fields:visible_fields\n}
+        Onto->>DB: INSERT audit_log { who, ip, Read, Employee:456 }
     end
 
     Onto-->>GW: OntologyObject（已脱敏）
@@ -244,8 +278,58 @@ sequenceDiagram
 
 ---
 
+## Flow 6：缓存失效（事件驱动）
+
+> OntologyEvent 触发对应缓存清除，保证一致性
+
+```mermaid
+sequenceDiagram
+    participant Ingest as ingest-svc
+    participant Onto   as ontology-svc
+    participant Bus    as NATS
+    participant Auth   as auth-svc
+    participant Cache  as Redis
+
+    Note over Ingest,Onto: 场景 A：新增 MANAGES 关系
+    Ingest->>Onto: POST /v1/links\n{ from: User:user-123, to: Employee:999, rel: MANAGES }
+    Onto->>Bus: PUBLISH ontology.events.User.link\n{ from: User:user-123, rel: MANAGES, to: Employee:999 }
+
+    Bus->>Auth: event received
+    Auth->>Cache: DEL identity:{user-123}
+    Auth->>Cache: DEL authz:{user-123}:*（批量）
+    Note over Cache: user-123 的 EnrichedIdentity 失效\n下次请求重新图遍历
+
+    Note over Ingest,Onto: 场景 B：用户角色变更
+    Ingest->>Onto: PUT /v1/objects/User:user-123\n{ roles: [..., "hr"] }
+    Onto->>Bus: PUBLISH ontology.events.User.upsert\n{ id: User:user-123 }
+
+    Bus->>Auth: event received
+    Auth->>Cache: DEL identity:{user-123}
+    Auth->>Cache: DEL authz:{user-123}:*
+    Note over Cache: 角色变更，所有授权结果失效
+
+    Note over Ingest,Onto: 场景 C：EntityType Schema 变更（权限矩阵更新）
+    Ingest->>Onto: PUT /v1/schema/entity-types/Employee\n{ permissions: [...] }
+    Onto->>Bus: PUBLISH ontology.events.Employee.schema_updated
+
+    Bus->>Auth: event received
+    Auth->>Cache: DEL rbac:*:Employee:*（批量）
+    Note over Cache: RBAC 缓存失效\n下次请求重新查 EntityTypePermission
+
+    Note over Ingest,Onto: 场景 D：业务对象属性变更（影响 ABAC）
+    Ingest->>Onto: PUT /v1/objects/Employee:456\n{ department: "engineering" }
+    Onto->>Bus: PUBLISH ontology.events.Employee.upsert\n{ id: Employee:456 }
+
+    Bus->>Auth: event received
+    Auth->>Cache: DEL authz:*:{Employee:456}:*（批量）
+    Note over Cache: 对象属性变，相关授权结果失效\nEnrichedIdentity 不受影响
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|---------|
 | v0.1.0 | 2026-03-19 | 初始版本：5 个核心交互流程 |
+| v0.1.1 | 2026-03-19 | Flow 1 加入 EnrichedIdentity 缓存写入；Flow 2 升级为三级缓存短路评估；新增 Flow 6 事件驱动缓存失效 |
