@@ -84,3 +84,11 @@ API Key 统一从 Vault / Consul KV 拉取（ADR-21）
 ## 逃生门
 
 `palantir-http-client` 内部抽象 `OutboundClient` trait，未来引入 Egress Gateway 时只替换实现，调用方代码不变。
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

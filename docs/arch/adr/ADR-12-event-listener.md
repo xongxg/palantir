@@ -32,3 +32,11 @@ fn aggregate_logic(object: &OntologyObject) -> Vec<OntologyEvent> {
     // 聚合计算
 }
 ```
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

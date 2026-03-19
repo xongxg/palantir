@@ -54,3 +54,11 @@ pub struct ConsumerCursor(pub BTreeMap<String, u64>);
 ## OntologyObject.version
 
 不变：已经是 per-object 级别，本身正确。
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

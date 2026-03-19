@@ -140,3 +140,11 @@ agent-svc
 - [ ] palantir-function-core：`#[ontology_function]` 宏实现
 - [ ] palantir-auth-core：RBAC 简单实现（PolicyEvaluator）
 - [ ] crate 版本管理策略（workspace 统一版本 vs 独立版本）
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v0.1.0 | 2026-03-19 | 初始版本，架构设计阶段 |

@@ -85,3 +85,11 @@ pub trait FunctionRegistry {
 - [ ] Function 版本管理
 - [ ] 调用链追踪（与 AgentTrace 集成）
 - [ ] `build.rs` codegen 流程设计
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v0.1.0 | 2026-03-19 | 初始版本，架构设计阶段 |

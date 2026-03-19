@@ -41,3 +41,11 @@ if memory.confidence >= 0.85 && memory.access_count > 2 && !is_expired(&memory) 
 ## 扩容路径
 
 SQLite + in-process usearch → Postgres + Qdrant → Citus + Qdrant 多节点
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

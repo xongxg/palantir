@@ -4,6 +4,18 @@
 >
 > 更新规则：每日 refine → patch 版本递增；服务新增/删除 → minor；底层存储/协议更换 → major
 
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v0.1.0 | 2026-03-19 | 初始架构：6个微服务 + 3个新库 crate，ADR-01 到 ADR-09 |
+| v0.1.1 | 2026-03-19 | ADR-10 Event Bus 选型（Fluvio/NATS），ADR-11 Workflow 触发器 |
+| v0.1.2 | 2026-03-19 | ADR-12 EventListener 复杂度，ADR-13 向量成本控制 |
+| v0.1.3 | 2026-03-19 | ADR-14 四层计算模型，ADR-15 事件序列粒度 |
+| v0.1.4 | 2026-03-19 | ADR-16 前端选型（React+Vite），ADR-17 Agent 流式协议 |
+| v0.1.5 | 2026-03-19 | ADR-07 SurrealDB 主存储，ADR-08 RustFS 文件存储 |
+| v0.1.6 | 2026-03-19 | ADR-18 Arrow+DataFusion 加入 L2；ADR-19 embedding-svc 独立；ADR-20 内部 gRPC；ADR-21 Consul 服务发现；ADR-22 出站请求；ADR-23/24 安全方案 |
+
 ---
 
 ## 1. 核心原则
@@ -50,14 +62,14 @@ palantir/
 
 | 服务 | 职责 | 子架构文档 |
 |------|------|-----------|
-| `api-gateway` | JWT 解析 + 路由 + SSE 转发 | [services/api-gateway.md](services/api-gateway.md) |
-| `ontology-svc` | TBox/ABox CRUD、事件发布、离线同步 | [services/ontology-svc.md](services/ontology-svc.md) |
-| `ingest-svc` | Source/Mapping 管理、摄入调度、游标续传 | [services/ingest-svc.md](services/ingest-svc.md) |
-| `function-svc` | Function/Logic 注册与执行，CEL 引擎 | [services/function-svc.md](services/function-svc.md) |
-| `agent-svc` | LLM 推理、Multi-Agent、语义缓存、AgentTrace | [services/agent-svc.md](services/agent-svc.md) |
-| `embedding-svc` | 集中式向量化（fastembed-rs + BGE-small-zh）| [services/embedding-svc.md](services/embedding-svc.md) |
-| `workflow-svc` | Workflow 编排、Cron/事件触发、Saga 补偿 | [services/workflow-svc.md](services/workflow-svc.md) |
-| `auth-svc` | RBAC + ABAC + ReBAC 策略管理与评估 | [services/auth-svc.md](services/auth-svc.md) |
+| `api-gateway` | JWT 解析 + 路由 + SSE 转发 | [services/api-gateway_v0.1.0.md](services/api-gateway_v0.1.0.md) |
+| `ontology-svc` | TBox/ABox CRUD、事件发布、离线同步 | [services/ontology-svc_v0.1.0.md](services/ontology-svc_v0.1.0.md) |
+| `ingest-svc` | Source/Mapping 管理、摄入调度、游标续传 | [services/ingest-svc_v0.1.0.md](services/ingest-svc_v0.1.0.md) |
+| `function-svc` | Function/Logic 注册与执行，CEL 引擎 | [services/function-svc_v0.1.0.md](services/function-svc_v0.1.0.md) |
+| `agent-svc` | LLM 推理、Multi-Agent、语义缓存、AgentTrace | [services/agent-svc_v0.1.0.md](services/agent-svc_v0.1.0.md) |
+| `embedding-svc` | 集中式向量化（fastembed-rs + BGE-small-zh）| [services/embedding-svc_v0.1.0.md](services/embedding-svc_v0.1.0.md) |
+| `workflow-svc` | Workflow 编排、Cron/事件触发、Saga 补偿 | [services/workflow-svc_v0.1.0.md](services/workflow-svc_v0.1.0.md) |
+| `auth-svc` | RBAC + ABAC + ReBAC 策略管理与评估 | [services/auth-svc_v0.1.0.md](services/auth-svc_v0.1.0.md) |
 
 ---
 
@@ -128,8 +140,8 @@ palantir/
 
 | 领域 | 文档 |
 |------|------|
-| 前端 | [frontend/arch.md](frontend/arch.md) |
-| 共享库 | [crates/arch.md](crates/arch.md) |
-| 基础设施 | [infrastructure/arch.md](infrastructure/arch.md) |
+| 前端 | [frontend/arch_v0.1.0.md](frontend/arch_v0.1.0.md) |
+| 共享库 | [crates/arch_v0.1.0.md](crates/arch_v0.1.0.md) |
+| 基础设施 | [infrastructure/arch_v0.1.0.md](infrastructure/arch_v0.1.0.md) |
 | 各服务 | [services/](services/) |
 | ADR | [adr/](adr/) |

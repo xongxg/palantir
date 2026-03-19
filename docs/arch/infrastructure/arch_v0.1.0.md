@@ -122,3 +122,11 @@ surreal start tikv://tikv-cluster:2379
 - [ ] SurrealDB Schema 初始化脚本
 - [ ] 生产 Kubernetes Helm Chart 设计
 - [ ] 监控 / 告警方案（Prometheus + Grafana）
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v0.1.0 | 2026-03-19 | 初始版本，架构设计阶段 |

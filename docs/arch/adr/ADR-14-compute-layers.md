@@ -82,3 +82,11 @@ L4 embedding-svc / agent-svc（ms~s）
 | Arrow IPC 快照 | `arrow:{entity_type}:snapshot` | 中 |
 | Agent Memory 热数据 | `mem:{user_id}:{intent_hash}` | 72h |
 | 分布式锁 | `lock:{resource}` | 短 |
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

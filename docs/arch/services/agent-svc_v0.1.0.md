@@ -89,3 +89,11 @@ pub struct AgentTrace {
 - [ ] Semantic Cache key 设计（query hash + schema version）
 - [ ] AgentTrace 存储与查询 API
 - [ ] 流式输出格式（SSE event 规范）
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v0.1.0 | 2026-03-19 | 初始版本，架构设计阶段 |

@@ -129,3 +129,11 @@ ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: accessToken }));
 | P0 | HTTPS + Access Token 内存存储 + HttpOnly Cookie Refresh Token |
 | P1 | CSP Header + Token 自动续签 + 登出黑名单 |
 | P2 | SSE 用 fetch 替代 EventSource + WebSocket 认证握手 |
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

@@ -32,3 +32,11 @@ Function / Logic 如何注册与执行？支持哪些用户群体？
 ## CEL 前端
 
 Monaco Editor + CEL language def（~200行）+ Schema 感知 CompletionItemProvider（约 1-2 天工作量）。
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

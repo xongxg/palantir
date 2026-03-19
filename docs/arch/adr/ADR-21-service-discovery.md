@@ -106,3 +106,11 @@ pub trait ServiceDiscovery: Send + Sync {
 }
 // 实现：ConsulDiscovery / K8sDnsDiscovery / StaticDiscovery（MVP env vars）
 ```
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

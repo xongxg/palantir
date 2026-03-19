@@ -44,3 +44,11 @@ Events：  append-only event 表，seq 作为 cursor
 ## 风险对冲
 
 `OntologyRepository` trait 抽象，`SqliteRepository` 作为备用实现。
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

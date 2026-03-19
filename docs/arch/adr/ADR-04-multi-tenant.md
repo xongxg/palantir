@@ -16,3 +16,11 @@
 - 对 SurrealDB 命名空间（Namespace / Database）的影响
 - 与 auth-svc RBAC/ABAC 的交互边界
 - 对 Event Bus Topic 命名规范的影响
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |

@@ -39,3 +39,11 @@ if memory.confidence >= 0.85 && memory.access_count > 2 && !is_expired(&memory) 
 | MVP | SurrealDB 内置向量 | 默认 |
 | 中期 | LanceDB（嵌入式）| 向量 > 50万 或 P99 > 200ms |
 | 生产 | Qdrant 自托管 | 多节点部署需求 |
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0 | 2026-03-19 | 初始决策 |
