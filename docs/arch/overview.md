@@ -104,6 +104,7 @@ palantir/
 | [ADR-19](adr/ADR-19-embedding-svc.md) | Embedding 服务 | 独立 embedding-svc，fastembed-rs + BGE-small-zh | ✅ |
 | [ADR-20](adr/ADR-20-internal-rpc.md) | 内部服务通信 | gRPC（tonic + protobuf），外部保持 HTTP + JSON | ✅ |
 | [ADR-21](adr/ADR-21-service-discovery.md) | 服务发现与配置中心 | Consul 自注册，生产 K8s DNS 接管，ServiceDiscovery trait 抽象 | ✅ |
+| [ADR-22](adr/ADR-22-outbound-requests.md) | 对外出站请求 | function-svc 为集成出口，palantir-http-client 共享出站能力 | ✅ |
 
 ---
 
