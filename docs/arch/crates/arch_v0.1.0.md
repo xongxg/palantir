@@ -102,6 +102,24 @@
 被使用：auth-svc、api-gateway（JWT 验证）
 ```
 
+### palantir-http-client（NEW，P1）
+
+```
+职责：对外出站 HTTP 请求的共享客户端，统一出站能力（ADR-22）
+核心能力：
+  - 自动 Retry（指数退避，可配置次数）
+  - Circuit Breaker（断路器，防雪崩）
+  - 超时控制（per-request）
+  - 出站请求日志（url + status + latency）
+  - API Key 从 Vault / Consul KV 动态注入
+核心 trait：
+  pub trait OutboundClient: Send + Sync {
+      async fn send(&self, req: OutboundRequest) -> OutboundResponse;
+  }
+逃生门：未来引入 Egress Gateway 时只替换实现，调用方不变
+被使用：function-svc（Webhook/三方API）、ingest-svc（HttpAdapter）、agent-svc（LLM API）
+```
+
 ---
 
 ## 依赖关系图
@@ -130,6 +148,12 @@ workflow-svc
 palantir-agent
   ↑
 agent-svc
+
+palantir-http-client
+  ↑
+function-svc（Webhook/三方API）
+ingest-svc（HttpAdapter）
+agent-svc（LLM API）
 ```
 
 ---
@@ -139,6 +163,7 @@ agent-svc
 - [ ] palantir-event-bus：InProcessBus 实现（tokio broadcast channel）
 - [ ] palantir-function-core：`#[ontology_function]` 宏实现
 - [ ] palantir-auth-core：RBAC 简单实现（PolicyEvaluator）
+- [ ] palantir-http-client：OutboundClient trait + reqwest 实现 + Circuit Breaker（tower）
 - [ ] crate 版本管理策略（workspace 统一版本 vs 独立版本）
 
 ---
