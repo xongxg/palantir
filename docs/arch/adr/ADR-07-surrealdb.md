@@ -1,6 +1,8 @@
 # ADR-07: Ontology 主存储 — SurrealDB
 
-> 状态：✅ 已决策 | 日期：2026-03-19
+> 状态：⚠️ 已取代 | 日期：2026-03-19 | 取代者：[ADR-27](ADR-27-surrealdb-dependency-risk.md)
+>
+> **此决策已被 ADR-27 v1.1 取代。最终决策：NebulaGraph 替代 SurrealDB（仅图核心），TiDB 替代 Postgres 承载结构化数据。**
 
 ## 问题
 

@@ -101,7 +101,7 @@ palantir/
 | [ADR-04](adr/ADR-04-multi-tenant.md) | 多租户 | 暂缓，待商量 | ⏸ |
 | [ADR-05](adr/ADR-05-offline-sync.md) | 离线同步 | CRDT 内嵌 ontology-svc，palantir-sync-client 独立库 | ✅ |
 | [ADR-06](adr/ADR-06-agent-memory.md) | Agent Memory 存储 | SurrealDB + 向量按阶段演进，MemoryStore trait | ✅ |
-| [ADR-07](adr/ADR-07-surrealdb.md) | Ontology 存储 | SurrealDB（文档+图+向量），TiKV 扩容路径 | ✅ |
+| [ADR-07](adr/ADR-07-surrealdb.md) | Ontology 存储 | ~~SurrealDB~~ → 已取代，见 ADR-27 | ⚠️ 取代 |
 | [ADR-08](adr/ADR-08-file-storage.md) | 文件存储 | RustFS，object_store crate 抽象 | ✅ |
 | [ADR-09](adr/ADR-09-compliance.md) | 合规架构 | 数据分类 → WORM → Crypto-Shredding → 字段加密 | ✅ |
 | [ADR-10](adr/ADR-10-event-bus.md) | Event Bus 选型 | InProcessBus → Fluvio / NATS，Kafka 备选 | ✅ |
@@ -145,7 +145,7 @@ palantir/
 |------|------|
 | 前端 | [frontend/arch_v0.1.0.md](frontend/arch_v0.1.0.md) |
 | 共享库 | [crates/arch_v0.1.0.md](crates/arch_v0.1.0.md) |
-| 基础设施 | [infrastructure/arch_v0.1.0.md](infrastructure/arch_v0.1.0.md) |
+| 基础设施 | [infrastructure/arch_v0.1.1.md](infrastructure/arch_v0.1.1.md) |
 | 各服务 | [services/](services/) |
 | 领域模型 | [domain/ontology-permission-domain_v0.1.0.md](domain/ontology-permission-domain_v0.1.0.md) |
 | 交互流程 | [domain/ontology-permission-interactions_v0.1.1.md](domain/ontology-permission-interactions_v0.1.1.md) |

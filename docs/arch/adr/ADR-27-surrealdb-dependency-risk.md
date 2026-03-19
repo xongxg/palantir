@@ -165,13 +165,134 @@ pub trait OntologyGraphStore: Send + Sync {
 }
 
 // 实现：
-// SurrealDbStore（当前）
-// NebulaGraphStore（迁移备选）
+// SurrealDbStore（当前过渡）
+// NebulaGraphStore（已决策，见 v1.1）
 // PostgresAgeStore（保守备选）
+```
+
+---
+
+## ✅ 最终决策（v1.1）
+
+**TiDB 替代 Postgres，NebulaGraph 替代 SurrealDB（范围收窄为图核心）。**
+
+### 存储职责划分
+
+```
+NebulaGraph（图核心，只做图）
+  ├── EntityType（TBox）→ Tag 定义
+  ├── OntologyObject（ABox）→ Vertex
+  └── OntologyRelationship → Edge（MANAGES / BELONGS_TO / LINKED_TO）
+
+TiDB（结构化，MySQL 兼容）
+  ├── User / Role / Group / OrgUnit（身份）
+  ├── EntityTypePermission / RelationshipRule / AbacPolicy（权限配置）
+  ├── AuditLog（append-only）
+  ├── Agent Memory 元数据
+  ├── Event Log 元数据
+  └── File 元数据
+```
+
+### NebulaGraph 数据模型
+
+```sql
+-- TBox：定义 Tag（EntityType Schema）
+CREATE TAG Employee (name string, email string, department string);
+CREATE TAG Contract (title string, amount double);
+
+-- TBox：定义 Edge Type（关系类型）
+CREATE EDGE MANAGES ();
+CREATE EDGE BELONGS_TO ();
+CREATE EDGE LINKED_TO (weight double);
+
+-- ABox：插入 Vertex（OntologyObject）
+INSERT VERTEX Employee VALUES "Employee:uuid1":("Alice", "alice@co.com", "engineering");
+
+-- ABox：插入 Edge（OntologyRelationship）
+INSERT EDGE MANAGES VALUES "User:user-123"->"Employee:456":();
+
+-- 图遍历：多跳查询
+GO 2 STEPS FROM "User:user-123" OVER MANAGES YIELD dst(edge) AS managed;
+```
+
+### EnrichedIdentity 计算（两步查询）
+
+```
+Step 1：TiDB → 用户静态角色、属性
+  SELECT roles, attributes FROM users WHERE id = ?
+
+Step 2：NebulaGraph → 图关系
+  GO 2 STEPS FROM "User:user-123"
+    OVER MANAGES, BELONGS_TO, MEMBER_OF
+    YIELD dst(edge), type(edge)
+
+Step 3：合并 → EnrichedIdentity
+```
+
+### 向量搜索
+
+TiDB 已于 2024 年支持原生向量搜索（Vector Search），MVP 阶段可直接使用：
+
+```sql
+-- TiDB Vector（MVP）
+ALTER TABLE agent_memory ADD COLUMN embedding VECTOR(512);
+SELECT * FROM agent_memory
+ORDER BY Vec_Cosine_Distance(embedding, ?) LIMIT 10;
+```
+
+生产阶段仍按 ADR-13 演进路径：TiDB Vector → LanceDB → Qdrant。
+
+### 新基础设施栈
+
+| 层 | 选型 | 语言 | 用途 |
+|----|------|------|------|
+| 图存储 | NebulaGraph | C++ | Ontology TBox/ABox/Relationship |
+| 结构化存储 | TiDB | Go | 身份/权限/审计/Memory元数据 |
+| 向量搜索 MVP | TiDB Vector | Go | Agent Memory 向量索引 |
+| 向量搜索生产 | Qdrant | Rust | > 50 万向量 |
+| 文件存储 | RustFS | Rust | 用户上传 |
+| 缓存 | Redis | C | L1 热数据 |
+| 事件总线 | NATS JetStream | Go | 异步事件 |
+| Embedding | fastembed-rs | Rust | 本地向量化 |
+
+### Rust SDK 支持
+
+| 数据库 | Rust 接入方式 |
+|--------|-------------|
+| NebulaGraph | `nebula-rust` crate（官方）或 HTTP API |
+| TiDB | `sqlx`（MySQL driver，最成熟）|
+
+### OntologyGraphStore 实现更新
+
+```rust
+// NebulaGraphStore 实现（替换 SurrealDbStore）
+pub struct NebulaGraphStore {
+    session_pool: NebulaSessionPool,
+}
+
+impl OntologyGraphStore for NebulaGraphStore {
+    async fn relate(&self, from: &OntologyId, rel: &str, to: &OntologyId) -> Result<()> {
+        let nql = format!(
+            "INSERT EDGE {} VALUES \"{}\"->\"{}\": ();",
+            rel, from, to
+        );
+        self.session_pool.execute(&nql).await?;
+        Ok(())
+    }
+
+    async fn traverse(&self, from: &OntologyId, depth: u8) -> Result<Vec<OntologyObject>> {
+        let nql = format!(
+            "GO {} STEPS FROM \"{}\" OVER * YIELD dst(edge), type(edge)",
+            depth, from
+        );
+        self.session_pool.execute(&nql).await
+    }
+}
 ```
 
 ## 版本历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|---------|
-| v1.0 | 2026-03-19 | 初始决策：SurrealDB 依赖风险分析 + MySQL/TiDB/国内云数据库/NebulaGraph 替代方案 |
+| v1.0 | 2026-03-19 | 初始决策：SurrealDB 依赖风险分析 + 替代方案全景 |
+| v1.1 | 2026-03-19 | 最终决策：TiDB 替代 Postgres，NebulaGraph 替代 SurrealDB（图核心），TiDB Vector 承接 MVP 向量搜索 |

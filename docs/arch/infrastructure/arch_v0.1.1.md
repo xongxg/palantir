@@ -1,23 +1,22 @@
 # 基础设施子架构
 
-> 状态：设计阶段 | 日期：2026-03-19
+> 状态：设计阶段 | 日期：2026-03-19 | 关联：ADR-27 v1.1
 
 ## 完整基础设施栈
 
-| 层 | 选型 | 语言 | 阶段 |
+| 层 | 选型 | 语言 | 用途 |
 |----|------|------|------|
-| Ontology 存储 | SurrealDB（RocksDB → TiKV）| Rust | 全程 |
-| 文件存储 | RustFS（S3-compatible）| Rust | 全程 |
-| 向量搜索 MVP | SurrealDB 内置 | Rust | MVP |
-| 向量搜索中期 | LanceDB（嵌入式）| Rust | > 50万向量 |
-| 向量搜索生产 | Qdrant | Rust | 多节点 |
-| 列式计算 | Apache Arrow + DataFusion | Rust | 全程 |
-| 缓存 | Redis | C | 全程 |
-| 事件总线 | InProcessBus → Fluvio / NATS | Rust / Go | 按需 |
-| 本地 Embedding | fastembed-rs + BGE-small-zh | Rust | 全程 |
-| 密钥管理 | HashiCorp Vault / KMS | — | P2 |
-
-> **注**：NATS 是唯一非 Rust 实现（Go），其余全 Rust 生态。
+| 图存储 | NebulaGraph | C++ | Ontology TBox/ABox/Relationship（图核心）|
+| 结构化存储 | TiDB | Go | 身份/权限/审计/Memory元数据（MySQL兼容）|
+| 向量搜索 MVP | TiDB Vector | Go | Agent Memory 向量索引（内置，无需额外服务）|
+| 向量搜索中期 | LanceDB（嵌入式）| Rust | > 50万向量或 P99 > 200ms |
+| 向量搜索生产 | Qdrant | Rust | 多节点部署 |
+| 文件存储 | RustFS（S3-compatible）| Rust | 用户上传原始文件 |
+| 列式计算 | Apache Arrow + DataFusion | Rust | L2 分析查询引擎 |
+| 缓存 | Redis | C | L1 热数据、授权缓存、语义缓存 |
+| 事件总线 | InProcessBus → NATS JetStream | Rust / Go | 异步事件 |
+| 本地 Embedding | fastembed-rs + BGE-small-zh | Rust | 向量化，独立 embedding-svc |
+| 密钥管理 | HashiCorp Vault / KMS | — | P2，字段加密密钥 |
 
 ---
 
@@ -33,12 +32,13 @@ cargo xtask stop  # 全部停止
 ### xtask 启动顺序
 
 ```
-1. surreal start                    → SurrealDB
-2. nats-server -js                  → NATS JetStream
-3. redis-server                     → Redis
-4. rustfs server                    → RustFS
-5. 等待健康检查通过（/health 轮询）
-6. cargo run -p ontology-svc
+1. nebula-storaged / nebula-graphd    → NebulaGraph（图存储）
+2. tidb-server                        → TiDB（结构化存储）
+3. nats-server -js                    → NATS JetStream
+4. redis-server                       → Redis
+5. rustfs server                      → RustFS
+6. 等待健康检查通过（/health 轮询）
+7. cargo run -p ontology-svc
    cargo run -p ingest-svc
    cargo run -p function-svc
    cargo run -p agent-svc
@@ -130,3 +130,4 @@ surreal start tikv://tikv-cluster:2379
 | 版本 | 日期 | 变更内容 |
 |------|------|---------|
 | v0.1.0 | 2026-03-19 | 初始版本，架构设计阶段 |
+| v0.1.1 | 2026-03-19 | ADR-27 v1.1：SurrealDB → NebulaGraph（图核心）+ TiDB（结构化），TiDB Vector 替代 SurrealDB 内置向量 |
