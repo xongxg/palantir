@@ -1,0 +1,34 @@
+# ADR-09: 合规架构
+
+> 状态：✅ 已决策 | 日期：2026-03-19
+
+## 问题
+
+系统如何满足数据合规要求（审计、隐私、加密、保留）？
+
+## 决策
+
+**六项合规决策，分 P0/P1/P2 实施**。
+
+## 实施计划
+
+| 优先级 | 内容 |
+|--------|------|
+| P0 | 数据分类（TBox 字段打标签：Public / Internal / Confidential / PII）|
+| P0 | 全链路访问审计（who + what + when + IP，写 WORM）|
+| P1 | 不可篡改审计链（哈希链）+ WORM 存储 |
+| P1 | Crypto-Shredding（删 DEK 而非数据，实现被遗忘权）|
+| P2 | 字段级加密（PII 写入前加密，Vault / KMS 管密钥）|
+| P2 | 保留策略引擎（EntityType 绑定保留期，workflow-svc 定时执行）|
+
+## 关键设计
+
+**不可篡改审计日志**：双写 SurrealDB + WORM，哈希链防篡改。
+
+**Crypto-Shredding**：每个 PII 对象独立 DEK，被遗忘权靠删除 DEK 实现，审计链不断裂。
+
+**数据分类驱动**：TBox 字段标签驱动所有合规行为（加密、审计、保留、访问控制）。
+
+## 新增基础设施
+
+KMS / HashiCorp Vault（P2 阶段引入）
