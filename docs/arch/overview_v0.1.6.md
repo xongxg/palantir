@@ -146,5 +146,6 @@ palantir/
 | 共享库 | [crates/arch_v0.1.0.md](crates/arch_v0.1.0.md) |
 | 基础设施 | [infrastructure/arch_v0.1.0.md](infrastructure/arch_v0.1.0.md) |
 | 各服务 | [services/](services/) |
-| 领域模型 | [domain/](domain/) |
+| 领域模型 | [domain/ontology-permission-domain_v0.1.0.md](domain/ontology-permission-domain_v0.1.0.md) |
+| 交互流程 | [domain/ontology-permission-interactions_v0.1.0.md](domain/ontology-permission-interactions_v0.1.0.md) |
 | ADR | [adr/](adr/) |
