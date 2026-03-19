@@ -102,6 +102,19 @@
 被使用：auth-svc、api-gateway（JWT 验证）
 ```
 
+### palantir-sync-client（NEW，P1）
+
+```
+职责：客户端离线同步库（ADR-05）
+核心能力：
+  - 本地 WAL（Write-Ahead Log）：断网期间写操作本地持久化
+  - offline queue：操作队列，恢复网络后按序推送
+  - delta 发送：向 ontology-svc /v1/sync 推送增量
+  - Three-Way Merge 冲突展示（服务端合并，客户端展示冲突标记）
+独立发布：作为独立库，供各类客户端（桌面/移动）接入
+被使用：frontend、未来移动端客户端
+```
+
 ### palantir-http-client（NEW，P1）
 
 ```
@@ -154,6 +167,10 @@ palantir-http-client
 function-svc（Webhook/三方API）
 ingest-svc（HttpAdapter）
 agent-svc（LLM API）
+
+palantir-sync-client（独立库）
+  ↑
+frontend / 移动端客户端
 ```
 
 ---
@@ -164,6 +181,9 @@ agent-svc（LLM API）
 - [ ] palantir-function-core：`#[ontology_function]` 宏实现
 - [ ] palantir-auth-core：RBAC 简单实现（PolicyEvaluator）
 - [ ] palantir-http-client：OutboundClient trait + reqwest 实现 + Circuit Breaker（tower）
+- [ ] palantir-sync-client：WAL 设计 + delta 协议格式定义
+- [ ] Arrow + DataFusion 集成方式（ontology-svc / function-svc 内嵌 vs 独立 crate 封装）
+- [ ] ServiceDiscovery trait 归属（放 palantir-event-bus 还是独立 palantir-discovery crate）
 - [ ] crate 版本管理策略（workspace 统一版本 vs 独立版本）
 
 ---
