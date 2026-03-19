@@ -242,3 +242,36 @@ docs/arch/
 - [ ] TiDB Vector vs Qdrant 切换时机：50 万向量 / P99 > 200ms 的监控告警如何实现？
 - [ ] cargo xtask dev：进程管理如何处理 NebulaGraph 的多进程（storaged + graphd + metad）？
 - [ ] Helm Chart：K8s 部署时，DeploymentProfile 如何通过 ConfigMap 注入？
+
+---
+
+## 后续自然延伸点（ADR 待写）
+
+### ADR-29（已完成）
+国内企业大量使用 Nacos / Zookeeper / Apollo 等配置中心和服务发现组件，强制引入 Consul 浪费已有投资。
+决策：ServiceDiscovery + ConfigCenter 双 Trait，Nacos 二合一，Dubbo 生态兼容。
+
+### ADR-30（待讨论）：可插拔监控可观测性
+不同部署环境对监控平台要求不同：
+- Standard / AirGapped → Prometheus + Grafana（自托管）
+- 阿里云 → ARMS（Application Real-Time Monitoring）
+- 华为云 → AOM（Application Operations Management）
+- AWS → CloudWatch
+- 腾讯云 → 云监控 + APM
+
+`MetricsExporter` trait 抽象，OpenTelemetry 作为中间层（与具体后端解耦）。
+
+### ADR-31（待讨论）：可插拔日志收集
+- Standard → 本地文件 + Loki / ELK 自托管
+- 阿里云 → SLS（日志服务）
+- 华为云 → LTS（日志服务）
+- AWS → CloudWatch Logs
+- 政企离线 → 本地文件落盘，定期归档
+
+`LogSink` trait 抽象，结构化日志（JSON）统一格式，后端可换。
+
+### ADR-32（待讨论）：代码实现 — palantir-infrastructure crate
+把 ADR-28 / ADR-29 定义的所有 Trait 在 `palantir-infrastructure` crate 中落地：
+- Standard Profile 的默认实现优先（NebulaGraph + TiDB + NATS + Redis + Consul）
+- InfrastructureContainer::from_profile() 实现
+- 单元测试用 InMemory 实现
