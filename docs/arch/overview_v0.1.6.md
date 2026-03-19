@@ -1,6 +1,6 @@
 # Palantir Architecture — Overview
 
-> 版本：v0.1.6 | 日期：2026-03-19 | 状态：设计阶段
+> 版本：v0.1.7 | 日期：2026-03-19 | 状态：设计阶段
 >
 > 更新规则：每日 refine → patch 版本递增；服务新增/删除 → minor；底层存储/协议更换 → major
 
@@ -15,7 +15,7 @@
 | v0.1.4 | 2026-03-19 | ADR-16 前端选型（React+Vite），ADR-17 Agent 流式协议 |
 | v0.1.5 | 2026-03-19 | ADR-07 SurrealDB 主存储，ADR-08 RustFS 文件存储 |
 | v0.1.6 | 2026-03-19 | ADR-18 Arrow+DataFusion 加入 L2；ADR-19 embedding-svc 独立；ADR-20 内部 gRPC；ADR-21 Consul 服务发现；ADR-22 出站请求；ADR-23/24 安全方案 |
-| v0.1.7 | 2026-03-19 | ADR-25 Agent 工具协议（MCP/Tool Calling）；ADR-26 Ontology 身份权限四粒度；ADR-27 SurrealDB 替代（NebulaGraph+TiDB）；ADR-28 可插拔基础设施 |
+| v0.1.7 | 2026-03-19 | ADR-25 Agent 工具协议（MCP/Tool Calling）；ADR-26 Ontology 身份权限四粒度；ADR-27 SurrealDB 替代（NebulaGraph+TiDB）；ADR-28 可插拔基础设施（DocumentStore/AppendStore 拆分，MongoDB/Cassandra/HBase 适配）；逃生门表重写 |
 
 ---
 
@@ -127,17 +127,24 @@ palantir/
 
 ---
 
-## 6. 逃生门汇总
+## 6. Trait 抽象层（可插拔基础设施）
 
-| trait | 今天实现 | 未来替换 |
-|-------|---------|---------|
-| `OntologyObjectStore` | SurrealDB | Postgres / TiDB |
-| `OntologyGraphStore` | SurrealDB | Neo4j / TigerGraph |
-| `OntologyReader` | SurrealDB | 只读副本 |
-| `EventPublisher/Subscriber` | InProcessBus | Fluvio / NATS / Kafka |
-| `MemoryStore` | SurrealDB 内置向量 | LanceDB / Qdrant |
+所有基础设施依赖均通过 Trait 抽象，换实现不改业务代码。由 `DeploymentProfile` 驱动运行时装配。
+
+| Trait | 默认实现（Standard Profile）| 可替换为 |
+|-------|---------------------------|---------|
+| `OntologyGraphStore` | NebulaGraph | Neo4j / ArangoDB |
+| `StructuredStore` | TiDB（sqlx MySQL driver）| MySQL / PolarDB / GaussDB / OceanBase |
+| `DocumentStore` | —（可选，按需启用）| MongoDB / DynamoDB / CosmosDB |
+| `AppendStore` | TiDB（复用）| Cassandra / HBase / Lindorm / ScyllaDB |
+| `ObjectStore` | RustFS | S3 / OSS / OBS / MinIO |
+| `VectorStore` | TiDB Vector（MVP）| LanceDB / Qdrant / Milvus |
+| `EventPublisher/Subscriber` | NATS JetStream | RocketMQ / Kafka / SQS |
+| `CacheStore` | Redis | 本地内存（单机开发）|
+| `KeyManager` | HashiCorp Vault | AliKMS / AWS KMS / LocalKeyManager |
 | `PolicyEvaluator` | RBAC 简单实现 | OPA / Cedar |
-| `ObjectStore`（文件）| RustFS | MinIO / S3 / 云 OSS |
+
+> 详细 Trait 定义、DeploymentProfile 配置格式、各云部署形态、存储选型矩阵见 [ADR-28](adr/ADR-28-pluggable-storage.md)
 
 ---
 
@@ -147,7 +154,7 @@ palantir/
 |------|------|
 | 前端 | [frontend/arch_v0.1.0.md](frontend/arch_v0.1.0.md) |
 | 共享库 | [crates/arch_v0.1.0.md](crates/arch_v0.1.0.md) |
-| 基础设施 | [infrastructure/arch_v0.1.1.md](infrastructure/arch_v0.1.1.md) |
+| 基础设施 | [infrastructure/arch_v0.1.2.md](infrastructure/arch_v0.1.2.md) |
 | 各服务 | [services/](services/) |
 | 领域模型 | [domain/ontology-permission-domain_v0.1.0.md](domain/ontology-permission-domain_v0.1.0.md) |
 | 交互流程 | [domain/ontology-permission-interactions_v0.1.1.md](domain/ontology-permission-interactions_v0.1.1.md) |
