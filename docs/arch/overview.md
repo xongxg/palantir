@@ -102,6 +102,8 @@ palantir/
 | [ADR-17](adr/ADR-17-streaming-protocol.md) | Agent 流式协议 | SSE → WebSocket → WebRTC 按需演进 | ✅ |
 | [ADR-18](adr/ADR-18-arrow-datafusion.md) | L2 计算引擎 | Apache Arrow + DataFusion，Arrow IPC 序列化到 Redis | ✅ |
 | [ADR-19](adr/ADR-19-embedding-svc.md) | Embedding 服务 | 独立 embedding-svc，fastembed-rs + BGE-small-zh | ✅ |
+| [ADR-20](adr/ADR-20-internal-rpc.md) | 内部服务通信 | gRPC（tonic + protobuf），外部保持 HTTP + JSON | ✅ |
+| [ADR-21](adr/ADR-21-service-discovery.md) | 服务发现与配置中心 | Consul 自注册，生产 K8s DNS 接管，ServiceDiscovery trait 抽象 | ✅ |
 
 ---
 
