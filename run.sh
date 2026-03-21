@@ -29,5 +29,11 @@ echo "======================================================"
 echo ""
 
 BINARY=${PALANTIR_BIN:-./target/debug/palantir_ingest_api}
+
+if [ ! -f "$BINARY" ]; then
+    echo "[run.sh] binary not found, building..."
+    cargo build -p palantir_ingest_api
+fi
+
 echo "[run.sh] starting binary: $BINARY $*"
 exec "$BINARY" "$@"
