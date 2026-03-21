@@ -1404,20 +1404,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "palantir"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "palantir_agent",
- "palantir_application",
- "palantir_domain",
- "palantir_infrastructure",
- "palantir_ontology_manager",
- "palantir_pipeline",
- "tokio",
-]
-
-[[package]]
 name = "palantir_agent"
 version = "0.1.0"
 dependencies = [
@@ -1427,33 +1413,6 @@ dependencies = [
  "serde",
  "serde_json",
  "time",
-]
-
-[[package]]
-name = "palantir_application"
-version = "0.1.0"
-dependencies = [
- "palantir_domain",
- "palantir_pipeline",
- "serde",
-]
-
-[[package]]
-name = "palantir_domain"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "palantir_infrastructure"
-version = "0.1.0"
-dependencies = [
- "palantir_application",
- "palantir_domain",
- "palantir_pipeline",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1509,14 +1468,6 @@ dependencies = [
  "serde_json",
  "sqlx",
  "uuid",
-]
-
-[[package]]
-name = "palantir_pipeline"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

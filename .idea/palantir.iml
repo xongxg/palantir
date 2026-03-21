@@ -12,6 +12,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/palantir-ontology-manager/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/palantir-pipeline/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/palantir-persistence/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/palantir-storage/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

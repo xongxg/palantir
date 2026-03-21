@@ -1,15 +1,5 @@
-[package]
-name = "palantir"
-version = "0.1.0"
-edition = "2024"
-
 [workspace]
 members = [
-    ".",
-    "crates/palantir-domain",
-    "crates/palantir-pipeline",
-    "crates/palantir-application",
-    "crates/palantir-infrastructure",
     "crates/palantir-ontology-manager",
     "crates/palantir-agent",
     "crates/palantir-ingest-api",
@@ -19,13 +9,3 @@ members = [
 default-members = [
     "crates/palantir-ingest-api",
 ]
-
-[dependencies]
-palantir_domain = { path = "crates/palantir-domain" }
-palantir_pipeline = { path = "crates/palantir-pipeline" }
-palantir_application = { path = "crates/palantir-application" }
-palantir_infrastructure = { path = "crates/palantir-infrastructure" }
-palantir_ontology_manager = { path = "crates/palantir-ontology-manager" }
-palantir_agent = { path = "crates/palantir-agent" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-anyhow = "1"
