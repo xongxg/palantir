@@ -9,3 +9,6 @@ members = [
 default-members = [
     "crates/palantir-ingest-api",
 ]
+
+[workspace.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
