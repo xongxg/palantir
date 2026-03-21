@@ -9,4 +9,3 @@ members = [
 default-members = [
     "crates/palantir-ingest-api",
 ]
-
