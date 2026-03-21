@@ -232,6 +232,216 @@ docs/arch/
 | ADR-26 | 四粒度权限模型 | RBAC → ReBAC → ABAC → Field，三层缓存，事件驱动失效 |
 | ADR-27 | NebulaGraph + TiDB 替代 SurrealDB | 爆炸半径缩小，国内生态，运维成熟度 |
 | ADR-28 | 可插拔基础设施 | DeploymentProfile 驱动，支持多云 + 离线，数据主权天然隔离 |
+| ADR-10 v2.0 | EventBus 可插拔后端（国内云扩展） | NATS 升为默认；KafkaBus 覆盖阿里云 ONS / 华为云 DMS / 腾讯云 CKafka；RocketMqHttpBus 作为 HTTP 兜底；Fluvio 降为观察项 |
+
+---
+
+## 8. Ontology → Agent 语义理解与业务熟悉路径
+
+### 问题背景
+
+拥有 Ontology 之后，如何让 Agent 真正理解业务语义、熟悉业务逻辑？
+
+### 核心结论：不是"训练模型"，而是"运行时注入 + 记忆积累"
+
+这是一个重要的架构认知：**我们不需要 fine-tune LLM**。业务理解通过三个机制在运行时实现。
+
+### 机制一：Schema 骨架注入（静态理解）
+
+Ontology TBox（EntityType + RelationshipType + FieldDef）序列化后注入 Agent System Prompt：
+
+```
+"你可以操作以下实体：
+ Contract { amount: Number, status: String, ... }
+ Employee { name: String, department: Reference<Dept>, ... }
+ 关系：Employee -[WORKS_FOR]→ Department ..."
+```
+
+LLM 通过 schema context 理解业务实体结构，无需额外训练。字段分级（Public / Internal / Confidential / PII）也随 schema 一起注入，Agent 天然知道哪些数据需要保护。
+
+### 机制二：函数注册表 — 业务能力的语义桥
+
+```rust
+#[ontology_function]
+fn calculate_contract_risk(contract: &Contract) -> f64 { ... }
+```
+
+宏自动生成 OpenAI Tool schema，LLM 看到的是结构化工具描述，知道"能做什么"。
+三层业务逻辑（Rust 函数 → CEL 表达式 → 自然语言生成 CEL）覆盖工程师、分析师、业务用户三类受众。
+
+### 机制三：运行时语义理解（RAG + 图遍历）
+
+```
+用户提问："这个合同相关的所有员工风险"
+  ↓
+1. embed-svc → 向量化 → 命中语义缓存？
+  ↓ 未命中
+2. 注入 schema context + 可用 Function 列表
+  ↓
+3. LLM 生成执行计划（graph traversal + function calls）
+  ↓
+4. NebulaGraph 图遍历（2-5 hop）拿到关联对象
+  ↓
+5. function-svc 执行 CEL / Rust 计算
+  ↓
+6. LLM 合成自然语言结果
+```
+
+**关键点**：Ontology 提供 schema 骨架，图遍历提供语义连接，embedding 提供相似度检索，三者缺一不可。
+
+### 机制四：记忆积累（Agent 熟悉业务的长效机制）
+
+```
+每次执行结果满足：confidence ≥ 0.85 && access_count > 2
+  ↓
+存入 agent-memory（向量化 + 链接到 OntologyObject）
+  ↓
+下次类似问题 → few-shot 注入 → Agent 直接复用历史成功路径
+```
+
+**本质**：高置信度的成功交互 = 业务知识的自然沉淀。不需要人工标注，生产流量驱动学习。
+
+### 事件驱动保鲜
+
+业务数据变更 → NATS OntologyEvent → agent-svc 刷新 schema 缓存 + embedding-svc 重建向量索引。Agent 不轮询，始终感知最新业务状态。
+
+### 当前实现状态
+
+| 模块 | 状态 |
+|------|------|
+| SourceAdapter（REST/SQL/CSV/JSON） | ✅ 已实现，Bug 修复中 |
+| Ontology ingest pipeline | 🚧 SourceAdapter → OntologyObject 链路待打通 |
+| embedding-svc | 📄 ADR-19 设计完成，待实现 |
+| agent-svc | 📄 ADR-25 设计完成，待实现 |
+| Agent Memory 积累 | 📄 ADR-06 设计完成，待实现 |
+
+**重点**：先把 SourceAdapter → ingest pipeline → OntologyObject 这条链路打通，有了高质量结构化数据，上层 Agent 才有东西可理解。
+
+---
+
+## 9. LlmProvider 可插拔设计
+
+### 背景
+
+Agent 接入 LLM 时，不应绑定单一 provider。不同部署场景对 LLM 有完全不同的要求：
+- 生产环境追求效果 → Claude / GPT-4
+- 国内私有化部署 → 通义千问（数据不出国）
+- 离线 / AirGapped → Ollama 本地模型
+- 开发调试阶段 → Ollama 本地（省钱）
+
+### 设计决策
+
+**LlmProvider trait** 纳入 `InfrastructureContainer`，与 ADR-28 可插拔基础设施保持一致：
+
+```rust
+#[async_trait]
+pub trait LlmProvider: Send + Sync {
+    async fn chat(&self, messages: Vec<Message>) -> Result<String, LlmError>;
+    async fn chat_with_tools(&self, messages: Vec<Message>, tools: Vec<ToolDef>)
+        -> Result<LlmResponse, LlmError>;
+}
+```
+
+**关键洞察**：OpenAI API 格式已成事实标准。Ollama / LM Studio / vLLM / 国内大部分云厂商（通义、豆包、智谱）均兼容。因此只需一个 `OpenAiCompatibleProvider` 实现，通过 `base_url` 切换目标：
+
+```rust
+pub struct OpenAiCompatibleProvider {
+    base_url: String,  // "https://api.openai.com" 或 "http://localhost:11434/v1"
+    api_key:  String,  // 本地 Ollama 填任意字符串即可
+    model:    String,  // "claude-opus-4-6" / "qwen-max" / "llama3.2" / "deepseek-r1"
+}
+```
+
+**配置驱动，业务代码零改动**：
+
+```toml
+# deployment.toml
+
+# 生产环境
+[llm]
+provider = "anthropic"
+model    = "claude-opus-4-6"
+api_key  = "${ANTHROPIC_API_KEY}"
+
+# 国内私有化
+[llm]
+provider = "openai_compatible"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+model    = "qwen-max"
+api_key  = "${DASHSCOPE_API_KEY}"
+
+# AirGapped 离线
+[llm]
+provider = "openai_compatible"
+base_url = "http://localhost:11434/v1"
+api_key  = "ollama"
+model    = "qwen2.5:14b"
+```
+
+### DeploymentProfile 对照
+
+| Profile | LLM | 原因 |
+|---------|-----|------|
+| Standard | Claude API | 效果最好 |
+| Aliyun | 通义千问 | 数据不出国，满足 PIPL |
+| AWS | OpenAI / Claude | 国际环境 |
+| AirGapped | Ollama 本地 | 完全离线，无外网请求 |
+| Dev | Ollama 本地 | 省钱，快速迭代 |
+
+### 实现计划
+
+待 ingest pipeline 打通后，在详细设计阶段写入代码：
+1. `palantir-infrastructure` crate 中定义 `LlmProvider` trait
+2. 实现 `OpenAiCompatibleProvider`（覆盖 Ollama / 通义 / OpenAI）
+3. 实现 `AnthropicProvider`（Claude 原生 API）
+4. `InfrastructureContainer` 增加 `llm_provider()` 方法
+5. `deployment.toml` 增加 `[llm]` 配置节
+
+---
+
+## 10. 数据源覆盖范围扩展
+
+### 背景
+
+Palantir 官方支持的数据源远不止文件和 REST API。真实企业环境中，数据分布在对象存储、关系型数据库、文档数据库、搜索引擎和消息队列中。
+
+### 数据源分类与优先级
+
+**P0（已实现）**
+| 类型 | 文件 |
+|------|------|
+| CSV 文件 | `adapters_csv.rs` |
+| JSON / JSONL | `adapters_json.rs` |
+| SQL（SQLite） | `adapters_sql.rs` |
+| REST API | `adapters_rest.rs` |
+
+**P1（存根已就位，待实现）**
+| 类型 | 文件 | 依赖 crate | 覆盖范围 |
+|------|------|-----------|---------|
+| S3 / 对象存储 | `adapters_s3.rs` | `object_store` | AWS S3 / 阿里云 OSS / 腾讯 COS / 华为 OBS / MinIO |
+| PostgreSQL / MySQL | `adapters_postgres.rs` | `sqlx`（已有，加 feature） | 主流关系型数据库 |
+| MongoDB | `adapters_mongodb.rs` | `mongodb` | 文档型数据库 |
+| Elasticsearch | `adapters_elasticsearch.rs` | `reqwest`（已有） | 日志 / 全文搜索 |
+| Kafka | `adapters_kafka.rs` | `rdkafka` | 实时流、消息队列 |
+| Excel / ODS | `adapters_excel.rs` | `calamine` | 企业常见电子表格 |
+
+**P2（规划中，未建文件）**
+| 类型 | 说明 |
+|------|------|
+| RocketMQ / Pulsar | 国内消息队列 |
+| SaaS（飞书 / 钉钉 / 纷享销客） | 企业 SaaS 集成 |
+| SAP / 用友 / 金蝶 | ERP 系统 |
+
+### 关键设计决策
+
+**object_store crate 覆盖所有 S3 兼容存储**：一套代码，通过 endpoint 配置切换 AWS / 阿里云 / 腾讯云 / MinIO，符合 ADR-28 可插拔基础设施的思路。
+
+**Kafka 与批量适配器的本质差异**：
+- 批量适配器：拉取快照（静态文件或 SQL 结果集）
+- Kafka：持续消费流，cursor = Kafka offset，天然支持断点续传
+- `stream()` 方法在 Kafka 场景下是真正的无限流，而非一次性迭代
+
+**实现原则**：当前阶段 P1/P2 均返回 `Err("not yet implemented")`，trait 接口已稳定，实现时只需填充逻辑，调用方无需改动。
 
 ---
 
@@ -251,24 +461,23 @@ docs/arch/
 国内企业大量使用 Nacos / Zookeeper / Apollo 等配置中心和服务发现组件，强制引入 Consul 浪费已有投资。
 决策：ServiceDiscovery + ConfigCenter 双 Trait，Nacos 二合一，Dubbo 生态兼容。
 
-### ADR-30（待讨论）：可插拔监控可观测性
-不同部署环境对监控平台要求不同：
-- Standard / AirGapped → Prometheus + Grafana（自托管）
-- 阿里云 → ARMS（Application Real-Time Monitoring）
-- 华为云 → AOM（Application Operations Management）
-- AWS → CloudWatch
-- 腾讯云 → 云监控 + APM
+### ADR-30（已完成）：可插拔可观测性（监控 + 追踪 + 日志 + 故障定位）
 
-`MetricsExporter` trait 抽象，OpenTelemetry 作为中间层（与具体后端解耦）。
+核心决策：
+- **OpenTelemetry OTLP** 作为统一中间层，覆盖 Traces + Metrics + Logs
+- `TelemetryProvider` trait：`tracer()` + `meter()` + `report_error()`（Sentry-like 聚合）
+- `LogSink` trait：仅 AirGapped 离线场景用，其他走 OTLP log exporter
+- **审计日志不在此 ADR**，复用 ADR-09 的 `AuditLog` trait
+- `trace_id` 通过 W3C TraceContext 贯穿 HTTP / gRPC / NATS 消息
+- Workflow 心跳 metric + Alertmanager 规则防卡死无感知
+- Agent 工具调用强制 `#[tracing::instrument]` 埋点
+- NebulaGraph：`PROFILE <nGQL>` 定位慢查询；TiDB：`slow_query` 系统表
 
-### ADR-31（待讨论）：可插拔日志收集
-- Standard → 本地文件 + Loki / ELK 自托管
-- 阿里云 → SLS（日志服务）
-- 华为云 → LTS（日志服务）
-- AWS → CloudWatch Logs
-- 政企离线 → 本地文件落盘，定期归档
+→ 详见 [ADR-30](adr/ADR-30-observability.md)
 
-`LogSink` trait 抽象，结构化日志（JSON）统一格式，后端可换。
+### ADR-31（待讨论）：可插拔日志收集细化（AirGapped 归档策略）
+- AirGapped 本地文件 rotate + gzip 归档的具体参数
+- 离线环境日志定期导出（U 盘 / 内网传输）流程
 
 ### ADR-32（待讨论）：代码实现 — palantir-infrastructure crate
 把 ADR-28 / ADR-29 定义的所有 Trait 在 `palantir-infrastructure` crate 中落地：

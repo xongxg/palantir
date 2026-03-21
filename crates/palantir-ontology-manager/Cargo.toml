@@ -12,12 +12,14 @@ thiserror = "1"
 async-trait = "0.1"
 futures-core = "0.3"
 futures-util = "0.3"
-tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 time = { version = "0.3", features = ["serde-human-readable"] }
 anyhow = "1"
 toml = "0.8"
 csv = "1"
+reqwest = { version = "0.12", features = ["json"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "json"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }

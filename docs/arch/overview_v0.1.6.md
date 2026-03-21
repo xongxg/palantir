@@ -17,6 +17,7 @@
 | v0.1.6 | 2026-03-19 | ADR-18 Arrow+DataFusion 加入 L2；ADR-19 embedding-svc 独立；ADR-20 内部 gRPC；ADR-21 Consul 服务发现；ADR-22 出站请求；ADR-23/24 安全方案 |
 | v0.1.7 | 2026-03-19 | ADR-25~28：Agent 工具协议、身份权限四粒度、NebulaGraph+TiDB 替代 SurrealDB、可插拔基础设施；逃生门表重写 |
 | v0.1.8 | 2026-03-19 | ADR-29：ServiceDiscovery + ConfigCenter 双 Trait 可插拔；支持 Nacos/Apollo/Zookeeper/etcd/K8s/Static；Dubbo 生态兼容 |
+| v0.1.9 | 2026-03-20 | Iter 路线图（Iter-1~7，Phase 2→3 细化）；palantir-storage crate 加入 workspace；四层对位分析更新 |
 
 ---
 
@@ -41,6 +42,7 @@ palantir/
 │   ├── palantir-ontology-manager/
 │   ├── palantir-domain/
 │   ├── palantir-persistence/
+│   ├── palantir-storage/            # NEW Iter-1：StorageBackend trait + LocalFsBackend + DatasetStore
 │   ├── palantir-pipeline/
 │   ├── palantir-agent/
 │   ├── palantir-event-bus/          # NEW
@@ -126,6 +128,8 @@ palantir/
 | [ADR-27](adr/ADR-27-surrealdb-dependency-risk.md) | SurrealDB 依赖风险与替代 | 收窄 SurrealDB 范围；迁移路径：NebulaGraph+MySQL/TiDB 或 PolarDB+AGE | ✅ |
 | [ADR-28](adr/ADR-28-pluggable-storage.md) | 可插拔基础设施架构 | InfrastructureContainer + DeploymentProfile 驱动，支持 Standard/Aliyun/AWS/华为云/AirGapped | ✅ |
 | [ADR-29](adr/ADR-29-service-discovery-config-center.md) | 可插拔服务发现与配置中心 | ServiceDiscovery + ConfigCenter 双 Trait；Nacos/Apollo/Zookeeper/etcd/K8s/Static；Dubbo 生态兼容 | ✅ |
+| [ADR-30](adr/ADR-30-observability.md) | 可插拔可观测性（监控/追踪/日志/故障定位） | TelemetryProvider + LogSink；OTLP 统一中间层；trace_id 贯穿三信号；Workflow 心跳 + Agent span | ✅ |
+| [ADR-33](adr/ADR-33-modular-deployment.md) | 模块化部署与产品版本分层 | ModuleProfile 控制服务启停；5 个 ProductEdition（Lite→Enterprise+）；4 类扩展点；SaaS/私有化/混合三种拓扑 | ✅ |
 
 ---
 
@@ -156,10 +160,21 @@ palantir/
 
 | 领域 | 文档 |
 |------|------|
-| 前端 | [frontend/arch_v0.1.0.md](frontend/arch_v0.1.0.md) |
+| 前端基础架构 | [frontend/arch_v0.1.0.md](frontend/arch_v0.1.0.md) |
+| 前端域分离设计（Admin / App 分域）| [frontend/domain-separation_v0.1.0.md](frontend/domain-separation_v0.1.0.md) |
+| 前端多设备策略（5 级断点 + 功能矩阵）| [frontend/multi-device-strategy_v0.1.0.md](frontend/multi-device-strategy_v0.1.0.md) |
+| Business App Shell 设计（布局/导航/代码分割/CSS Token）| [frontend/business-app-shell_v0.1.0.md](frontend/business-app-shell_v0.1.0.md) |
 | 共享库 | [crates/arch_v0.1.0.md](crates/arch_v0.1.0.md) |
 | 基础设施 | [infrastructure/arch_v0.1.2.md](infrastructure/arch_v0.1.2.md) |
 | 各服务 | [services/](services/) |
-| 领域模型 | [domain/ontology-permission-domain_v0.1.0.md](domain/ontology-permission-domain_v0.1.0.md) |
-| 交互流程 | [domain/ontology-permission-interactions_v0.1.1.md](domain/ontology-permission-interactions_v0.1.1.md) |
+| 领域模型（权限/身份）| [domain/ontology-permission-domain_v0.1.0.md](domain/ontology-permission-domain_v0.1.0.md) |
+| 交互流程（权限/身份）| [domain/ontology-permission-interactions_v0.1.1.md](domain/ontology-permission-interactions_v0.1.1.md) |
+| 用户 Story + 全局领域模型 + 交互图（Flow 7–10）| [domain/user-stories-and-interactions_v0.1.0.md](domain/user-stories-and-interactions_v0.1.0.md) |
+| 跨领域交互清单与交互图（9 个领域对）| [domain/cross-domain-interactions_v0.1.0.md](domain/cross-domain-interactions_v0.1.0.md) |
+| 用户角色体系（Palantir 官方 Persona 对齐）| [domain/user-roles_v0.2.0.md](domain/user-roles_v0.2.0.md) |
+| 详细 US — 业务功能（28 个，含前端行为 + 验收标准）| [domain/user-stories-detailed_v0.1.0.md](domain/user-stories-detailed_v0.1.0.md) |
+| 详细 US — 平台/部署（14 个：SaaS/私有化/混合/Enterprise+）| [domain/user-stories-platform_v0.1.0.md](domain/user-stories-platform_v0.1.0.md) |
+| 详细 US — 租户/部门/项目（14 个：三层组织模型）| [domain/user-stories-tenant-org_v0.1.0.md](domain/user-stories-tenant-org_v0.1.0.md) |
+| ADR-04 v2.0 — 多租户三层模型（Tenant/Department/Project）| [adr/ADR-04-multi-tenant.md](adr/ADR-04-multi-tenant.md) |
+| ontology-svc 完整设计（用例/领域模型/5交互图/Trait 层）| [services/ontology-svc_v0.2.0.md](services/ontology-svc_v0.2.0.md) |
 | ADR | [adr/](adr/) |

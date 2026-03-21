@@ -14,6 +14,7 @@ members = [
     "crates/palantir-agent",
     "crates/palantir-ingest-api",
     "crates/palantir-persistence",
+    "crates/palantir-storage",
 ]
 default-members = [
     "crates/palantir-ingest-api",

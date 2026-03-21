@@ -1,0 +1,10 @@
+{
+  "meta": { "version": "1.0", "source": "HR System" },
+  "data": [
+    { "id": "E001", "name": "Alice Chen", "dept": "Engineering", "level": "Senior", "location": "Beijing" },
+    { "id": "E002", "name": "Bob Li",    "dept": "Engineering", "level": "Mid",    "location": "Shanghai" },
+    { "id": "E003", "name": "Carol Wang","dept": "Product",     "level": "Senior", "location": "Beijing" },
+    { "id": "E004", "name": "David Zhang","dept":"Engineering", "level": "Junior", "location": "Shenzhen" },
+    { "id": "E005", "name": "Eva Liu",   "dept": "Product",     "level": "Mid",    "location": "Shanghai" }
+  ]
+}

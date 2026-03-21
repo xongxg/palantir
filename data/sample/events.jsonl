@@ -1,0 +1,5 @@
+{"event_id":"evt-001","type":"login","user_id":"u1","ts":"2024-01-15T08:30:00Z","ip":"192.168.1.1"}
+{"event_id":"evt-002","type":"purchase","user_id":"u2","ts":"2024-01-15T09:00:00Z","amount":299.9}
+{"event_id":"evt-003","type":"login","user_id":"u3","ts":"2024-01-15T09:15:00Z","ip":"10.0.0.5"}
+{"event_id":"evt-004","type":"logout","user_id":"u1","ts":"2024-01-15T10:00:00Z","ip":"192.168.1.1"}
+{"event_id":"evt-005","type":"purchase","user_id":"u1","ts":"2024-01-15T10:30:00Z","amount":1499.0}

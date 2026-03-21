@@ -1,0 +1,56 @@
+{
+  "dataset_id": "b26f78a8-ff19-4fda-bf78-5723eff09113",
+  "version": 2,
+  "sync_run_id": "ff854a89-5c36-4fcc-a6ba-efe2824d4d4b",
+  "created_at": 1774068263,
+  "schema": {
+    "fields": [
+      {
+        "name": "department",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "email",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "join_date",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "role",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "salary",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "7c9b8a2672adce739409cfe1cfcc3c08918364bd17ba4dd0c5a998a00d071a56",
+      "rows": 66,
+      "bytes": 2669
+    }
+  ],
+  "total_rows": 66,
+  "total_bytes": 2669,
+  "content_hash": "42cd9d7e9bbf216a0b3ca88e7bded0f2574fd4e8d46e808706d2ab387dff38a9"
+}
