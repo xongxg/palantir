@@ -9,3 +9,7 @@ members = [
 default-members = [
     "crates/palantir-ingest-api",
 ]
+
+[profile.dev]
+debug = 0
+split-debuginfo = "unpacked"
