@@ -2816,6 +2816,84 @@ async fn rematerialize_from_manifest(
 
 // ── Iter-3: GC ───────────────────────────────────────────────────────────────
 
+// ── Promote dataset → ontology ─────────────────────────────────────────────────
+#[derive(Deserialize)]
+struct PromoteDatasetReq {
+    /// Existing entity type UUID, OR empty to auto-create from new_type_name
+    #[serde(default)]
+    entity_type_id: String,
+    /// If entity_type_id is empty, create a new entity type with this name
+    #[serde(default)]
+    new_type_name: String,
+    /// { "src_field": "target_attr" } — empty means keep field names as-is
+    #[serde(default)]
+    field_mapping: serde_json::Value,
+}
+
+async fn promote_dataset_handler(
+    Path(dataset_id): Path<String>,
+    Json(req): Json<PromoteDatasetReq>,
+) -> impl IntoResponse {
+    // Resolve entity type: use existing or create new
+    let (et_id, et_name) = if !req.entity_type_id.is_empty() {
+        let types = db().list_entity_types().await.unwrap_or_default();
+        match types.into_iter().find(|t| t.id == req.entity_type_id) {
+            Some(t) => (t.id, t.display_name),
+            None => return (StatusCode::BAD_REQUEST,
+                Json(json!({"ok": false, "error": "entity type not found"}))).into_response(),
+        }
+    } else if !req.new_type_name.is_empty() {
+        let name = req.new_type_name.trim().to_lowercase().replace(' ', "_");
+        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube").await {
+            Ok(t) => (t.id, t.display_name),
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+        }
+    } else {
+        return (StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "error": "entity_type_id or new_type_name required"}))).into_response();
+    };
+
+    // Read all records in batches of 500
+    let total = match db().count_dataset_records(&dataset_id).await {
+        Ok(n) => n,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+    };
+
+    let batch = 500i64;
+    let mut offset = 0i64;
+    let mut promoted = 0usize;
+
+    loop {
+        let rows = match db().list_dataset_records(&dataset_id, batch, offset).await {
+            Ok(r) => r,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+        };
+        if rows.is_empty() { break; }
+
+        for row in &rows {
+            let raw: serde_json::Value = serde_json::from_str(&row.fields).unwrap_or(json!({}));
+            let mapped = apply_field_mapping(&raw, &req.field_mapping);
+            let label  = extract_label(&mapped);
+            let fields = mapped.to_string();
+            if let Err(e) = db()
+                .create_ontology_object_with_lineage(&et_id, &et_name, &label, &fields, &dataset_id, "promote")
+                .await
+            {
+                return (StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"ok": false, "error": e.to_string()}))).into_response();
+            }
+            promoted += 1;
+        }
+        offset += batch;
+        if offset >= total { break; }
+    }
+
+    (StatusCode::OK, Json(json!({ "ok": true, "promoted": promoted, "total": total }))).into_response()
+}
+
 #[derive(Deserialize)]
 struct GcReq {
     #[serde(default = "default_keep_versions")]
@@ -3016,6 +3094,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/datasets/:id/versions", get(list_dataset_versions_handler))
         .route("/api/datasets/:id/rollback", post(rollback_dataset_handler))
         .route("/api/datasets/:id/gc",       post(gc_dataset_handler))
+        .route("/api/datasets/:id/promote",  post(promote_dataset_handler))
         .route("/api/datasets/:id/records", get(list_dataset_records_handler))
         .route("/api/datasets/:id/export/s3", post(export_dataset_s3_handler))
         // ── Admin: platform storage config ───────────────────────────────────

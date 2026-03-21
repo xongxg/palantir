@@ -350,6 +350,45 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   </div>
 </div>
 
+<!-- Promote to Ontology modal -->
+<div class="modal-overlay" id="promote-modal">
+  <div class="modal" style="width:520px">
+    <div class="modal-title">推送到 Ontology</div>
+    <div class="modal-sub" style="margin-bottom:14px;color:#64748b;font-size:12px">
+      将当前数据集的所有记录写入 Ontology，选择实体类型并映射字段
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- Entity type -->
+      <div class="fg full">
+        <label>实体类型</label>
+        <select id="pm-et-select" onchange="onPromoteEtChange()" style="background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:13px;padding:8px 10px">
+          <option value="">— 选择已有实体类型 —</option>
+        </select>
+      </div>
+      <div class="fg full" id="pm-new-type-wrap" style="display:none">
+        <label>新建实体类型名称</label>
+        <input id="pm-new-type-name" placeholder="例如：客户、订单、设备…">
+      </div>
+      <div style="font-size:11px;color:#475569">
+        <a href="#" onclick="toggleNewType();return false" id="pm-toggle-link">+ 新建实体类型</a>
+      </div>
+
+      <!-- Field mapping -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">字段映射（源字段 → Ontology 属性名）</div>
+        <div id="pm-field-mapping" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <div id="pm-msg" style="font-size:12px;margin-top:10px;min-height:18px"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="closePromoteModal()">取消</button>
+      <button class="btn btn-success" id="btn-do-promote" onclick="doPromote()">推送到 Ontology</button>
+    </div>
+  </div>
+</div>
+
 <!-- Schema conflict modal -->
 <div class="modal-overlay" id="schema-modal">
   <div class="modal">
@@ -1562,6 +1601,7 @@ function renderRecords(data) {
 
   let html = `<div class="records-toolbar">
     <div class="records-info">${from}–${to} / 共 ${total.toLocaleString()} 条</div>
+    <button class="pager-btn" style="font-size:10px;padding:3px 7px;background:#059669;color:#fff;border:none" onclick="openPromoteModal()">→ Ontology</button>
     <button class="pager-btn" style="font-size:10px;padding:3px 7px" onclick="openExportModal('${recordsState.dsId}')">↑ S3</button>
     <div class="records-pager">
       <button class="pager-btn" ${offset === 0 ? 'disabled' : ''} onclick="loadRecords(${Math.max(0, offset-limit)})">‹</button>
@@ -1710,6 +1750,109 @@ async function doExportS3() {
 }
 
 boot();
+
+// ── Promote to Ontology ───────────────────────────────────────────────────────
+let promoteFields = [];
+let newTypeMode = false;
+
+async function openPromoteModal() {
+  if (!recordsState.dsId) { alert('请先同步数据集'); return; }
+
+  // Load entity types
+  const r = await fetch('/api/ontology/schema');
+  const data = await r.json();
+  const types = data.entity_types || [];
+  const sel = document.getElementById('pm-et-select');
+  sel.innerHTML = '<option value="">— 选择已有实体类型 —</option>';
+  types.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id; o.textContent = t.display_name || t.name;
+    sel.appendChild(o);
+  });
+
+  // Load sample record to get fields
+  const rr = await fetch(`/api/datasets/${recordsState.dsId}/records?limit=1&offset=0`);
+  const rd = await rr.json();
+  promoteFields = rd.records?.length ? Object.keys(rd.records[0].fields || {}) : [];
+
+  renderPromoteMapping();
+  newTypeMode = false;
+  document.getElementById('pm-new-type-wrap').style.display = 'none';
+  document.getElementById('pm-toggle-link').textContent = '+ 新建实体类型';
+  document.getElementById('pm-msg').textContent = '';
+  document.getElementById('promote-modal').classList.add('open');
+}
+
+function closePromoteModal() {
+  document.getElementById('promote-modal').classList.remove('open');
+}
+
+function toggleNewType() {
+  newTypeMode = !newTypeMode;
+  document.getElementById('pm-new-type-wrap').style.display = newTypeMode ? 'block' : 'none';
+  document.getElementById('pm-et-select').disabled = newTypeMode;
+  document.getElementById('pm-toggle-link').textContent = newTypeMode ? '← 使用已有实体类型' : '+ 新建实体类型';
+}
+
+function onPromoteEtChange() {}
+
+function renderPromoteMapping() {
+  const el = document.getElementById('pm-field-mapping');
+  if (!promoteFields.length) { el.innerHTML = '<div style="color:#475569;font-size:12px">无字段信息</div>'; return; }
+  el.innerHTML = promoteFields.map(f => `
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;color:#94a3b8;width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(f)}">${escHtml(f)}</span>
+      <span style="color:#475569;font-size:12px">→</span>
+      <input value="${escAttr(f)}" data-src="${escAttr(f)}"
+        style="flex:1;background:#0f1117;border:1px solid #2d3748;border-radius:5px;color:#e2e8f0;font-size:12px;padding:5px 8px"
+        placeholder="属性名（留空则跳过）">
+    </div>`).join('');
+}
+
+async function doPromote() {
+  const msg = document.getElementById('pm-msg');
+  const btn = document.getElementById('btn-do-promote');
+
+  const etId   = newTypeMode ? '' : document.getElementById('pm-et-select').value;
+  const newName = newTypeMode ? document.getElementById('pm-new-type-name').value.trim() : '';
+
+  if (!etId && !newName) { msg.style.color='#f87171'; msg.textContent='请选择或新建实体类型'; return; }
+
+  // Collect field mapping
+  const mapping = {};
+  document.querySelectorAll('#pm-field-mapping input').forEach(inp => {
+    const src = inp.dataset.src;
+    const tgt = inp.value.trim();
+    if (tgt) mapping[src] = tgt;
+  });
+
+  btn.disabled = true; btn.textContent = '推送中…';
+  msg.style.color = '#64748b'; msg.textContent = '正在写入 Ontology…';
+
+  try {
+    const body = { field_mapping: mapping };
+    if (etId) body.entity_type_id = etId;
+    if (newName) body.new_type_name = newName;
+
+    const r = await fetch(`/api/datasets/${recordsState.dsId}/promote`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      msg.style.color = '#f87171';
+      msg.textContent = '失败：' + (data.error || '未知错误');
+    } else {
+      msg.style.color = '#34d399';
+      msg.textContent = `✓ 成功推送 ${data.promoted} 条记录到 Ontology`;
+      setTimeout(() => closePromoteModal(), 1800);
+    }
+  } catch(e) {
+    msg.style.color = '#f87171'; msg.textContent = '网络错误：' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '推送到 Ontology';
+  }
+}
 </script>
 
 <!-- 新建数据源：名称 + 类型选择 -->
