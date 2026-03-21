@@ -1,0 +1,17 @@
+[package]
+name = "palantir_storage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow       = "1"
+async-trait  = "0.1"
+bytes        = "1"
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+sha2         = "0.10"
+hex          = "0.4"
+tokio        = { version = "1", features = ["rt", "fs", "io-util"] }
+csv          = "1"
+object_store = { version = "0.9", features = ["aws"] }
+futures-util = "0.3"

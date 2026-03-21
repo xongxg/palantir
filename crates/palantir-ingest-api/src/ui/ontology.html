@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ontology — Palantir</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+  input, select, textarea {
+    background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 100%;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: #6366f1; }
+  button { cursor: pointer; border-radius: 6px; font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  button:hover { opacity: .85; }
+  .btn-primary { background: #6366f1; color: #fff; padding: 6px 14px; }
+  .btn-ghost   { background: transparent; border: 1px solid #334155; color: #94a3b8; padding: 5px 10px; }
+  .btn-danger  { background: #dc2626; color: #fff; padding: 4px 8px; font-size: 11px; }
+  .node circle { cursor: pointer; stroke-width: 2; }
+  .node text   { font-size: 11px; fill: #e2e8f0; pointer-events: none; }
+  .link        { stroke: #475569; stroke-width: 1.5; }
+  .link-label  { font-size: 10px; fill: #64748b; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; min-width: 380px; max-width: 480px; }
+  .badge-Public        { background: #064e3b; color: #6ee7b7; }
+  .badge-Internal      { background: #1e3a5f; color: #93c5fd; }
+  .badge-Confidential  { background: #451a03; color: #fcd34d; }
+  .badge-Pii           { background: #4c0519; color: #fca5a5; }
+</style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<!-- TopBar -->
+<div class="flex items-center px-4 py-3 border-b border-slate-700/60 gap-4 flex-shrink-0">
+  <span class="text-indigo-400 font-bold text-sm tracking-wide">Palantir</span>
+  <span class="text-slate-600">|</span>
+  <nav class="flex gap-5 text-xs text-slate-400">
+    <a href="/" class="hover:text-slate-200">Projects</a>
+    <a href="/ontology" class="text-white font-medium">Ontology</a>
+    <a href="/connect" class="hover:text-slate-200">Data Connections</a>
+    <a href="/sources" class="hover:text-slate-200">Sources</a>
+    <a href="/workspace" class="hover:text-slate-200">Workspace</a>
+  </nav>
+  <div class="flex-1"/>
+  <div class="flex gap-2 text-xs">
+    <button onclick="setView('schema')"  id="tab-schema"  class="tab-btn btn-ghost">Schema</button>
+    <button onclick="setView('objects')" id="tab-objects" class="tab-btn btn-ghost">Objects</button>
+    <button onclick="setView('graph')"   id="tab-graph"   class="tab-btn btn-ghost">Graph</button>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="flex-1 overflow-hidden flex">
+
+  <!-- ── Schema View ──────────────────────────────────────────────────────── -->
+  <div id="view-schema" class="flex-1 flex overflow-hidden">
+
+    <!-- Left: EntityType list -->
+    <div class="w-64 flex-shrink-0 border-r border-slate-700/60 flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-slate-700/60">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">EntityTypes</span>
+        <button onclick="openCreateTypeModal()" class="btn-primary text-xs px-2 py-1">+ New</button>
+      </div>
+      <div id="et-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+    </div>
+
+    <!-- Right: EntityType detail (fields) -->
+    <div class="flex-1 overflow-y-auto p-4">
+      <div id="et-detail-empty" class="flex items-center justify-center h-full text-slate-500 text-sm">
+        Select an EntityType to view its schema
+      </div>
+      <div id="et-detail" class="hidden space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span id="et-icon" class="text-2xl"></span>
+            <div>
+              <h2 id="et-display-name" class="text-lg font-semibold text-white"></h2>
+              <p id="et-name" class="text-xs text-slate-500 font-mono"></p>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="openAddFieldModal()" class="btn-primary text-xs">+ Add Field</button>
+            <button onclick="deleteCurrentEntityType()" class="btn-danger">Delete Type</button>
+          </div>
+        </div>
+
+        <!-- Fields table -->
+        <div class="card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-xs text-slate-400 border-b border-slate-700">
+                <th class="text-left px-4 py-2">Field</th>
+                <th class="text-left px-4 py-2">Type</th>
+                <th class="text-left px-4 py-2">Classification</th>
+                <th class="text-left px-4 py-2">Required</th>
+                <th class="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody id="fields-table" class="divide-y divide-slate-700/50"></tbody>
+          </table>
+          <div id="fields-empty" class="hidden px-4 py-6 text-center text-slate-500 text-sm">No fields yet</div>
+        </div>
+
+        <!-- Object count shortcut -->
+        <div class="flex gap-3">
+          <button onclick="goToObjects()" class="btn-ghost text-xs">
+            View Objects of this type →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Objects View ─────────────────────────────────────────────────────── -->
+  <div id="view-objects" class="hidden flex-1 flex overflow-hidden">
+
+    <!-- Left: filter by EntityType -->
+    <div class="w-56 flex-shrink-0 border-r border-slate-700/60 flex flex-col overflow-hidden">
+      <div class="px-3 py-2 border-b border-slate-700/60">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Filter by Type</span>
+      </div>
+      <div class="flex-1 overflow-y-auto p-2 space-y-1">
+        <button onclick="filterObjects(null)"
+          class="w-full text-left px-3 py-2 rounded text-sm text-slate-300 hover:bg-slate-700/50"
+          id="filter-all">All Objects</button>
+        <div id="obj-filter-list" class="space-y-1"></div>
+      </div>
+    </div>
+
+    <!-- Center: Object list -->
+    <div class="w-80 flex-shrink-0 border-r border-slate-700/60 flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-slate-700/60">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Objects</span>
+        <button onclick="openCreateObjectModal()" class="btn-primary text-xs px-2 py-1">+ New</button>
+      </div>
+      <div id="obj-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+    </div>
+
+    <!-- Right: Object detail -->
+    <div class="flex-1 overflow-y-auto p-4">
+      <div id="obj-detail-empty" class="flex items-center justify-center h-full text-slate-500 text-sm">
+        Select an object to view details
+      </div>
+      <div id="obj-detail" class="hidden space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 id="obj-label" class="text-lg font-semibold text-white"></h2>
+            <p id="obj-type-badge" class="text-xs mt-1"></p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="openAddLinkModal()" class="btn-primary text-xs">+ Link</button>
+            <button onclick="deleteCurrentObject()" class="btn-danger">Delete</button>
+          </div>
+        </div>
+
+        <!-- Fields -->
+        <div class="card p-4 space-y-2">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Fields</h3>
+          <div id="obj-fields" class="space-y-2 text-sm"></div>
+        </div>
+
+        <!-- Links -->
+        <div class="card p-4">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Relationships</h3>
+          <div id="obj-links" class="space-y-2"></div>
+          <div id="obj-links-empty" class="text-slate-500 text-sm">No relationships</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Graph View ───────────────────────────────────────────────────────── -->
+  <div id="view-graph" class="hidden flex-1 relative">
+    <div class="absolute top-3 left-3 flex gap-2 z-10">
+      <button onclick="loadGraph()" class="btn-ghost text-xs">↺ Refresh</button>
+      <span class="text-xs text-slate-500 self-center" id="graph-stats"></span>
+    </div>
+    <svg id="graph-svg" class="w-full h-full"></svg>
+  </div>
+
+</div><!-- end main -->
+
+<!-- ── Modals ──────────────────────────────────────────────────────────────── -->
+
+<!-- Create EntityType -->
+<div id="modal-create-type" class="modal-overlay hidden">
+  <div class="modal space-y-4">
+    <h3 class="text-base font-semibold">New EntityType</h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Name (identifier, no spaces)</label>
+        <input id="new-et-name" placeholder="Contract" />
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Display Name</label>
+        <input id="new-et-display" placeholder="Contract" />
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1">
+          <label class="text-xs text-slate-400 block mb-1">Color</label>
+          <input id="new-et-color" type="color" value="#6366f1" style="height:34px;padding:2px 4px;" />
+        </div>
+        <div class="flex-1">
+          <label class="text-xs text-slate-400 block mb-1">Icon</label>
+          <input id="new-et-icon" placeholder="●" />
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal('modal-create-type')" class="btn-ghost">Cancel</button>
+      <button onclick="submitCreateType()" class="btn-primary">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Field -->
+<div id="modal-add-field" class="modal-overlay hidden">
+  <div class="modal space-y-4">
+    <h3 class="text-base font-semibold">Add Field</h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Field Name</label>
+        <input id="new-field-name" placeholder="amount" />
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Data Type</label>
+        <select id="new-field-type">
+          <option value="string">string</option>
+          <option value="number">number</option>
+          <option value="boolean">boolean</option>
+          <option value="date">date</option>
+          <option value="datetime">datetime</option>
+          <option value="reference">reference</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Classification</label>
+        <select id="new-field-class">
+          <option value="Public">Public</option>
+          <option value="Internal" selected>Internal</option>
+          <option value="Confidential">Confidential</option>
+          <option value="Pii">PII</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="new-field-required" class="w-auto" style="width:auto" />
+        <label for="new-field-required" class="text-sm text-slate-300">Required</label>
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal('modal-add-field')" class="btn-ghost">Cancel</button>
+      <button onclick="submitAddField()" class="btn-primary">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Object -->
+<div id="modal-create-obj" class="modal-overlay hidden">
+  <div class="modal space-y-4" style="min-width:460px">
+    <h3 class="text-base font-semibold">New Object</h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">EntityType</label>
+        <select id="new-obj-type"></select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Label</label>
+        <input id="new-obj-label" placeholder="Alice" />
+      </div>
+      <div id="new-obj-fields-container" class="space-y-2"></div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal('modal-create-obj')" class="btn-ghost">Cancel</button>
+      <button onclick="submitCreateObject()" class="btn-primary">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Link -->
+<div id="modal-add-link" class="modal-overlay hidden">
+  <div class="modal space-y-4">
+    <h3 class="text-base font-semibold">Add Relationship</h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Relationship Type</label>
+        <input id="new-link-type" placeholder="WORKS_FOR" />
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Target Object</label>
+        <select id="new-link-target"></select>
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal('modal-add-link')" class="btn-ghost">Cancel</button>
+      <button onclick="submitAddLink()" class="btn-primary">Link</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let entityTypes = [];    // [{id, name, display_name, color, icon, fields:[]}]
+let allObjects  = [];    // [{id, entity_type_id, entity_type_name, label, fields, ...}]
+let selectedET  = null;  // EntityTypeRow
+let selectedObj = null;  // ObjectRow
+let filterET    = null;  // EntityTypeId | null
+let currentView = 'schema';
+
+// ── View switching ──────────────────────────────────────────────────────────
+function setView(v) {
+  currentView = v;
+  ['schema','objects','graph'].forEach(name => {
+    document.getElementById('view-'+name).classList.toggle('hidden', name !== v);
+    const tab = document.getElementById('tab-'+name);
+    tab.classList.toggle('bg-indigo-600', name === v);
+    tab.classList.toggle('text-white',    name === v);
+    tab.classList.toggle('btn-ghost',     name !== v);
+  });
+  if (v === 'graph')   loadGraph();
+  if (v === 'objects') loadObjects();
+}
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  setView('schema');
+  loadEntityTypes();
+});
+
+// ── EntityTypes ──────────────────────────────────────────────────────────────
+async function loadEntityTypes() {
+  const res = await fetch('/api/ontology/schema');
+  const data = await res.json();
+  entityTypes = data.entity_types || [];
+  renderETList();
+  renderObjFilterList();
+  populateObjectTypeSelect();
+}
+
+function renderETList() {
+  const el = document.getElementById('et-list');
+  el.innerHTML = '';
+  if (!entityTypes.length) {
+    el.innerHTML = '<p class="text-xs text-slate-500 px-2 py-3">No EntityTypes yet</p>';
+    return;
+  }
+  entityTypes.forEach(et => {
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-700/50 flex items-center gap-2 ' +
+      (selectedET?.id === et.id ? 'bg-indigo-900/40 text-white' : 'text-slate-300');
+    btn.innerHTML = `<span style="color:${et.color}">${et.icon || '●'}</span> ${et.display_name}
+      <span class="ml-auto text-xs text-slate-500">${et.fields?.length || 0}f</span>`;
+    btn.onclick = () => selectEntityType(et);
+    el.appendChild(btn);
+  });
+}
+
+function selectEntityType(et) {
+  selectedET = et;
+  renderETList();
+  renderETDetail();
+}
+
+function renderETDetail() {
+  document.getElementById('et-detail-empty').classList.add('hidden');
+  document.getElementById('et-detail').classList.remove('hidden');
+  document.getElementById('et-icon').textContent = selectedET.icon || '●';
+  document.getElementById('et-icon').style.color = selectedET.color;
+  document.getElementById('et-display-name').textContent = selectedET.display_name;
+  document.getElementById('et-name').textContent = selectedET.name;
+  renderFieldsTable();
+}
+
+function renderFieldsTable() {
+  const tbody = document.getElementById('fields-table');
+  const empty = document.getElementById('fields-empty');
+  const fields = selectedET.fields || [];
+  tbody.innerHTML = '';
+  if (!fields.length) {
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  fields.forEach(f => {
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-slate-700/20';
+    tr.innerHTML = `
+      <td class="px-4 py-2 font-mono text-indigo-300">${f.name}</td>
+      <td class="px-4 py-2 text-slate-300">${f.data_type}</td>
+      <td class="px-4 py-2">
+        <span class="tag badge-${f.classification}">${f.classification}</span>
+      </td>
+      <td class="px-4 py-2 text-slate-400">${f.is_required ? '✓' : ''}</td>
+      <td class="px-4 py-2 text-right">
+        <button onclick="deleteField('${f.id}')" class="btn-danger">×</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function deleteField(id) {
+  if (!confirm('Delete field?')) return;
+  await fetch('/api/ontology/fields/' + id, { method: 'DELETE' });
+  await loadEntityTypes();
+  if (selectedET) selectEntityType(entityTypes.find(e => e.id === selectedET.id) || selectedET);
+}
+
+async function deleteCurrentEntityType() {
+  if (!selectedET) return;
+  if (!confirm(`Delete EntityType "${selectedET.display_name}"? All objects of this type will be deleted.`)) return;
+  await fetch('/api/ontology/schema/' + selectedET.id, { method: 'DELETE' });
+  selectedET = null;
+  document.getElementById('et-detail').classList.add('hidden');
+  document.getElementById('et-detail-empty').classList.remove('hidden');
+  loadEntityTypes();
+}
+
+// ── Modals ───────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+function openCreateTypeModal() {
+  document.getElementById('new-et-name').value = '';
+  document.getElementById('new-et-display').value = '';
+  document.getElementById('new-et-color').value = '#6366f1';
+  document.getElementById('new-et-icon').value = '●';
+  openModal('modal-create-type');
+}
+
+async function submitCreateType() {
+  const name  = document.getElementById('new-et-name').value.trim();
+  const dname = document.getElementById('new-et-display').value.trim() || name;
+  const color = document.getElementById('new-et-color').value;
+  const icon  = document.getElementById('new-et-icon').value.trim() || '●';
+  if (!name) return;
+  await fetch('/api/ontology/schema', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, display_name: dname, color, icon }),
+  });
+  closeModal('modal-create-type');
+  await loadEntityTypes();
+}
+
+function openAddFieldModal() {
+  if (!selectedET) return;
+  document.getElementById('new-field-name').value = '';
+  document.getElementById('new-field-type').value = 'string';
+  document.getElementById('new-field-class').value = 'Internal';
+  document.getElementById('new-field-required').checked = false;
+  openModal('modal-add-field');
+}
+
+async function submitAddField() {
+  const name  = document.getElementById('new-field-name').value.trim();
+  if (!name || !selectedET) return;
+  await fetch(`/api/ontology/schema/${selectedET.id}/fields`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name,
+      data_type:      document.getElementById('new-field-type').value,
+      classification: document.getElementById('new-field-class').value,
+      is_required:    document.getElementById('new-field-required').checked,
+    }),
+  });
+  closeModal('modal-add-field');
+  await loadEntityTypes();
+  const fresh = entityTypes.find(e => e.id === selectedET.id);
+  if (fresh) selectEntityType(fresh);
+}
+
+// ── Objects ──────────────────────────────────────────────────────────────────
+async function loadObjects() {
+  const url = filterET ? `/api/ontology/objects?entity_type_id=${filterET}` : '/api/ontology/objects';
+  const res = await fetch(url);
+  const data = await res.json();
+  allObjects = data.objects || [];
+  renderObjList();
+}
+
+function renderObjFilterList() {
+  const el = document.getElementById('obj-filter-list');
+  el.innerHTML = '';
+  entityTypes.forEach(et => {
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-700/50 flex items-center gap-2 ' +
+      (filterET === et.id ? 'bg-indigo-900/40 text-white' : 'text-slate-400');
+    btn.innerHTML = `<span style="color:${et.color}">${et.icon}</span> ${et.display_name}`;
+    btn.onclick = () => filterObjects(et.id);
+    el.appendChild(btn);
+  });
+}
+
+function filterObjects(etId) {
+  filterET = etId;
+  document.getElementById('filter-all').className =
+    'w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-700/50 ' +
+    (!etId ? 'text-white font-medium' : 'text-slate-300');
+  renderObjFilterList();
+  loadObjects();
+}
+
+function renderObjList() {
+  const el = document.getElementById('obj-list');
+  el.innerHTML = '';
+  if (!allObjects.length) {
+    el.innerHTML = '<p class="text-xs text-slate-500 px-2 py-3">No objects</p>';
+    return;
+  }
+  const et_map = Object.fromEntries(entityTypes.map(e => [e.id, e]));
+  allObjects.forEach(obj => {
+    const et = et_map[obj.entity_type_id];
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left px-3 py-2 rounded hover:bg-slate-700/50 ' +
+      (selectedObj?.id === obj.id ? 'bg-indigo-900/40' : '');
+    btn.innerHTML = `
+      <div class="flex items-center gap-2">
+        <span style="color:${et?.color || '#6366f1'}" class="text-sm">${et?.icon || '●'}</span>
+        <span class="text-sm text-white">${obj.label}</span>
+      </div>
+      <div class="text-xs text-slate-500 mt-0.5 pl-5">${obj.entity_type_name}</div>`;
+    btn.onclick = () => selectObject(obj);
+    el.appendChild(btn);
+  });
+}
+
+async function selectObject(obj) {
+  const res = await fetch('/api/ontology/objects/' + obj.id);
+  const full = await res.json();
+  selectedObj = full;
+  renderObjList();
+  renderObjDetail();
+}
+
+function renderObjDetail() {
+  document.getElementById('obj-detail-empty').classList.add('hidden');
+  document.getElementById('obj-detail').classList.remove('hidden');
+  const et = entityTypes.find(e => e.id === selectedObj.entity_type_id);
+  document.getElementById('obj-label').textContent = selectedObj.label;
+  document.getElementById('obj-type-badge').innerHTML =
+    `<span class="tag" style="background:${et?.color || '#6366f1'}22;color:${et?.color || '#6366f1'}">${selectedObj.entity_type_name}</span>`;
+
+  // Fields
+  const fEl = document.getElementById('obj-fields');
+  fEl.innerHTML = '';
+  const fields = selectedObj.fields || {};
+  const schemaFields = et?.fields || [];
+  if (schemaFields.length) {
+    schemaFields.forEach(sf => {
+      const val = fields[sf.name];
+      fEl.innerHTML += `
+        <div class="flex justify-between py-1 border-b border-slate-700/30">
+          <span class="text-slate-400 font-mono text-xs">${sf.name}</span>
+          <span class="text-slate-200 text-xs">${val !== undefined && val !== null ? val : '<span class="text-slate-600">—</span>'}</span>
+        </div>`;
+    });
+  } else {
+    // Show raw fields if no schema defined
+    Object.entries(fields).forEach(([k, v]) => {
+      fEl.innerHTML += `
+        <div class="flex justify-between py-1 border-b border-slate-700/30">
+          <span class="text-slate-400 font-mono text-xs">${k}</span>
+          <span class="text-slate-200 text-xs">${v}</span>
+        </div>`;
+    });
+    if (!Object.keys(fields).length) fEl.innerHTML = '<p class="text-slate-500 text-xs">No fields</p>';
+  }
+
+  // Links
+  const links = selectedObj.links || [];
+  const lEl = document.getElementById('obj-links');
+  const lEmpty = document.getElementById('obj-links-empty');
+  lEl.innerHTML = '';
+  if (!links.length) {
+    lEmpty.style.display = '';
+  } else {
+    lEmpty.style.display = 'none';
+    const objMap = Object.fromEntries(allObjects.map(o => [o.id, o]));
+    links.forEach(l => {
+      const isFrom = l.from_id === selectedObj.id;
+      const otherId = isFrom ? l.to_id : l.from_id;
+      const other = objMap[otherId] || {label: otherId, entity_type_name: '?'};
+      const dir = isFrom ? '→' : '←';
+      lEl.innerHTML += `
+        <div class="flex items-center justify-between py-1 border-b border-slate-700/30">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-slate-500">${dir}</span>
+            <span class="text-indigo-400 text-xs font-mono">${l.rel_type}</span>
+            <span class="text-slate-200">${other.label}</span>
+            <span class="text-slate-500 text-xs">(${other.entity_type_name})</span>
+          </div>
+          <button onclick="deleteLink('${l.id}')" class="btn-danger">×</button>
+        </div>`;
+    });
+  }
+}
+
+async function deleteCurrentObject() {
+  if (!confirm('Delete this object?')) return;
+  await fetch('/api/ontology/objects/' + selectedObj.id, { method: 'DELETE' });
+  selectedObj = null;
+  document.getElementById('obj-detail').classList.add('hidden');
+  document.getElementById('obj-detail-empty').classList.remove('hidden');
+  loadObjects();
+}
+
+async function deleteLink(id) {
+  await fetch('/api/ontology/links/' + id, { method: 'DELETE' });
+  selectObject(selectedObj); // refresh
+}
+
+// Create Object modal
+function populateObjectTypeSelect() {
+  const sel = document.getElementById('new-obj-type');
+  sel.innerHTML = '';
+  entityTypes.forEach(et => {
+    const opt = document.createElement('option');
+    opt.value = et.id;
+    opt.textContent = et.display_name;
+    sel.appendChild(opt);
+  });
+  updateObjectFieldInputs();
+  sel.onchange = updateObjectFieldInputs;
+}
+
+function updateObjectFieldInputs() {
+  const sel = document.getElementById('new-obj-type');
+  const etId = sel.value;
+  const et = entityTypes.find(e => e.id === etId);
+  const container = document.getElementById('new-obj-fields-container');
+  container.innerHTML = '';
+  if (!et || !et.fields?.length) return;
+  et.fields.forEach(f => {
+    container.innerHTML += `
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">${f.name} ${f.is_required ? '<span class="text-red-400">*</span>' : ''}</label>
+        <input id="obj-field-${f.name}" placeholder="${f.data_type}" />
+      </div>`;
+  });
+}
+
+function openCreateObjectModal() {
+  populateObjectTypeSelect();
+  document.getElementById('new-obj-label').value = '';
+  openModal('modal-create-obj');
+}
+
+async function submitCreateObject() {
+  const etId = document.getElementById('new-obj-type').value;
+  const label = document.getElementById('new-obj-label').value.trim();
+  if (!label || !etId) return;
+  const et = entityTypes.find(e => e.id === etId);
+  const fields = {};
+  (et?.fields || []).forEach(f => {
+    const input = document.getElementById('obj-field-' + f.name);
+    if (input && input.value.trim()) fields[f.name] = input.value.trim();
+  });
+  await fetch('/api/ontology/objects', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ entity_type_id: etId, label, fields }),
+  });
+  closeModal('modal-create-obj');
+  loadObjects();
+}
+
+// Add Link modal
+function openAddLinkModal() {
+  if (!selectedObj) return;
+  document.getElementById('new-link-type').value = '';
+  const sel = document.getElementById('new-link-target');
+  sel.innerHTML = '';
+  allObjects.filter(o => o.id !== selectedObj.id).forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id;
+    opt.textContent = `${o.label} (${o.entity_type_name})`;
+    sel.appendChild(opt);
+  });
+  openModal('modal-add-link');
+}
+
+async function submitAddLink() {
+  const rel_type = document.getElementById('new-link-type').value.trim();
+  const to_id    = document.getElementById('new-link-target').value;
+  if (!rel_type || !to_id || !selectedObj) return;
+  await fetch('/api/ontology/links', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ from_id: selectedObj.id, to_id, rel_type }),
+  });
+  closeModal('modal-add-link');
+  selectObject(selectedObj);
+}
+
+// ── Graph View (D3 Force) ────────────────────────────────────────────────────
+let simulation = null;
+
+async function loadGraph() {
+  const res = await fetch('/api/ontology/graph');
+  const data = await res.json();
+  const nodes = data.nodes || [];
+  const edges = data.edges || [];
+  document.getElementById('graph-stats').textContent = `${nodes.length} objects, ${edges.length} links`;
+  renderGraph(nodes, edges);
+}
+
+function renderGraph(nodes, edges) {
+  const svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+
+  const W = svg.node().clientWidth  || 800;
+  const H = svg.node().clientHeight || 600;
+
+  const et_map = Object.fromEntries(entityTypes.map(e => [e.id, e]));
+
+  const link = svg.append('g')
+    .selectAll('line')
+    .data(edges)
+    .join('line')
+    .attr('class', 'link');
+
+  const linkLabel = svg.append('g')
+    .selectAll('text')
+    .data(edges)
+    .join('text')
+    .attr('class', 'link-label')
+    .text(d => d.rel_type);
+
+  const node = svg.append('g')
+    .selectAll('g')
+    .data(nodes)
+    .join('g')
+    .attr('class', 'node')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  node.append('circle')
+    .attr('r', 20)
+    .attr('fill', d => (et_map[d.entity_type_id]?.color || '#6366f1') + '33')
+    .attr('stroke', d => et_map[d.entity_type_id]?.color || '#6366f1');
+
+  node.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '0.35em')
+    .attr('font-size', 9)
+    .text(d => d.label.length > 12 ? d.label.slice(0,11)+'…' : d.label);
+
+  node.append('title').text(d => `${d.label} (${d.entity_type})`);
+
+  const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const simEdges = edges.map(e => ({
+    ...e,
+    source: nodeMap[e.from] || e.from,
+    target: nodeMap[e.to]   || e.to,
+  }));
+
+  simulation = d3.forceSimulation(nodes)
+    .force('link',   d3.forceLink(simEdges).id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .on('tick', () => {
+      link
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      linkLabel
+        .attr('x', d => (d.source.x + d.target.x) / 2)
+        .attr('y', d => (d.source.y + d.target.y) / 2);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+  // Zoom + pan
+  svg.call(d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on('zoom', e => svg.select('g').attr('transform', e.transform))
+  );
+}
+
+function goToObjects() {
+  if (!selectedET) return;
+  filterObjects(selectedET.id);
+  setView('objects');
+}
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
+</script>
+</body>
+</html>

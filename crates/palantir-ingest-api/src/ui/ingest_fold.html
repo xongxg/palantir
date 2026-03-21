@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palantir · Fold</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── TopBar ── */
+.topbar { background: #1a1d2e; border-bottom: 1px solid #2d3748;
+          padding: 0 20px; height: 48px; display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
+.logo { font-size: 15px; font-weight: 700; color: #a78bfa; flex-shrink: 0; }
+.topbar nav a { color: #64748b; text-decoration: none; font-size: 13px; }
+.topbar nav a:hover { color: #e2e8f0; }
+.topbar nav a.active { color: #a78bfa; }
+.topbar nav { display: flex; gap: 18px; }
+.breadcrumb { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+.breadcrumb a { color: #64748b; text-decoration: none; }
+.breadcrumb a:hover { color: #a78bfa; }
+.breadcrumb .sep { color: #3d4258; }
+.breadcrumb .cur { color: #e2e8f0; }
+
+/* ── Main layout ── */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Left sidebar: source list ── */
+.sidebar { width: 220px; background: #13151f; border-right: 1px solid #2d3748;
+           display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 14px 14px 10px; display: flex; align-items: center; justify-content: space-between; }
+.sidebar-title { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+.btn-add-src { background: #a78bfa; border: none; border-radius: 5px; color: #0f1117;
+               font-size: 18px; line-height: 1; width: 24px; height: 24px;
+               cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.btn-add-src:hover { background: #8b5cf6; }
+.src-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.src-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 7px;
+            cursor: pointer; transition: background .15s; font-size: 13px; }
+.src-item:hover { background: #1a1d2e; }
+.src-item.active { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.src-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.src-type-badge { font-size: 10px; color: #475569; margin-left: auto; flex-shrink: 0; }
+.src-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-item.deprecated { opacity: .5; }
+.src-item.deprecated .src-name { text-decoration: line-through; }
+.badge-deprecated { font-size: 9px; padding: 1px 5px; border-radius: 3px;
+                    background: #3a2a1a; color: #fb923c; flex-shrink: 0; }
+
+/* ── Center panel ── */
+.center { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* Source type selector */
+.type-bar { background: #1a1d2e; border-bottom: 1px solid #2d3748;
+            padding: 0 20px; display: flex; gap: 4px; flex-shrink: 0; }
+.type-tab { padding: 12px 16px; font-size: 13px; color: #64748b; cursor: pointer;
+            border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; white-space: nowrap; }
+.type-tab:hover { color: #e2e8f0; }
+.type-tab.active { color: #a78bfa; border-bottom-color: #a78bfa; }
+
+/* Config form */
+.config-area { flex: 1; overflow-y: auto; padding: 20px; }
+.source-empty { display: flex; flex-direction: column; align-items: center; justify-content: center;
+                height: 100%; color: #475569; gap: 12px; }
+.source-empty .icon { font-size: 48px; opacity: .2; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fg { display: flex; flex-direction: column; gap: 5px; }
+.fg.full { grid-column: 1 / -1; }
+.fg label { font-size: 12px; color: #94a3b8; font-weight: 500; }
+.fg input, .fg select, .fg textarea {
+  background: #0f1117; border: 1px solid #2d3748; border-radius: 6px;
+  color: #e2e8f0; font-size: 13px; padding: 8px 10px; outline: none;
+  transition: border-color .15s; width: 100%;
+}
+.fg input:focus, .fg select:focus, .fg textarea:focus { border-color: #a78bfa; }
+.fg textarea { font-family: 'Fira Code', monospace; resize: vertical; }
+.fg select option { background: #1a1d2e; }
+.hint { font-size: 11px; color: #475569; margin-top: 3px; }
+.section-head { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;
+                letter-spacing: .05em; grid-column: 1/-1; margin-top: 8px; padding-top: 12px;
+                border-top: 1px solid #1e2437; }
+.section-head:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+/* action row */
+.btn { padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer;
+       font-size: 13px; font-weight: 500; transition: opacity .15s; }
+.btn:hover { opacity: .85; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary { background: #7c3aed; color: #fff; }
+.btn-success { background: #059669; color: #fff; }
+.btn-danger  { background: #dc2626; color: #fff; }
+.btn-outline { background: transparent; border: 1px solid #3d4258; color: #94a3b8; }
+.btn-outline:hover { border-color: #a78bfa; color: #a78bfa; }
+
+/* ── Right panel ── */
+.right { width: 340px; background: #13151f; border-left: 1px solid #2d3748;
+         display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+.right-tabs { display: flex; background: #1a1d2e; border-bottom: 1px solid #2d3748; }
+.right-tab { flex: 1; padding: 11px 0; text-align: center; font-size: 12px; color: #64748b;
+             cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+.right-tab.active { color: #a78bfa; border-bottom-color: #a78bfa; }
+.right-panel { flex: 1; overflow-y: auto; padding: 16px; }
+
+/* ── Test result / file browser ── */
+.result-section { margin-bottom: 16px; }
+.result-label { font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500; }
+
+.status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+                border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+.status-ok  { background: #064e3b44; color: #34d399; border: 1px solid #059669; }
+.status-err { background: #4504044; color: #f87171; border: 1px solid #dc2626; }
+.status-run { background: #451a0344; color: #fbbf24; border: 1px solid #d97706; }
+
+.file-tree { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
+.file-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px;
+             font-size: 12px; cursor: pointer; transition: background .15s; }
+.file-item:hover { background: #1a1d2e; }
+.file-item.selected { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.file-check { width: 14px; height: 14px; border: 1px solid #3d4258; border-radius: 3px;
+              display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+.file-item.selected .file-check { background: #a78bfa; border-color: #a78bfa; color: #0f1117; }
+
+.table-list { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
+.table-item { padding: 7px 10px; border-radius: 5px; font-size: 12px; cursor: pointer;
+              transition: background .15s; font-family: monospace; color: #94a3b8; }
+.table-item:hover { background: #1a1d2e; color: #e2e8f0; }
+.table-item.selected { background: rgba(167,139,250,0.12); color: #a78bfa; }
+
+.preview-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+.preview-table th { padding: 5px 8px; text-align: left; color: #64748b; border-bottom: 1px solid #2d3748; white-space: nowrap; }
+.preview-table td { padding: 5px 8px; border-bottom: 1px solid #1e2437; color: #94a3b8;
+                    max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Progress ── */
+.progress-wrap { margin-bottom: 12px; }
+.progress-bar-bg { background: #1e2437; border-radius: 4px; height: 6px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: #a78bfa; border-radius: 4px; transition: width .3s; }
+.progress-stats { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-top: 6px; }
+.log-box { background: #0a0c14; border: 1px solid #1e2437; border-radius: 6px; padding: 10px;
+           font-size: 11px; font-family: monospace; color: #a5f3fc;
+           max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+
+/* ── Dataset versions ── */
+.version-list { display: flex; flex-direction: column; gap: 6px; }
+.version-item { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 8px; padding: 12px; }
+.version-item.current { border-color: #059669; }
+.version-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.version-num { font-size: 12px; font-weight: 700; color: #e2e8f0; }
+.version-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.tag-current { background: #064e3b; color: #34d399; }
+.tag-committed { background: #1e3a5f44; color: #93c5fd; }
+.tag-aborted { background: #2d1515; color: #f87171; }
+.version-meta { font-size: 11px; color: #64748b; }
+.version-schema { font-size: 11px; color: #64748b; margin-top: 6px; }
+.schema-change { margin-top: 4px; }
+.change-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-right: 4px; }
+.c-add { background: #064e3b44; color: #34d399; }
+.c-del { background: #4504044; color: #f87171; }
+.c-break { background: #45150344; color: #fbbf24; }
+.btn-rollback { font-size: 11px; padding: 3px 8px; margin-top: 8px; background: transparent;
+                border: 1px solid #3d4258; border-radius: 4px; color: #94a3b8; cursor: pointer; }
+.btn-rollback:hover { border-color: #a78bfa; color: #a78bfa; }
+
+/* ── S3 Export modal ── */
+.export-form { display: flex; flex-direction: column; gap: 10px; }
+.export-form label { font-size: 12px; color: #94a3b8; }
+.export-form input, .export-form select {
+  background: #0f1117; border: 1px solid #2d3748; border-radius: 6px;
+  color: #e2e8f0; font-size: 13px; padding: 7px 10px; outline: none; width: 100%;
+}
+.export-form input:focus { border-color: #a78bfa; }
+
+/* ── Raw records ── */
+.records-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.records-info { font-size: 11px; color: #64748b; flex: 1; }
+.records-pager { display: flex; align-items: center; gap: 6px; }
+.pager-btn { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 4px;
+             color: #94a3b8; font-size: 11px; padding: 3px 8px; cursor: pointer; }
+.pager-btn:hover:not(:disabled) { border-color: #a78bfa; color: #a78bfa; }
+.pager-btn:disabled { opacity: .4; cursor: not-allowed; }
+.records-table-wrap { overflow-x: auto; }
+.records-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.records-table th { padding: 5px 8px; text-align: left; color: #64748b; border-bottom: 1px solid #2d3748;
+                    white-space: nowrap; position: sticky; top: 0; background: #13151f; }
+.records-table td { padding: 5px 8px; border-bottom: 1px solid #1e2437; color: #94a3b8;
+                    max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.records-table tr:hover td { background: #1a1d2e; }
+
+/* ── Schema conflict modal ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7);
+                 display: flex; align-items: center; justify-content: center; z-index: 100;
+                 opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal { background: #1a1d2e; border: 1px solid #3d4258; border-radius: 14px;
+         padding: 24px; width: 480px; max-width: 96vw; max-height: 80vh; overflow-y: auto; }
+.modal-title { font-size: 16px; font-weight: 600; color: #e2e8f0; margin-bottom: 6px; }
+.modal-sub { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+.diff-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px; }
+.diff-table th { padding: 6px 10px; text-align: left; color: #64748b; border-bottom: 1px solid #2d3748; }
+.diff-table td { padding: 6px 10px; border-bottom: 1px solid #1e2437; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── Readonly form state ── */
+.config-area.readonly input,
+.config-area.readonly select,
+.config-area.readonly textarea {
+  pointer-events: none;
+  cursor: default;
+  background: #0a0c14;
+  border-color: #1a1e2e;
+  color: #64748b;
+}
+
+/* ── Misc ── */
+.spinner { display: inline-block; width: 12px; height: 12px;
+           border: 2px solid #a78bfa44; border-top-color: #a78bfa;
+           border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+[data-panel] { display: none; }
+[data-panel].active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">Palantir</span>
+  <nav>
+    <a href="/">Workspace</a>
+    <a href="/ontology">Ontology</a>
+  </nav>
+  <div class="breadcrumb">
+    <a href="/">Workspace</a>
+    <span class="sep">›</span>
+    <a id="bc-project" href="#">…</a>
+    <span class="sep">›</span>
+    <span class="cur" id="bc-fold">…</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">数据源</span>
+      <button class="btn-add-src" title="添加数据源" onclick="addSource()">+</button>
+    </div>
+    <div class="src-list" id="src-list">
+      <div style="padding:20px 8px;text-align:center;color:#475569;font-size:12px">
+        <span class="spinner"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Center ── -->
+  <div class="center">
+
+    <!-- type-bar removed — type is now a dropdown inside the form -->
+
+    <!-- Config area -->
+    <div class="config-area" id="config-area">
+      <div class="source-empty">
+        <div class="icon">🔌</div>
+        <div style="font-size:14px;color:#64748b">从左侧选择数据源，或点击 + 添加</div>
+      </div>
+    </div>
+
+    <!-- Sticky action bar — always at bottom of center column -->
+    <div id="action-bar" style="display:none;flex-shrink:0;padding:10px 20px;border-top:1px solid #2d3748;background:#13151f;display:flex;align-items:center;gap:8px"></div>
+
+  </div>
+
+  <!-- ── Right panel ── -->
+  <div class="right">
+    <div class="right-tabs">
+      <div class="right-tab active" onclick="switchRight('test')">测试</div>
+      <div class="right-tab"        onclick="switchRight('sync')">同步</div>
+      <div class="right-tab"        onclick="switchRight('versions')">版本</div>
+      <div class="right-tab"        onclick="switchRight('records')">数据集</div>
+    </div>
+    <div class="right-panel">
+
+      <!-- 测试 tab -->
+      <div data-panel="test" class="active">
+        <div style="padding:16px 0 10px;display:flex;align-items:center;gap:10px">
+          <button class="btn btn-outline" id="btn-test" onclick="testConnection()"
+            style="font-size:13px;padding:6px 16px">测试连接</button>
+          <span id="test-status-text" style="font-size:12px;color:#64748b"></span>
+        </div>
+        <div id="test-result-content" style="color:#475569;font-size:12px;padding:8px 0;text-align:center">
+          填写配置后点击「测试连接」
+        </div>
+      </div>
+
+      <!-- 同步 tab -->
+      <div data-panel="sync">
+        <div style="padding:16px 0 6px;display:flex;align-items:center;gap:8px">
+          <span id="sync-status-text" style="font-size:12px;color:#64748b"></span>
+        </div>
+        <div id="progress-content" style="color:#475569;font-size:12px;padding:4px 0;text-align:center">
+          同步任务进行中时显示进度
+        </div>
+      </div>
+
+      <!-- 版本 tab -->
+      <div data-panel="versions">
+        <div id="versions-content" style="color:#475569;font-size:12px;padding:20px 0;text-align:center">
+          选择数据源后显示历史版本
+        </div>
+      </div>
+
+      <!-- 数据集 tab -->
+      <div data-panel="records">
+        <div id="records-content" style="color:#475569;font-size:12px;padding:20px 0;text-align:center">
+          同步完成后，此处查看原始数据记录
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- S3 Export modal -->
+<div class="modal-overlay" id="s3-export-modal">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">导出数据集到 S3 / RustFS</div>
+    <div class="modal-sub" id="s3-export-ds-label" style="margin-bottom:12px"></div>
+    <div class="export-form">
+      <div><label>Endpoint</label><input id="ex-endpoint" placeholder="http://43.165.67.145:9000"></div>
+      <div><label>Bucket *</label><input id="ex-bucket" placeholder="my-bucket"></div>
+      <div><label>路径前缀（可选）</label><input id="ex-prefix" placeholder="palantir/exports/"></div>
+      <div><label>Access Key *</label><input id="ex-ak"></div>
+      <div><label>Secret Key *</label><input id="ex-sk" type="password"></div>
+      <div><label>格式</label>
+        <select id="ex-fmt">
+          <option value="csv">CSV</option>
+          <option value="json">JSONL（每行一条）</option>
+        </select>
+      </div>
+    </div>
+    <div id="s3-export-msg" style="font-size:12px;margin-top:10px;min-height:18px"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="closeExportModal()">取消</button>
+      <button class="btn btn-primary" id="btn-do-export" onclick="doExportS3()">导出</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schema conflict modal -->
+<div class="modal-overlay" id="schema-modal">
+  <div class="modal">
+    <div class="modal-title" id="sm-title">Schema 变更检测</div>
+    <div class="modal-sub" id="sm-sub"></div>
+    <table class="diff-table" id="sm-table">
+      <thead><tr><th>字段</th><th>变更类型</th><th>原类型</th><th>新类型</th></tr></thead>
+      <tbody id="sm-tbody"></tbody>
+    </table>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeSchemaModal()">取消同步</button>
+      <button class="btn btn-primary" id="sm-continue" onclick="forceSync()">强制同步</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const foldId = location.pathname.split('/').filter(Boolean).pop();
+let sources = [];
+let currentSrc = null;
+let currentType = 's3';
+let selectedFiles = new Set();
+let selectedTable = null;
+let pollTimer = null;
+let editMode = false;
+let newMode = false;                  // 新建模式：填好 modal 后进入，保存后退出
+let newSourceName = '';               // 新建时的名称（从 modal 获取）
+// legacy batch vars — no longer actively used
+let batchMode = false;
+let batchSources = {};
+let batchGroupId = null;
+let batchGroupName = '';
+let typeCache = {};
+let typeNames = {};
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function boot() {
+  // Load fold info
+  try {
+    const r = await fetch(`/api/folds/${foldId}`);
+    if (r.ok) {
+      const f = await r.json();
+      document.getElementById('bc-fold').textContent = f.name;
+      document.title = f.name + ' · Palantir';
+      // Load project for breadcrumb
+      const pr = await fetch(`/api/projects/${f.project_id}`);
+      if (pr.ok) {
+        const p = await pr.json();
+        const a = document.getElementById('bc-project');
+        a.textContent = p.name;
+        a.href = `/ingest/project/${p.id}`;
+      }
+    }
+  } catch(_) {}
+
+  // Load sources
+  await loadSources();
+}
+
+async function loadSources() {
+  try {
+    const r = await fetch(`/api/folds/${foldId}/sources`);
+    const data = await r.json();
+    sources = data.sources || [];
+    renderSrcList();
+    if (sources.length > 0) selectSource(sources[0].id);
+  } catch(e) {
+    document.getElementById('src-list').innerHTML =
+      `<div style="color:#ef4444;font-size:12px;padding:12px">加载失败</div>`;
+  }
+}
+
+function renderSrcList() {
+  const el = document.getElementById('src-list');
+  const typeLabel = t => ({ s3:'S3', db:'DB', rest:'API', ftp:'FTP' }[t] || (t||'').toUpperCase());
+
+  // newMode: show draft entry at top
+  const draftEntry = newMode ? `
+    <div class="src-item active" style="border:1px dashed #7c3aed;background:rgba(167,139,250,0.08)">
+      <span class="src-dot" style="background:#a78bfa;box-shadow:0 0 4px #a78bfa"></span>
+      <span class="src-name" style="color:#a78bfa">${escHtml(newSourceName)}</span>
+      <span class="src-type-badge" style="color:#7c3aed;font-size:9px">${typeLabel(currentType)}</span>
+    </div>` : '';
+
+  if (!sources.length && !newMode) {
+    el.innerHTML = `<div style="padding:20px 8px;text-align:center;color:#475569;font-size:12px">暂无数据源<br>点击 + 添加</div>`;
+    return;
+  }
+
+  const items = sources.map(s => {
+    const dotCls = { idle:'', connected:'dot-ok', syncing:'dot-run', synced:'dot-ok', error:'dot-err' }[s.status] || '';
+    const depCls = s.deprecated ? 'deprecated' : '';
+    const depBadge = s.deprecated ? '<span class="badge-deprecated">停用</span>' : '';
+    return `<div class="src-item ${currentSrc?.id === s.id ? 'active' : ''} ${depCls}" onclick="selectSource('${s.id}')">
+      <span class="src-dot ${dotCls}"></span>
+      <span class="src-name">${escHtml(s.name)}</span>
+      ${depBadge}
+      <span class="src-type-badge">${typeLabel(s.source_type)}</span>
+    </div>`;
+  });
+
+  el.innerHTML = draftEntry + items.join('');
+}
+
+// ── Source selection ──────────────────────────────────────────────────────────
+function selectSource(id) {
+  currentSrc = sources.find(s => s.id === id) || null;
+  if (!currentSrc) return;
+  editMode = false;
+  newMode = false;
+  newSourceName = '';
+  batchMode = false; batchSources = {}; typeCache = {}; typeNames = {};
+  renderSrcList();
+  currentType = currentSrc.source_type || 's3';
+  renderForm();
+  updateEditState();
+  selectedFiles.clear();
+  const savedFiles = currentSrc.config?.selected_files || [];
+  savedFiles.forEach(f => selectedFiles.add(f));
+  selectedTable = currentSrc.config?.table || null;
+  recordsState = { dsId: null, offset: 0, total: 0, limit: 50 };
+  if (selectedFiles.size > 0) {
+    renderSavedFilesPanel(savedFiles);
+  } else {
+    renderBrowsePanel(null);
+  }
+  loadVersionsQuiet(); // load versions data without switching tabs
+  // If already synced, auto-load data preview
+  if (currentSrc.status === 'synced' || currentSrc.record_count > 0) {
+    loadPreviewRecords();
+  }
+}
+
+// Select a group by group_id — loads the first sub-source and enables multi-tab group view
+function selectGroup(groupId) {
+  const grpSources = sources.filter(s => s.group_id === groupId);
+  if (!grpSources.length) return;
+  editMode = false;
+  batchMode = false;
+  batchSources = {};
+  typeCache = {};
+  typeNames = {};
+  batchGroupId = null;
+  batchGroupName = '';
+  // Load first sub-source as currentSrc; user can switch tabs to see others
+  currentSrc = grpSources[0];
+  // Populate batchSources so tabs can switch to other group members
+  grpSources.forEach(s => { batchSources[s.source_type] = s; });
+  renderSrcList();
+  document.getElementById('type-bar').style.display = 'flex';
+  currentType = currentSrc.source_type || 's3';
+  updateTypeTabs();
+  renderForm();
+  updateEditState();
+  selectedFiles.clear();
+  const savedFiles = currentSrc.config?.selected_files || [];
+  savedFiles.forEach(f => selectedFiles.add(f));
+  selectedTable = currentSrc.config?.table || null;
+  recordsState = { dsId: null, offset: 0, total: 0, limit: 50 };
+  if (selectedFiles.size > 0) {
+    renderSavedFilesPanel(savedFiles);
+  } else {
+    renderBrowsePanel(null);
+  }
+  loadVersionsQuiet();
+  if (currentSrc.status === 'synced' || currentSrc.record_count > 0) {
+    loadPreviewRecords();
+  }
+}
+
+function addSource() {
+  // Step 1: show name modal — actual batch init happens in confirmAddSource()
+  const modal = document.getElementById('add-source-modal');
+  const inp = document.getElementById('add-source-name-input');
+  inp.value = '';
+  modal.classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+
+function closeAddSourceModal() {
+  document.getElementById('add-source-modal').classList.remove('open');
+}
+
+function confirmAddSource() {
+  const name = document.getElementById('add-source-name-input').value.trim();
+  const type = document.getElementById('add-source-type-select').value || 's3';
+  if (!name) {
+    document.getElementById('add-source-name-input').style.borderColor = '#ef4444';
+    return;
+  }
+  closeAddSourceModal();
+  newMode = true;
+  newSourceName = name;
+  currentType = type;
+  currentSrc = null;
+  editMode = false;
+  batchMode = false; batchSources = {}; typeCache = {}; typeNames = {};
+  selectedFiles.clear(); selectedTable = null;
+  renderSrcList();
+  renderForm();
+  updateEditState();
+}
+
+// ── Source type tabs ──────────────────────────────────────────────────────────
+function selectType(type) {
+  const isGroupView = !batchMode && Object.keys(batchSources).length > 0;
+  // In plain single-source view (not editing, not batch, not group): block tab switch
+  if (currentSrc?.id && !editMode && !batchMode && !isGroupView && type !== currentSrc.source_type) return;
+  // In group view: only allow switching to tabs that have a member
+  if (isGroupView && !batchSources[type]) return;
+  // 切换前缓存当前 tab 已填写的内容和名称
+  if (editMode || batchMode) {
+    typeCache[currentType] = readConfig();
+    typeNames[currentType] = document.getElementById('f-name')?.value.trim() || '';
+  }
+  currentType = type;
+  // batch 模式 / group 视图：切换 currentSrc 到该 type 对应的数据源
+  if (batchMode || isGroupView) {
+    currentSrc = batchSources[type] || null;
+  }
+  updateTypeTabs();
+  renderForm();
+  updateEditState();
+
+  // 加载右面板：batch 模式已保存的 tab 或 group view
+  const loadedSrc = (batchMode || isGroupView) ? batchSources[type] : null;
+  if (loadedSrc?.id) {
+    selectedFiles.clear();
+    const savedFiles = loadedSrc.config?.selected_files || [];
+    savedFiles.forEach(f => selectedFiles.add(f));
+    selectedTable = loadedSrc.config?.table || null;
+    recordsState = { dsId: null, offset: 0, total: 0, limit: 50 };
+    switchRight('test');
+    if (selectedFiles.size > 0) renderSavedFilesPanel(savedFiles);
+    else renderBrowsePanel(null);
+    loadVersionsQuiet();
+    if (loadedSrc.status === 'synced' || loadedSrc.record_count > 0) {
+      loadPreviewRecords();
+    }
+  } else if (batchMode) {
+    // 未保存的 tab：清空右边栏
+    resetRightPanel();
+  }
+}
+
+function updateTypeTabs() {
+  // isGroupView: viewing a group (batchSources has members, not in batch creation mode)
+  const isGroupView = !batchMode && Object.keys(batchSources).length > 0;
+  // locked: single saved source, not editing, not in group/batch mode
+  const locked = !!currentSrc?.id && !editMode && !batchMode && !isGroupView;
+  document.querySelectorAll('.type-tab').forEach(t => {
+    const type = t.dataset.type;
+    const isActive = type === currentType;
+    const isSaved = (batchMode || isGroupView) && !!batchSources[type];
+    t.classList.toggle('active', isActive);
+    if (locked) {
+      t.classList.toggle('disabled', !isActive);
+      t.style.cursor = isActive ? '' : 'not-allowed';
+      t.style.opacity = isActive ? '' : '0.35';
+    } else if (isGroupView) {
+      // In group view: only tabs with members are enabled
+      const hasMember = !!batchSources[type];
+      t.classList.toggle('disabled', !hasMember);
+      t.style.cursor = hasMember ? '' : 'not-allowed';
+      t.style.opacity = hasMember ? '' : '0.35';
+    } else {
+      t.classList.remove('disabled');
+      t.style.cursor = '';
+      t.style.opacity = '';
+    }
+    // batch 模式 / group 视图：已保存的 tab 显示 ✓
+    const label = { s3: '☁ Cloud Storage', db: '🗄 Database', rest: '🌐 REST API', ftp: '📁 FTP / SFTP' };
+    t.textContent = isSaved ? (label[type] || type) + ' ✓' : (label[type] || type);
+    if (isSaved && !isActive) t.style.color = '#34d399';
+    else if (!isActive) t.style.color = '';
+  });
+  const hint = document.getElementById('type-lock-hint');
+  if (hint) hint.style.display = locked ? 'inline' : 'none';
+}
+
+function renderBatchNameBar(_show) { /* removed — name now entered via modal */ }
+
+function updateEditState() {
+  const area = document.getElementById('config-area');
+  area.classList.remove('readonly');
+  updateActionBar();
+}
+
+function updateActionBar() {
+  const bar = document.getElementById('action-bar');
+  if (!bar) return;
+  if (!currentSrc && !newMode) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const isSaved    = !!currentSrc?.id;
+  const isEnabled  = isSaved && !currentSrc?.deprecated;   // 已保存 且 已启用
+  const isDisabled = isSaved && !!currentSrc?.deprecated;  // 已保存 且 未启用/已停用
+
+  // 保存 — 始终可用
+  const saveBtn = `<button class="btn btn-primary" onclick="saveSource()" id="btn-save"
+    style="font-size:13px;padding:6px 18px">保存</button>`;
+
+  // 同步 — 仅已启用时可用
+  const syncBtn = `<button class="btn btn-success" onclick="syncAll()" id="btn-action-sync"
+    style="font-size:13px;padding:6px 16px" ${isEnabled ? '' : 'disabled'}>同步</button>`;
+
+  // 启用 / 停用 — 仅已保存时显示
+  const toggleBtn = !isSaved ? '' : isEnabled
+    ? `<button class="btn btn-outline" onclick="deprecateSource()" id="btn-deprecate"
+        style="font-size:13px;padding:6px 14px;color:#fb923c;border-color:#7c4a1a">停用</button>`
+    : `<button class="btn btn-outline" onclick="activateSource()" id="btn-activate"
+        style="font-size:13px;padding:6px 14px;color:#34d399;border-color:#064e3b">启用</button>`;
+
+  // 删除 — 仅已保存时显示
+  const delBtn = isSaved
+    ? `<button class="btn btn-danger" onclick="deleteCurrentSource()" id="btn-delete"
+        style="font-size:13px;padding:6px 14px">删除</button>` : '';
+
+  bar.innerHTML = saveBtn + syncBtn + toggleBtn + delBtn;
+}
+
+function enterEditMode() { /* no-op: form is always editable */ }
+
+// 完成 batch 新建：退出 batch 模式，切换到已保存的 group view
+function finishBatch() {
+  const savedGroupId = batchGroupId;
+  const savedSources = Object.values(batchSources).filter(s => s?.id);
+  editMode = false;
+  batchMode = false;
+  typeCache = {};
+  typeNames = {};
+  batchGroupId = null;
+  batchGroupName = '';
+  if (savedSources.length > 0 && savedGroupId) {
+    // batchSources 保留，selectGroup 会重新填充
+    batchSources = {};
+    renderSrcList();
+    selectGroup(savedGroupId);
+  } else if (sources.length > 0) {
+    batchSources = {};
+    renderSrcList();
+    selectSource(sources[0].id);
+  } else {
+    batchSources = {};
+    renderSrcList();
+    document.getElementById('type-bar').style.display = 'none';
+    document.getElementById('config-area').innerHTML =
+      '<div class="source-empty"><div class="icon">🔌</div><div style="font-size:14px;color:#64748b">从左侧选择数据源，或点击 + 添加</div></div>';
+  }
+}
+
+function cancelEdit() {
+  newMode = false; newSourceName = '';
+  editMode = false;
+  batchMode = false; batchSources = {}; batchGroupId = null; batchGroupName = '';
+  typeCache = {}; typeNames = {};
+  if (currentSrc?.id) {
+    currentType = currentSrc.source_type || 's3';
+    updateTypeTabs();
+    renderForm();
+    updateEditState();
+  } else if (sources.length > 0) {
+    selectSource(sources[0].id);
+  } else {
+    document.getElementById('type-bar').style.display = 'none';
+    document.getElementById('config-area').innerHTML =
+      '<div class="source-empty"><div class="icon">🔌</div><div style="font-size:14px;color:#64748b">从左侧选择数据源，或点击 + 添加</div></div>';
+  }
+}
+
+function renderForm() {
+  const cfg = (currentSrc?.config) || {};
+  const area = document.getElementById('config-area');
+  const nameVal = newMode ? newSourceName : (currentSrc?.name || '');
+  const sel = t => t === currentType ? 'selected' : '';
+  // Type selector: editable only in newMode (locked once saved)
+  const typeField = `
+    <div class="fg">
+      <label>数据源类型</label>
+      <select id="f-type" onchange="onTypeChange(this.value)" ${newMode ? '' : 'disabled'}>
+        <option value="s3"   ${sel('s3')}>☁ Cloud Storage</option>
+        <option value="db"   ${sel('db')}>🗄 Database</option>
+        <option value="rest" ${sel('rest')}>🌐 REST API</option>
+        <option value="ftp"  ${sel('ftp')}>📁 FTP / SFTP</option>
+      </select>
+    </div>`;
+  const headerRow = `
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="fg">
+        <label>数据源名称 *</label>
+        <input id="f-name" value="${escAttr(nameVal)}" placeholder="如：HR 员工数据">
+      </div>
+      ${typeField}
+    </div>`;
+  const forms = { s3: renderS3Form, db: renderDbForm, rest: renderRestForm, ftp: renderFtpForm };
+  area.innerHTML = headerRow + (forms[currentType] || (() => ''))(cfg);
+}
+
+function onTypeChange(type) {
+  if (!newMode) return;
+  currentType = type;
+  // Re-render to show the correct config fields; preserve name
+  const name = document.getElementById('f-name')?.value.trim() || newSourceName;
+  newSourceName = name;
+  renderForm();
+  updateEditState();
+}
+
+function renderS3Form(cfg) {
+  // Defaults for new source: RustFS + mybucket1 (user's raw data bucket)
+  const provider = cfg.provider || 'rustfs';
+  const endpoint = cfg.endpoint || (provider === 'rustfs' ? 'http://localhost:9000' : '');
+  const bucket   = cfg.bucket   || 'mybucket1';
+  return `<div class="form-grid">
+    <div class="section-head">云存储配置</div>
+    <div class="fg">
+      <label>云服务商</label>
+      <select id="f-provider" onchange="updateEndpoint(this.value)">
+        <option value="aws"     ${provider==='aws'?'selected':''}>AWS S3</option>
+        <option value="aliyun"  ${provider==='aliyun'?'selected':''}>阿里云 OSS</option>
+        <option value="tencent" ${provider==='tencent'?'selected':''}>腾讯云 COS</option>
+        <option value="huawei"  ${provider==='huawei'?'selected':''}>华为云 OBS</option>
+        <option value="minio"   ${provider==='minio'?'selected':''}>MinIO（自定义）</option>
+        <option value="rustfs"  ${provider==='rustfs'?'selected':''}>RustFS（自定义）</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Endpoint（MinIO / RustFS / 私有化）</label>
+      <input id="f-endpoint" value="${escAttr(endpoint)}" placeholder="http://localhost:9000">
+      <span class="hint">RustFS 默认：http://host:9000；支持 http:// 和 https://</span>
+    </div>
+    <div class="fg">
+      <label>Bucket *</label>
+      <input id="f-bucket" value="${escAttr(bucket)}" placeholder="mybucket1">
+    </div>
+    <div class="fg">
+      <label>路径前缀（可选）</label>
+      <input id="f-prefix" value="${escAttr(cfg.prefix||'')}" placeholder="data/hr/">
+    </div>
+    <div class="fg">
+      <label>Access Key *</label>
+      <input id="f-ak" value="${escAttr(cfg.access_key||'')}" placeholder="AKIAIOSFODNN7EXAMPLE">
+    </div>
+    <div class="fg">
+      <label>Secret Key *</label>
+      <input id="f-sk" type="password" value="${escAttr(cfg.secret_key||'')}" placeholder="••••••••">
+    </div>
+    <div class="fg full">
+      <label>SSL/PEM 证书（可选）</label>
+      <textarea id="f-pem" placeholder="-----BEGIN CERTIFICATE-----\n..." style="height:72px">${escHtml(cfg.pem_cert||'')}</textarea>
+      <span class="hint">用于自签名证书场景</span>
+    </div>
+  </div>`;
+}
+
+function renderDbForm(cfg) {
+  const isSqlite = (cfg.db_type || 'mysql') === 'sqlite';
+  const hidden   = isSqlite ? 'style="display:none"' : '';
+  return `<div class="form-grid">
+    <div class="section-head">数据库连接</div>
+    <div class="fg">
+      <label>数据库类型</label>
+      <select id="f-dbtype" onchange="onDbTypeChange()">
+        <option value="mysql"    ${cfg.db_type==='mysql'?'selected':''}>MySQL</option>
+        <option value="postgres" ${cfg.db_type==='postgres'?'selected':''}>PostgreSQL</option>
+        <option value="mssql"    ${cfg.db_type==='mssql'?'selected':''}>SQL Server</option>
+        <option value="sqlite"   ${isSqlite?'selected':''}>SQLite（本地文件）</option>
+      </select>
+    </div>
+    <div class="fg db-remote-field" ${hidden}>
+      <label>Host *</label>
+      <input id="f-host" value="${escAttr(cfg.host||'')}" placeholder="localhost">
+    </div>
+    <div class="fg db-remote-field" ${hidden}>
+      <label>Port *</label>
+      <input id="f-port" type="number" value="${cfg.port||3306}" placeholder="3306">
+    </div>
+    <div class="fg db-path-field" ${isSqlite ? '' : 'style="display:none"'}>
+      <label id="f-database-label">${isSqlite ? 'SQLite 文件路径 *' : '数据库名 *'}</label>
+      <input id="f-database" value="${escAttr(cfg.database||'')}"
+             placeholder="${isSqlite ? '/data/mydb.sqlite 或相对路径 ./app.db' : 'my_database'}">
+      ${isSqlite ? '<span class="hint">服务端本地文件路径，如 palantir.db</span>' : ''}
+    </div>
+    <div class="fg db-name-field" ${isSqlite ? 'style="display:none"' : ''}>
+      <label>数据库名 *</label>
+      <input id="f-database-remote" value="${escAttr(cfg.database||'')}" placeholder="my_database">
+    </div>
+    <div class="fg db-remote-field" ${hidden}>
+      <label>用户名 *</label>
+      <input id="f-username" value="${escAttr(cfg.username||'')}" placeholder="root">
+    </div>
+    <div class="fg db-remote-field" ${hidden}>
+      <label>密码 *</label>
+      <input id="f-password" type="password" value="${escAttr(cfg.password||'')}" placeholder="••••••••">
+    </div>
+    <div class="fg full db-remote-field" ${hidden}>
+      <label>PEM/SSL 证书（可选）</label>
+      <textarea id="f-dbpem" style="height:60px" placeholder="-----BEGIN CERTIFICATE-----">${escHtml(cfg.pem_cert||'')}</textarea>
+    </div>
+    <div class="section-head">查询配置</div>
+    <div class="fg">
+      <label>批次大小</label>
+      <input id="f-batch" type="number" value="${cfg.batch_size||1000}" placeholder="1000">
+      <span class="hint">每次拉取行数，避免大表 OOM</span>
+    </div>
+    <div class="fg full">
+      <label>SQL 查询（可自定义）</label>
+      <textarea id="f-query" style="height:80px"
+                placeholder="SELECT * FROM employees">${escHtml(cfg.query||'')}</textarea>
+    </div>
+  </div>`;
+}
+
+function onDbTypeChange() {
+  const t       = document.getElementById('f-dbtype')?.value;
+  const sqlite  = t === 'sqlite';
+  document.querySelectorAll('.db-remote-field').forEach(el => el.style.display = sqlite ? 'none' : '');
+  document.querySelectorAll('.db-path-field')  .forEach(el => el.style.display = sqlite ? '' : 'none');
+  document.querySelectorAll('.db-name-field')  .forEach(el => el.style.display = sqlite ? 'none' : '');
+  const lbl = document.getElementById('f-database-label');
+  if (lbl) lbl.textContent = sqlite ? 'SQLite 文件路径 *' : '数据库名 *';
+  const inp = document.getElementById('f-database');
+  if (inp) inp.placeholder = sqlite ? '/data/mydb.sqlite 或相对路径 ./app.db' : 'my_database';
+}
+
+function renderRestForm(cfg) {
+  const pag = cfg.pagination || {};
+  return `<div class="form-grid">
+    <div class="section-head">API 基础配置</div>
+    <div class="fg full">
+      <label>API 基础 URL *</label>
+      <input id="f-url" value="${escAttr(cfg.base_url||'')}" placeholder="https://api.example.com/v1/data">
+    </div>
+    <div class="fg">
+      <label>认证方式</label>
+      <select id="f-auth-type" onchange="toggleAuthFields(this.value)">
+        <option value="none"   ${(cfg.auth?.type||'none')==='none'?'selected':''}>无认证</option>
+        <option value="bearer" ${cfg.auth?.type==='bearer'?'selected':''}>Bearer Token</option>
+        <option value="apikey" ${cfg.auth?.type==='apikey'?'selected':''}>API Key（自定义 Header）</option>
+        <option value="basic"  ${cfg.auth?.type==='basic'?'selected':''}>Basic Auth</option>
+      </select>
+    </div>
+    <div class="fg" id="fa-bearer" style="${cfg.auth?.type==='bearer'?'':'display:none'}">
+      <label>Bearer Token</label>
+      <input id="f-token" type="password" value="${escAttr(cfg.auth?.token||'')}" placeholder="your-api-token">
+    </div>
+    <div class="fg" id="fa-header-name" style="${cfg.auth?.type==='apikey'?'':'display:none'}">
+      <label>Header 名</label>
+      <input id="f-header-name" value="${escAttr(cfg.auth?.header_name||'X-API-Key')}" placeholder="X-API-Key">
+    </div>
+    <div class="fg" id="fa-header-val" style="${cfg.auth?.type==='apikey'?'':'display:none'}">
+      <label>Header 值</label>
+      <input id="f-header-val" type="password" value="${escAttr(cfg.auth?.header_value||'')}" placeholder="your-key">
+    </div>
+    <div class="fg" id="fa-user" style="${cfg.auth?.type==='basic'?'':'display:none'}">
+      <label>用户名</label>
+      <input id="f-basic-user" value="${escAttr(cfg.auth?.username||'')}">
+    </div>
+    <div class="fg" id="fa-pass" style="${cfg.auth?.type==='basic'?'':'display:none'}">
+      <label>密码</label>
+      <input id="f-basic-pass" type="password" value="${escAttr(cfg.auth?.password||'')}">
+    </div>
+    <div class="section-head">数据解析</div>
+    <div class="fg full">
+      <label>数据路径（records_path，可选）</label>
+      <input id="f-records-path" value="${escAttr(cfg.records_path||'')}" placeholder="data.items — 留空自动检测第一个数组字段">
+    </div>
+    <div class="section-head">分页配置（可选）</div>
+    <div class="fg">
+      <label>页码参数名</label>
+      <input id="f-page-param" value="${escAttr(pag.page_param||'page')}" placeholder="page">
+    </div>
+    <div class="fg">
+      <label>每页大小参数名</label>
+      <input id="f-size-param" value="${escAttr(pag.size_param||'limit')}" placeholder="limit">
+    </div>
+    <div class="fg">
+      <label>每页记录数</label>
+      <input id="f-page-size" type="number" value="${pag.page_size||100}">
+    </div>
+    <div class="fg">
+      <label>起始页码</label>
+      <input id="f-start-page" type="number" value="${pag.start_page||1}" placeholder="0 或 1">
+    </div>
+    <div class="fg full">
+      <label>结束判断策略</label>
+      <select id="f-end-strategy">
+        <option value="empty"    ${(pag.end_strategy||'empty')==='empty'?'selected':''}>响应为空数组时停止</option>
+        <option value="less"     ${pag.end_strategy==='less'?'selected':''}>记录数 &lt; 每页大小时停止</option>
+        <option value="total"    ${pag.end_strategy==='total'?'selected':''}>响应含总页数字段</option>
+        <option value="none"     ${pag.end_strategy==='none'?'selected':''}>不分页（单次请求）</option>
+      </select>
+    </div>
+  </div>`;
+}
+
+function renderFtpForm(cfg) {
+  return `<div class="form-grid">
+    <div class="section-head">FTP 连接配置</div>
+    <div class="fg">
+      <label>协议</label>
+      <select id="f-ftp-proto">
+        <option value="ftp"  ${cfg.protocol==='ftp'?'selected':''}>FTP</option>
+        <option value="ftps" ${cfg.protocol==='ftps'?'selected':''}>FTPS（TLS）</option>
+        <option value="sftp" ${cfg.protocol==='sftp'?'selected':''}>SFTP（SSH）</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Host *</label>
+      <input id="f-ftp-host" value="${escAttr(cfg.host||'')}" placeholder="ftp.example.com">
+    </div>
+    <div class="fg">
+      <label>Port</label>
+      <input id="f-ftp-port" type="number" value="${cfg.port||21}" placeholder="21">
+    </div>
+    <div class="fg">
+      <label>用户名 *</label>
+      <input id="f-ftp-user" value="${escAttr(cfg.username||'')}">
+    </div>
+    <div class="fg">
+      <label>密码（FTP/FTPS）</label>
+      <input id="f-ftp-pass" type="password" value="${escAttr(cfg.password||'')}">
+    </div>
+    <div class="fg full">
+      <label>SSH 私钥 PEM（SFTP）</label>
+      <textarea id="f-ftp-key" style="height:72px" placeholder="-----BEGIN RSA PRIVATE KEY-----">${escHtml(cfg.pem_key||'')}</textarea>
+    </div>
+    <div class="section-head">文件配置</div>
+    <div class="fg">
+      <label>远程目录路径 *</label>
+      <input id="f-ftp-path" value="${escAttr(cfg.remote_path||'')}" placeholder="/data/hr/">
+    </div>
+    <div class="fg">
+      <label>文件过滤（glob）</label>
+      <input id="f-ftp-pattern" value="${escAttr(cfg.file_pattern||'*.csv')}" placeholder="*.csv">
+    </div>
+  </div>`;
+}
+
+function toggleAuthFields(type) {
+  const fields = { bearer:['fa-bearer'], apikey:['fa-header-name','fa-header-val'], basic:['fa-user','fa-pass'] };
+  ['fa-bearer','fa-header-name','fa-header-val','fa-user','fa-pass'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  (fields[type] || []).forEach(id => { const el = document.getElementById(id); if(el) el.style.display = ''; });
+}
+
+function updateEndpoint(provider) {
+  const defaults = { aws:'', aliyun:'', tencent:'', huawei:'', minio:'https://play.min.io', rustfs:'http://localhost:9000' };
+  const el = document.getElementById('f-endpoint');
+  if (el && defaults[provider] !== undefined) el.value = defaults[provider];
+}
+
+// ── Read form config ──────────────────────────────────────────────────────────
+function readConfig() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const vn = id => { const el = document.getElementById(id); return el ? parseInt(el.value)||0 : 0; };
+
+  if (currentType === 's3') {
+    return { provider: v('f-provider'), endpoint: v('f-endpoint'), bucket: v('f-bucket'),
+             prefix: v('f-prefix'), access_key: v('f-ak'), secret_key: v('f-sk'), pem_cert: v('f-pem'),
+             selected_files: [...selectedFiles] };
+  }
+  if (currentType === 'db') {
+    const dbtype   = v('f-dbtype');
+    // SQLite uses f-database (file path); remote DBs use f-database-remote (db name)
+    const database = dbtype === 'sqlite' ? v('f-database') : (v('f-database-remote') || v('f-database'));
+    return { db_type: dbtype, host: v('f-host'), port: vn('f-port'), database,
+             username: v('f-username'), password: v('f-password'), pem_cert: v('f-dbpem'),
+             query: v('f-query'), batch_size: vn('f-batch') || 1000 };
+  }
+  if (currentType === 'rest') {
+    const authType = v('f-auth-type');
+    const auth = { type: authType,
+      token: v('f-token'), header_name: v('f-header-name'), header_value: v('f-header-val'),
+      username: v('f-basic-user'), password: v('f-basic-pass') };
+    const endStrat = v('f-end-strategy');
+    return { base_url: v('f-url'), auth, records_path: v('f-records-path') || null,
+      pagination: endStrat === 'none' ? null : {
+        page_param: v('f-page-param'), size_param: v('f-size-param'),
+        page_size: vn('f-page-size') || 100, start_page: vn('f-start-page'),
+        end_strategy: endStrat } };
+  }
+  if (currentType === 'ftp') {
+    return { protocol: v('f-ftp-proto'), host: v('f-ftp-host'), port: vn('f-ftp-port') || 21,
+             username: v('f-ftp-user'), password: v('f-ftp-pass'), pem_key: v('f-ftp-key'),
+             remote_path: v('f-ftp-path'), file_pattern: v('f-ftp-pattern') || '*.csv',
+             selected_files: [...selectedFiles] };
+  }
+  return {};
+}
+
+// ── Save all (batch mode) ──────────────────────────────────────────────────────
+async function saveAllSources() {
+  const typeLabel = t => ({ s3:'S3', db:'DB', rest:'API', ftp:'FTP' }[t] || t.toUpperCase());
+  // 先缓存当前 tab 的最新表单内容
+  typeCache[currentType] = readConfig();
+
+  const groupName = batchGroupName || '';
+  if (!groupName) { alert('请先填写数据源名称'); return; }
+
+  // 收集 typeCache 中尚未单独保存的 tab
+  const toSave = [];
+  for (const [type, cfg] of Object.entries(typeCache)) {
+    if (Object.values(cfg).some(v => v !== '' && v !== 0 && v != null)) {
+      const name = `${groupName} (${typeLabel(type)})`;
+      toSave.push({ type, cfg, name });
+    }
+  }
+  // batchSources 中已单独保存（保存配置）的 tab
+  const alreadySaved = Object.values(batchSources).filter(s => s?.id);
+
+  if (toSave.length === 0 && alreadySaved.length === 0) {
+    alert('请至少配置一个数据源后再保存');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-all');
+  btn.disabled = true; btn.textContent = '保存中…';
+
+  try {
+    // 保存 typeCache 中尚未保存的 tab
+    for (const { type, cfg, name } of toSave) {
+      const r = await fetch(`/api/folds/${foldId}/sources`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, source_type: type, config: cfg, group_id: batchGroupId })
+      });
+      if (!r.ok) {
+        const d = await r.json();
+        alert(`保存 ${type} 失败：${d.error || ''}`);
+        return;
+      }
+      const data = await r.json();
+      const saved = { ...data, name, source_type: type, config: cfg, group_id: batchGroupId };
+      sources.unshift(saved);
+      batchSources[type] = saved;
+    }
+
+    // 已单独保存的 tab：直接加入 sources（如未在其中）
+    for (const src of alreadySaved) {
+      if (!sources.find(s => s.id === src.id)) {
+        sources.unshift(src);
+      }
+    }
+
+    // 退出 batch 模式，选中整个组
+    const groupId = batchGroupId;
+    batchMode = false;
+    batchSources = {};
+    typeCache = {};
+    typeNames = {};
+    batchGroupId = null;
+    batchGroupName = '';
+    editMode = false;
+    renderSrcList();
+    if (groupId) {
+      selectGroup(groupId);
+      // 新建完成后立即同步
+      await syncAll();
+    }
+  } catch (e) {
+    alert('网络错误：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '保存';
+  }
+}
+
+// ── Save single source ────────────────────────────────────────────────────────
+async function saveSource() {
+  const name = document.getElementById('f-name')?.value.trim();
+  if (!name) { alert('请输入数据源名称'); return; }
+  const config = readConfig();
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+
+  try {
+    let r, data;
+    if (currentSrc?.id) {
+      r = await fetch(`/api/sources/${currentSrc.id}`, {
+        method: 'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name, source_type: currentType, config })
+      });
+    } else {
+      r = await fetch(`/api/folds/${foldId}/sources`, {
+        method: 'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name, source_type: currentType, config })
+      });
+    }
+    data = await r.json();
+    if (!r.ok) { alert('保存失败：' + (data.error||'')); return; }
+
+    if (!currentSrc?.id) {
+      // New source: start as disabled — user must explicitly enable before syncing
+      currentSrc = { ...data, name, source_type: currentType, config, deprecated: true };
+      sources.unshift(currentSrc);
+      newMode = false; newSourceName = '';
+      // Persist disabled state to backend
+      await fetch(`/api/sources/${data.id}/deprecate`, { method: 'POST' });
+    } else {
+      Object.assign(currentSrc, { name, source_type: currentType, config });
+      const idx = sources.findIndex(s => s.id === currentSrc.id);
+      if (idx >= 0) sources[idx] = currentSrc;
+      editMode = false;
+    }
+    renderSrcList();
+    updateEditState();
+  } catch(e) { alert('网络错误：' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '保存'; }
+}
+
+// ── Test connection ───────────────────────────────────────────────────────────
+async function testConnection() {
+  const btn = document.getElementById('btn-test');
+  btn.disabled = true; btn.textContent = '测试中…';
+  switchRight('test');
+
+  try {
+    let r, data;
+    if (!currentSrc?.id || newMode) {
+      // New/unsaved source: test directly with current form config
+      const config = readConfig();
+      r = await fetch('/api/sources/quick-test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_type: currentType, config })
+      });
+    } else {
+      // Already saved non-batch source: test via ID
+      r = await fetch(`/api/sources/${currentSrc.id}/test`, { method: 'POST' });
+    }
+    data = await r.json();
+    const statusEl = document.getElementById('test-status-text');
+    if (!r.ok || !data.ok) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ ${escHtml(data.error || '连接失败')}</span>`;
+      document.getElementById('test-result-content').innerHTML = '';
+      if (currentSrc?.id) updateSrcStatus(currentSrc.id, 'error');
+      return;
+    }
+    if (statusEl) statusEl.innerHTML = `<span style="color:#34d399">✓ 连接成功</span>`;
+    if (currentSrc?.id) updateSrcStatus(currentSrc.id, 'connected');
+    renderBrowsePanel(data);
+  } catch(e) {
+    const statusEl = document.getElementById('test-status-text');
+    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '测试连接';
+  }
+}
+
+async function loadPreviewRecords() {
+  if (!currentSrc?.id) return;
+  try {
+    const dr = await fetch(`/api/sources/${currentSrc.id}/datasets`);
+    const ddata = await dr.json();
+    const datasets = ddata.datasets || [];
+    if (!datasets.length) return;
+    const dsId = datasets[0].id;
+    const rr = await fetch(`/api/datasets/${dsId}/records?limit=10&offset=0`);
+    const rdata = await rr.json();
+    if (!rr.ok || !rdata.records?.length) return;
+    const panel = document.getElementById('test-result-content');
+    const records = rdata.records;
+    const fields = Object.keys(records[0].fields || {});
+    const cols = ['label', ...fields];
+    let html = panel.innerHTML; // keep file list if present
+    html += `<div class="result-label" style="margin-top:12px">数据预览（前 ${records.length} 条 / 共 ${rdata.total.toLocaleString()} 条）</div>
+      <div style="overflow-x:auto"><table class="preview-table">
+        <thead><tr>${cols.map(c=>`<th>${escHtml(c)}</th>`).join('')}</tr></thead>
+        <tbody>${records.map(r=>{
+          const cells = cols.map(c=>{
+            const v = c==='label' ? r.label : (r.fields?.[c] ?? '');
+            return `<td>${escHtml(String(v??''))}</td>`;
+          });
+          return `<tr>${cells.join('')}</tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+    panel.innerHTML = html;
+  } catch(_) {}
+}
+
+function renderSavedFilesPanel(files) {
+  const panel = document.getElementById('test-result-content');
+  let html = `<div class="status-badge status-ok">已保存选择（${files.length} 个文件）</div>
+    <div class="result-label" style="margin-top:8px">
+      已选文件 — <span style="color:#a78bfa;cursor:pointer;font-size:11px" onclick="doAction('test')">重新连接以刷新列表</span>
+    </div>
+    <div class="file-tree">${files.map(f=>`
+      <div class="file-item selected" onclick="toggleFile('${escAttr(f)}')">
+        <div class="file-check">✓</div>
+        <span style="font-family:monospace;font-size:11px">${escHtml(f)}</span>
+      </div>`).join('')}
+    </div>`;
+  panel.innerHTML = html;
+  const btn = document.getElementById('btn-action-sync');
+  if (btn) btn.disabled = false;
+}
+
+function renderBrowsePanel(data) {
+  const panel = document.getElementById('test-result-content');
+  if (!data) { panel.innerHTML = '<div style="color:#475569;font-size:12px;padding:20px 0;text-align:center">测试连接成功后显示</div>'; return; }
+  if (!data.ok) {
+    panel.innerHTML = `<div class="status-badge status-err">✗ 连接失败</div><pre style="font-size:11px;color:#f87171;background:#2d1515;padding:10px;border-radius:6px;white-space:pre-wrap">${escHtml(data.error)}</pre>`;
+    return;
+  }
+  let html = `<div class="status-badge status-ok">✓ 连接成功</div>`;
+
+  // Files (S3/FTP)
+  if (data.files?.length) {
+    html += `<div class="result-label">文件列表（已选 ${selectedFiles.size} 个）</div>
+    <div class="file-tree">${data.files.map(f=>`
+      <div class="file-item ${selectedFiles.has(f)?'selected':''}" onclick="toggleFile('${escAttr(f)}')">
+        <div class="file-check">${selectedFiles.has(f)?'✓':''}</div>
+        <span style="font-family:monospace;font-size:11px">${escHtml(f)}</span>
+      </div>`).join('')}</div>`;
+    html += `<div style="margin-top:8px;font-size:11px;color:#64748b">已选 ${selectedFiles.size} / ${data.files.length} 个文件</div>`;
+  }
+
+  // Tables (DB)
+  if (data.tables?.length) {
+    html += `<div class="result-label">数据表</div>
+    <div class="table-list">${data.tables.map(t=>`
+      <div class="table-item ${selectedTable===t?'selected':''}" onclick="selectTable('${escAttr(t)}')">${escHtml(t)}</div>
+    `).join('')}</div>`;
+  }
+
+  // Preview (REST)
+  if (data.preview?.length) {
+    const cols = Object.keys(data.preview[0]);
+    html += `<div class="result-label" style="margin-top:10px">数据预览（前 5 条）${data.estimated_total ? ' — 预计约 '+data.estimated_total+' 条' : ''}</div>
+    <div style="overflow-x:auto"><table class="preview-table">
+      <thead><tr>${cols.map(c=>`<th>${escHtml(c)}</th>`).join('')}</tr></thead>
+      <tbody>${data.preview.map(row=>`<tr>${cols.map(c=>`<td>${escHtml(String(row[c]??''))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  panel.innerHTML = html;
+  document.getElementById('btn-action-sync').disabled = (currentType==='s3'||currentType==='ftp') && selectedFiles.size===0;
+}
+
+function renderPreviewPanel(data) { renderBrowsePanel(data); }
+
+function toggleFile(path) {
+  if (selectedFiles.has(path)) selectedFiles.delete(path);
+  else selectedFiles.add(path);
+  // re-render file list preserving data
+  const items = document.querySelectorAll('.file-item');
+  items.forEach(el => {
+    const p = el.querySelector('span')?.textContent || '';
+    const isSel = selectedFiles.has(p);
+    el.classList.toggle('selected', isSel);
+    el.querySelector('.file-check').textContent = isSel ? '✓' : '';
+  });
+  document.getElementById('btn-action-sync').disabled = selectedFiles.size === 0;
+}
+
+function selectTable(table) {
+  selectedTable = table;
+  document.querySelectorAll('.table-item').forEach(el => el.classList.toggle('selected', el.textContent === table));
+  // Auto-fill SQL
+  const q = document.getElementById('f-query');
+  if (q) q.value = `SELECT * FROM ${table}`;
+  document.getElementById('btn-action-sync').disabled = false;
+}
+
+// ── Sync ──────────────────────────────────────────────────────────────────────
+async function startSync() {
+  if (!currentSrc?.id) { alert('请先保存并测试连接'); return; }
+  // Persist selected_files into config before syncing (keep name unchanged)
+  if (currentType === 's3' || currentType === 'ftp') {
+    if (!selectedFiles.size) { alert('请先选择要同步的文件'); return; }
+    const updatedConfig = { ...(currentSrc.config || {}), selected_files: [...selectedFiles] };
+    await fetch(`/api/sources/${currentSrc.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentSrc.name, source_type: currentSrc.source_type, config: updatedConfig })
+    });
+    currentSrc.config = updatedConfig;
+  }
+  const body = {};
+  if (currentType === 's3' || currentType === 'ftp') {
+    body.files = [...selectedFiles];
+  }
+
+  const btn = document.getElementById('btn-action-sync');
+  btn.disabled = true; btn.textContent = '同步中…';
+  switchRight('sync');
+
+  try {
+    const r = await fetch(`/api/sources/${currentSrc.id}/sync`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (r.status === 409) {
+      alert(`已有同步任务进行中（${data.current_job_id}），请等待完成后再触发`);
+      return;
+    }
+    if (!r.ok) { alert('启动失败：' + (data.error||'')); return; }
+    updateSrcStatus(currentSrc.id, 'syncing');
+    pollJob(data.job_id);
+  } catch(e) {
+    alert('网络错误：' + e.message);
+  } finally {
+    btn.textContent = '同步';
+  }
+}
+
+function pollJob(jobId) {
+  clearInterval(pollTimer);
+  let dots = 0;
+  pollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/jobs/${jobId}`);
+      const data = await r.json();
+      renderProgress(data);
+      if (data.status === 'completed') {
+        clearInterval(pollTimer);
+        document.getElementById('btn-action-sync').disabled = false;
+        updateSrcStatus(currentSrc.id, 'synced');
+        loadVersions();
+        renderProgress({ ...data, _done: true });
+      } else if (['failed','cancelled'].includes(data.status)) {
+        clearInterval(pollTimer);
+        document.getElementById('btn-action-sync').disabled = false;
+        updateSrcStatus(currentSrc.id, 'error');
+      }
+    } catch(_) {}
+    dots = (dots+1) % 4;
+  }, 2000);
+}
+
+function renderProgress(data) {
+  const pct = data.total && data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;
+  const statusText = { pending:'等待中', running:'同步中', completed:'已完成', failed:'失败', cancelled:'已取消' }[data.status] || data.status;
+  const statusCls = data.status === 'completed' ? 'status-ok' : data.status === 'failed' ? 'status-err' : 'status-run';
+
+  let html = `<div class="status-badge ${statusCls}">${data._done?'✓':data.status==='failed'?'✗':'●'} ${statusText}</div>`;
+  if (data.total > 0) {
+    html += `<div class="progress-wrap">
+      <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+      <div class="progress-stats"><span>${data.processed?.toLocaleString() || 0} / ${data.total?.toLocaleString() || '?'} 条</span><span>${pct}%</span></div>
+    </div>`;
+  }
+  if (data.current) html += `<div style="font-size:11px;color:#64748b;margin-bottom:8px">当前：${escHtml(data.current)}</div>`;
+  if (data.rate) html += `<div style="font-size:11px;color:#64748b;margin-bottom:8px">速率：${data.rate} 条/秒</div>`;
+  if (data.elapsed_ms) html += `<div style="font-size:11px;color:#64748b;margin-bottom:8px">耗时：${(data.elapsed_ms/1000).toFixed(1)}s</div>`;
+  if (data.status === 'completed') {
+    html += `<div style="font-size:12px;color:#34d399;margin-top:8px">✓ 已同步 ${data.processed?.toLocaleString()||0} 条${data.version?' (v'+data.version+')':''}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-outline" style="font-size:12px" onclick="switchRight('records')">查看数据集 →</button>
+      <button class="btn btn-outline" style="font-size:12px" onclick="window.location='/ontology'">Ontology →</button>
+    </div>`;
+  }
+  if (data.error) {
+    html += `<div style="font-size:12px;color:#f87171;margin-top:8px">错误：${escHtml(data.error)}</div>`;
+    if (data.error_type) html += `<div style="font-size:11px;color:#64748b">类型：${data.error_type}</div>`;
+  }
+
+  document.getElementById('progress-content').innerHTML = html;
+}
+
+// ── Versions ──────────────────────────────────────────────────────────────────
+async function loadVersions() {
+  if (!currentSrc?.id) return;
+  switchRight('versions');
+  await loadVersionsQuiet();
+}
+
+async function loadVersionsQuiet() {
+  if (!currentSrc?.id) return;
+  const el = document.getElementById('versions-content');
+  el.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const r = await fetch(`/api/sources/${currentSrc.id}/datasets`);
+    const data = await r.json();
+    const datasets = data.datasets || [];
+    if (!datasets.length) { el.innerHTML = '<div style="color:#475569;font-size:12px;padding:20px 0;text-align:center">尚无同步记录</div>'; return; }
+    // Load versions for current dataset
+    const dsId = datasets[0].id;
+    const vr = await fetch(`/api/datasets/${dsId}/versions`);
+    const vdata = await vr.json();
+    renderVersions(dsId, vdata.versions || []);
+  } catch(e) {
+    el.innerHTML = `<div style="color:#ef4444;font-size:12px">加载失败：${e.message}</div>`;
+  }
+}
+
+function renderVersions(dsId, versions) {
+  const el = document.getElementById('versions-content');
+  if (!versions.length) { el.innerHTML = '<div style="color:#475569;font-size:12px;padding:20px 0;text-align:center">尚无版本记录</div>'; return; }
+
+  el.innerHTML = `<div class="version-list">${versions.map(v => {
+    const tagCls = v.is_current ? 'tag-current' : v.status === 'aborted' ? 'tag-aborted' : 'tag-committed';
+    const tagLabel = v.is_current ? '当前' : v.status === 'aborted' ? '已中止' : '历史';
+    const compat = v.schema_change?.compatibility;
+    let changeTags = '';
+    if (v.schema_change?.added?.length) changeTags += `<span class="change-tag c-add">+${v.schema_change.added.length} 字段</span>`;
+    if (v.schema_change?.removed?.length) changeTags += `<span class="change-tag c-del">-${v.schema_change.removed.length} 字段</span>`;
+    if (compat === 'Breaking') changeTags += `<span class="change-tag c-break">类型变更</span>`;
+    return `<div class="version-item ${v.is_current?'current':''}">
+      <div class="version-head">
+        <span class="version-num">v${v.version}</span>
+        <span class="version-tag ${tagCls}">${tagLabel}</span>
+      </div>
+      <div class="version-meta">
+        ${v.total_rows?.toLocaleString() || 0} 条记录 · ${formatTime(v.created_at)}
+      </div>
+      ${changeTags ? `<div class="schema-change" style="margin-top:6px">${changeTags}</div>` : ''}
+      ${!v.is_current && v.status === 'committed' ? `<button class="btn-rollback" onclick="rollbackVersion('${dsId}',${v.version})">↩ 回滚到此版本</button>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+async function rollbackVersion(dsId, version) {
+  if (!confirm(`确定将数据回滚到 v${version}？\nOntology 中的数据将被替换，操作记录到审计日志。`)) return;
+  try {
+    const r = await fetch(`/api/datasets/${dsId}/rollback`, {
+      method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({version})
+    });
+    const data = await r.json();
+    if (!r.ok) { alert('回滚失败：' + (data.error||'')); return; }
+    alert(`回滚任务已提交（${data.job_id}），Ontology 数据将异步更新`);
+    loadVersions();
+  } catch(e) { alert('网络错误：' + e.message); }
+}
+
+// ── Source status update ──────────────────────────────────────────────────────
+function updateSrcStatus(id, status) {
+  const src = sources.find(s => s.id === id);
+  if (src) { src.status = status; renderSrcList(); }
+}
+
+// ── Right panel tabs ──────────────────────────────────────────────────────────
+function resetRightPanel() {
+  switchRight('test');
+  document.getElementById('test-result-content').innerHTML =
+    `<div style="color:#475569;font-size:12px;padding:20px 0;text-align:center">测试连接成功后，此处显示文件/表列表和数据预览</div>`;
+}
+
+function switchRight(panel) {
+  const panels = ['test','sync','versions','records'];
+  document.querySelectorAll('.right-tab').forEach((t,i) => {
+    t.classList.toggle('active', panels[i] === panel);
+  });
+  document.querySelectorAll('[data-panel]').forEach(el => {
+    el.classList.toggle('active', el.dataset.panel === panel);
+  });
+  if (panel === 'records') loadRecords();
+}
+
+// ── Raw dataset records ───────────────────────────────────────────────────────
+let recordsState = { dsId: null, offset: 0, total: 0, limit: 50 };
+
+async function loadRecords(offset) {
+  if (!currentSrc?.id) return;
+  offset = offset ?? recordsState.offset;
+  const el = document.getElementById('records-content');
+  el.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    // Get dataset for current source
+    const dr = await fetch(`/api/sources/${currentSrc.id}/datasets`);
+    const ddata = await dr.json();
+    const datasets = ddata.datasets || [];
+    if (!datasets.length) {
+      el.innerHTML = '<div style="color:#475569;font-size:12px;padding:20px 0;text-align:center">尚无同步数据集</div>';
+      return;
+    }
+    const dsId = datasets[0].id;
+    recordsState.dsId = dsId;
+    recordsState.offset = offset;
+
+    const rr = await fetch(`/api/datasets/${dsId}/records?limit=${recordsState.limit}&offset=${offset}`);
+    const rdata = await rr.json();
+    if (!rr.ok) { el.innerHTML = `<div style="color:#ef4444;font-size:12px">加载失败：${rdata.error}</div>`; return; }
+
+    recordsState.total = rdata.total;
+    renderRecords(rdata);
+  } catch(e) {
+    el.innerHTML = `<div style="color:#ef4444;font-size:12px">加载失败：${e.message}</div>`;
+  }
+}
+
+function renderRecords(data) {
+  const el = document.getElementById('records-content');
+  const { records, total, offset, limit } = data;
+
+  if (!records.length) {
+    el.innerHTML = '<div style="color:#475569;font-size:12px;padding:20px 0;text-align:center">暂无记录</div>';
+    return;
+  }
+
+  // Collect all field keys from first record
+  const fields = Object.keys(records[0].fields || {});
+  const cols = ['label', ...fields];
+  const page = Math.floor(offset / limit) + 1;
+  const pages = Math.ceil(total / limit);
+  const from = offset + 1, to = Math.min(offset + records.length, total);
+
+  let html = `<div class="records-toolbar">
+    <div class="records-info">${from}–${to} / 共 ${total.toLocaleString()} 条</div>
+    <button class="pager-btn" style="font-size:10px;padding:3px 7px" onclick="openExportModal('${recordsState.dsId}')">↑ S3</button>
+    <div class="records-pager">
+      <button class="pager-btn" ${offset === 0 ? 'disabled' : ''} onclick="loadRecords(${Math.max(0, offset-limit)})">‹</button>
+      <span style="font-size:11px;color:#64748b">${page}/${pages}</span>
+      <button class="pager-btn" ${to >= total ? 'disabled' : ''} onclick="loadRecords(${offset+limit})">›</button>
+    </div>
+  </div>
+  <div class="records-table-wrap">
+    <table class="records-table">
+      <thead><tr>${cols.map(c=>`<th title="${escHtml(c)}">${escHtml(c)}</th>`).join('')}</tr></thead>
+      <tbody>${records.map(r => {
+        const cells = cols.map(c => {
+          const val = c === 'label' ? r.label : (r.fields?.[c] ?? '');
+          return `<td title="${escHtml(String(val))}">${escHtml(String(val ?? ''))}</td>`;
+        });
+        return `<tr>${cells.join('')}</tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+// ── Delete source ─────────────────────────────────────────────────────────────
+async function deleteCurrentSource() {
+  if (!currentSrc?.id) return;
+  if (!confirm(`确定删除数据源「${currentSrc.name}」？该操作将同时删除所有同步记录和数据集。`)) return;
+  try {
+    const r = await fetch(`/api/sources/${currentSrc.id}`, { method: 'DELETE' });
+    if (!r.ok) { alert('删除失败'); return; }
+    sources = sources.filter(x => x.id !== currentSrc.id);
+    currentSrc = null;
+    renderSrcList();
+    document.getElementById('config-area').innerHTML =
+      `<div class="source-empty"><div class="icon">🔌</div><div style="font-size:14px;color:#64748b">从左侧选择数据源，或点击 + 添加</div></div>`;
+    updateEditState();
+  } catch(e) { alert('删除失败：' + e.message); }
+}
+
+// ── Sync current source ───────────────────────────────────────────────────────
+async function syncAll() {
+  await startSync();
+}
+
+// ── Deprecate / Activate ──────────────────────────────────────────────────────
+async function deprecateSource() {
+  if (!currentSrc?.id) return;
+  if (!confirm(`将数据源「${currentSrc.name}」停用？\n停用后不再参与同步，数据保留，可随时启用。`)) return;
+  try {
+    const r = await fetch(`/api/sources/${currentSrc.id}/deprecate`, { method: 'POST' });
+    if (!r.ok) { alert('操作失败'); return; }
+    currentSrc.deprecated = true;
+    const s = sources.find(x => x.id === currentSrc.id);
+    if (s) s.deprecated = true;
+    renderSrcList();
+    updateEditState();
+  } catch(e) { alert('操作失败：' + e.message); }
+}
+
+async function activateSource() {
+  if (!currentSrc?.id) return;
+  try {
+    const r = await fetch(`/api/sources/${currentSrc.id}/activate`, { method: 'POST' });
+    if (!r.ok) { alert('操作失败'); return; }
+    currentSrc.deprecated = false;
+    const s = sources.find(x => x.id === currentSrc.id);
+    if (s) s.deprecated = false;
+    renderSrcList();
+    updateEditState();
+  } catch(e) { alert('操作失败：' + e.message); }
+}
+
+async function activateAndSync() {
+  await activateSource();
+}
+
+// ── Schema conflict modal ─────────────────────────────────────────────────────
+function closeSchemaModal() { document.getElementById('schema-modal').classList.remove('open'); }
+function forceSync() { closeSchemaModal(); /* trigger actual force sync */ }
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function formatTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(typeof ts === 'number' ? ts * 1000 : ts);
+  return isNaN(d) ? ts : d.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ── S3 / RustFS export ────────────────────────────────────────────────────────
+let exportDsId = null;
+
+function openExportModal(dsId) {
+  exportDsId = dsId;
+  document.getElementById('s3-export-ds-label').textContent = `数据集 ID: ${dsId}`;
+  document.getElementById('s3-export-msg').textContent = '';
+  // Pre-fill endpoint from current source config if it's an S3/RustFS source
+  if (currentSrc?.source_type === 's3') {
+    const cfg = currentSrc.config || {};
+    if (cfg.endpoint) document.getElementById('ex-endpoint').value = cfg.endpoint;
+    if (cfg.bucket)   document.getElementById('ex-bucket').value   = cfg.bucket;
+    if (cfg.access_key) document.getElementById('ex-ak').value = cfg.access_key;
+    if (cfg.secret_key) document.getElementById('ex-sk').value = cfg.secret_key;
+  }
+  document.getElementById('s3-export-modal').classList.add('open');
+}
+
+function closeExportModal() {
+  document.getElementById('s3-export-modal').classList.remove('open');
+}
+
+async function doExportS3() {
+  if (!exportDsId) return;
+  const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const endpoint = v('ex-endpoint'), bucket = v('ex-bucket');
+  const ak = v('ex-ak'), sk = v('ex-sk');
+  if (!bucket || !ak || !sk) { alert('请填写 Bucket、Access Key 和 Secret Key'); return; }
+
+  const btn = document.getElementById('btn-do-export');
+  const msg = document.getElementById('s3-export-msg');
+  btn.disabled = true; btn.textContent = '导出中…';
+  msg.style.color = '#64748b'; msg.textContent = '正在连接并上传…';
+
+  try {
+    const r = await fetch(`/api/datasets/${exportDsId}/export/s3`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        endpoint, bucket, prefix: v('ex-prefix'),
+        access_key: ak, secret_key: sk,
+        format: v('ex-fmt'),
+      })
+    });
+    const data = await r.json();
+    if (!r.ok || data.error) {
+      msg.style.color = '#f87171';
+      msg.textContent = '失败：' + (data.error || '未知错误');
+    } else {
+      msg.style.color = '#34d399';
+      msg.textContent = `✓ 已上传 ${data.uploaded} 条 → ${data.path} (${(data.size_bytes/1024).toFixed(1)} KB)`;
+    }
+  } catch(e) {
+    msg.style.color = '#f87171'; msg.textContent = '网络错误：' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '导出';
+  }
+}
+
+boot();
+</script>
+
+<!-- 新建数据源：名称 + 类型选择 -->
+<div class="modal-overlay" id="add-source-modal" onclick="if(event.target===this)closeAddSourceModal()">
+  <div class="modal" style="width:420px" onclick="event.stopPropagation()">
+    <div class="modal-title">新建数据源</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
+      <div class="fg">
+        <label style="font-size:12px;color:#94a3b8;margin-bottom:5px;display:block">数据源名称 *</label>
+        <input id="add-source-name-input" type="text" placeholder="如：HR 系统数据"
+          style="width:100%;background:#0f1117;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;font-size:14px;padding:9px 12px;outline:none"
+          onfocus="this.style.borderColor='#a78bfa'" onblur="this.style.borderColor='#2d3748'"
+          onkeydown="if(event.key==='Enter')confirmAddSource();if(event.key==='Escape')closeAddSourceModal()">
+      </div>
+      <div class="fg">
+        <label style="font-size:12px;color:#94a3b8;margin-bottom:5px;display:block">数据源类型</label>
+        <select id="add-source-type-select"
+          style="width:100%;background:#0f1117;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;font-size:14px;padding:9px 12px;outline:none">
+          <option value="s3">☁ Cloud Storage (S3 / OSS / COS)</option>
+          <option value="db">🗄 Database (MySQL / PG / SQLite)</option>
+          <option value="rest">🌐 REST API</option>
+          <option value="ftp">📁 FTP / SFTP</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddSourceModal()" style="font-size:13px">取消</button>
+      <button class="btn btn-primary" onclick="confirmAddSource()" style="font-size:13px">确定</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

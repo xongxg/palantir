@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palantir · Folds</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+/* ── TopBar ── */
+.topbar { background: #1a1d2e; border-bottom: 1px solid #2d3748;
+          padding: 0 24px; height: 48px; display: flex; align-items: center; gap: 24px; position: sticky; top: 0; z-index: 10; }
+.logo { font-size: 15px; font-weight: 700; color: #a78bfa; letter-spacing: -0.3px; flex-shrink: 0; }
+.topbar nav { display: flex; gap: 20px; }
+.topbar nav a { color: #64748b; text-decoration: none; font-size: 13px; transition: color .15s; }
+.topbar nav a:hover { color: #e2e8f0; }
+.topbar nav a.active { color: #a78bfa; font-weight: 500; }
+
+/* ── Breadcrumb ── */
+.breadcrumb { display: flex; align-items: center; gap: 8px; padding: 14px 28px 0;
+              font-size: 13px; color: #64748b; }
+.breadcrumb a { color: #64748b; text-decoration: none; }
+.breadcrumb a:hover { color: #a78bfa; }
+.breadcrumb .sep { color: #3d4258; }
+.breadcrumb .current { color: #e2e8f0; }
+
+/* ── Page header ── */
+.page-header { padding: 20px 28px 0; display: flex; align-items: flex-start; justify-content: space-between; }
+.page-title { font-size: 22px; font-weight: 600; color: #e2e8f0; }
+.page-sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+.btn-new { display: flex; align-items: center; gap: 6px; background: #a78bfa;
+           color: #0f1117; border: none; border-radius: 8px; padding: 9px 18px;
+           font-size: 13px; font-weight: 600; cursor: pointer; transition: background .2s; }
+.btn-new:hover { background: #8b5cf6; }
+
+/* ── Search ── */
+.search-row { padding: 16px 28px 0; }
+.search-input { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 8px;
+                padding: 8px 14px; color: #e2e8f0; font-size: 13px; width: 280px;
+                outline: none; transition: border-color .15s; }
+.search-input:focus { border-color: #a78bfa; }
+.search-input::placeholder { color: #475569; }
+
+/* ── Grid ── */
+.fold-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+             gap: 14px; padding: 20px 28px 40px; }
+
+.fold-card { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 12px;
+             padding: 20px; cursor: pointer; transition: border-color .2s, background .2s;
+             display: flex; flex-direction: column; gap: 12px; position: relative; }
+.fold-card:hover { border-color: #a78bfa; background: rgba(167,139,250,0.04); }
+
+.fold-card-top { display: flex; align-items: flex-start; gap: 12px; }
+.fold-icon { width: 38px; height: 38px; border-radius: 8px; background: rgba(167,139,250,0.12);
+             display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.fold-info { flex: 1; min-width: 0; }
+.fold-name { font-size: 15px; font-weight: 600; color: #e2e8f0;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fold-desc { font-size: 12px; color: #64748b; margin-top: 3px; line-height: 1.4;
+             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.fold-meta { display: flex; gap: 16px; }
+.meta-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b; }
+.meta-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-none { background: #3d4258; }
+.dot-ok   { background: #10b981; }
+.dot-run  { background: #f59e0b; }
+.dot-err  { background: #ef4444; }
+
+.fold-arrow { position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+              color: #a78bfa; font-size: 18px; opacity: 0; transition: opacity .15s; }
+.fold-card:hover .fold-arrow { opacity: 1; }
+
+.fold-delete { position: absolute; top: 12px; right: 12px; background: transparent;
+               border: none; color: #475569; font-size: 15px; cursor: pointer;
+               padding: 4px; border-radius: 4px; opacity: 0; transition: opacity .15s, color .15s; }
+.fold-card:hover .fold-delete { opacity: 1; }
+.fold-delete:hover { color: #ef4444; }
+
+/* ── Empty ── */
+.empty { text-align: center; padding: 80px 24px; }
+.empty-icon { font-size: 52px; margin-bottom: 16px; opacity: 0.25; }
+.empty-text { font-size: 15px; color: #64748b; margin-bottom: 6px; }
+.empty-sub { font-size: 13px; color: #475569; }
+
+/* ── Modal ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6);
+                 display: flex; align-items: center; justify-content: center; z-index: 50;
+                 opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal { background: #1a1d2e; border: 1px solid #3d4258; border-radius: 14px;
+         padding: 28px; width: 420px; max-width: 95vw;
+         transform: translateY(8px); transition: transform .2s; }
+.modal-overlay.open .modal { transform: translateY(0); }
+.modal-title { font-size: 17px; font-weight: 600; color: #e2e8f0; margin-bottom: 20px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.form-group label { font-size: 12px; color: #94a3b8; font-weight: 500; }
+.form-group input, .form-group textarea {
+  background: #0f1117; border: 1px solid #2d3748; border-radius: 7px;
+  padding: 9px 12px; color: #e2e8f0; font-size: 13px; outline: none;
+  transition: border-color .15s; width: 100%;
+}
+.form-group input:focus, .form-group textarea:focus { border-color: #a78bfa; }
+.form-group textarea { resize: vertical; min-height: 72px; font-family: inherit; }
+.err-inline { font-size: 12px; color: #ef4444; margin-top: 4px; display: none; }
+.err-inline.show { display: block; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.btn-cancel { background: transparent; border: 1px solid #2d3748; border-radius: 7px;
+              color: #64748b; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+.btn-cancel:hover { border-color: #64748b; color: #e2e8f0; }
+.btn-confirm { background: #a78bfa; border: none; border-radius: 7px; color: #0f1117;
+               padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-confirm:hover { background: #8b5cf6; }
+.btn-confirm:disabled { opacity: .4; cursor: not-allowed; }
+
+.spinner { display: inline-block; width: 14px; height: 14px;
+           border: 2px solid #a78bfa44; border-top-color: #a78bfa;
+           border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">Palantir</span>
+  <nav>
+    <a href="/">Workspace</a>
+    <a href="/ontology">Ontology</a>
+  </nav>
+</div>
+
+<div class="breadcrumb">
+  <a href="/">Workspace</a>
+  <span class="sep">›</span>
+  <span class="current" id="bc-project">…</span>
+</div>
+
+<div class="page-header">
+  <div>
+    <div class="page-title" id="page-title">Folds</div>
+    <div class="page-sub">选择业务域接入数据，或创建新的 Fold</div>
+  </div>
+  <button class="btn-new" onclick="openModal()">+ New Fold</button>
+</div>
+
+<div class="search-row">
+  <input class="search-input" type="text" placeholder="搜索 Fold 名称…" oninput="filterFolds(this.value)">
+</div>
+
+<div class="fold-grid" id="fold-grid">
+  <div style="grid-column:1/-1;padding:60px 0;text-align:center">
+    <span class="spinner"></span>
+  </div>
+</div>
+
+<!-- Create Fold Modal -->
+<div class="modal-overlay" id="modal" onclick="closeIfOverlay(event)">
+  <div class="modal">
+    <div class="modal-title">创建 Fold</div>
+    <div class="form-group">
+      <label>Fold 名称 *</label>
+      <input type="text" id="fold-name" placeholder="如：HR 数据域" maxlength="64" oninput="clearErr()">
+      <span class="err-inline" id="name-err"></span>
+    </div>
+    <div class="form-group">
+      <label>描述（可选）</label>
+      <textarea id="fold-desc" placeholder="简要说明该业务域的数据范围…" maxlength="256"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-confirm" id="btn-create" onclick="createFold()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const projectId = location.pathname.split('/').filter(Boolean).pop();
+let allFolds = [];
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+async function load() {
+  // Load project info
+  try {
+    const r = await fetch(`/api/projects/${projectId}`);
+    if (r.ok) {
+      const p = await r.json();
+      document.getElementById('bc-project').textContent = p.name;
+      document.getElementById('page-title').textContent = p.name + ' · Folds';
+      document.title = `${p.name} · Palantir`;
+    }
+  } catch(_) {}
+
+  // Load folds
+  try {
+    const r = await fetch(`/api/projects/${projectId}/folds`);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    allFolds = data.folds || [];
+    renderFolds(allFolds);
+  } catch(e) {
+    document.getElementById('fold-grid').innerHTML =
+      `<div style="grid-column:1/-1;color:#ef4444;padding:40px 0;text-align:center">加载失败：${e.message}</div>`;
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderFolds(folds) {
+  const grid = document.getElementById('fold-grid');
+  if (!folds.length) {
+    grid.innerHTML = `
+      <div class="empty" style="grid-column:1/-1">
+        <div class="empty-icon">📂</div>
+        <div class="empty-text">还没有 Fold</div>
+        <div class="empty-sub">点击右上角"New Fold"创建第一个业务域</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = folds.map(f => {
+    const dotClass = statusDot(f.status);
+    const dotLabel = statusLabel(f.status);
+    return `
+    <div class="fold-card" onclick="gotoFold('${f.id}')">
+      <button class="fold-delete" onclick="event.stopPropagation();deleteFold('${f.id}','${escHtml(f.name)}')" title="删除">✕</button>
+      <div class="fold-card-top">
+        <div class="fold-icon">📁</div>
+        <div class="fold-info">
+          <div class="fold-name">${escHtml(f.name)}</div>
+          <div class="fold-desc">${escHtml(f.description || '暂无描述')}</div>
+        </div>
+      </div>
+      <div class="fold-meta">
+        <div class="meta-item">
+          <span class="meta-dot ${dotClass}"></span>
+          <span>${dotLabel}</span>
+        </div>
+        <div class="meta-item">🗄 ${f.source_count ?? 0} 个数据源</div>
+        <div class="meta-item">📊 ${f.dataset_count ?? 0} 个数据集</div>
+      </div>
+      <span class="fold-arrow">›</span>
+    </div>`;
+  }).join('');
+}
+
+function statusDot(s) {
+  return { synced:'dot-ok', syncing:'dot-run', error:'dot-err' }[s] || 'dot-none';
+}
+function statusLabel(s) {
+  return { synced:'已同步', syncing:'同步中', error:'同步失败', idle:'未同步' }[s] || '未同步';
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function filterFolds(q) {
+  const filtered = q ? allFolds.filter(f => f.name.toLowerCase().includes(q.toLowerCase())) : allFolds;
+  renderFolds(filtered);
+}
+
+// ── Navigate ──────────────────────────────────────────────────────────────────
+function gotoFold(id) { location.href = `/ingest/fold/${id}`; }
+
+// ── Create ────────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('fold-name').focus(), 100);
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  document.getElementById('fold-name').value = '';
+  document.getElementById('fold-desc').value = '';
+  clearErr();
+}
+function closeIfOverlay(e) { if (e.target === e.currentTarget) closeModal(); }
+function clearErr() {
+  document.getElementById('name-err').classList.remove('show');
+  document.getElementById('name-err').textContent = '';
+}
+
+async function createFold() {
+  const name = document.getElementById('fold-name').value.trim();
+  const desc = document.getElementById('fold-desc').value.trim();
+  if (!name) { showErr('名称不能为空'); return; }
+
+  const btn = document.getElementById('btn-create');
+  btn.disabled = true;
+  btn.textContent = '创建中…';
+
+  try {
+    const r = await fetch(`/api/projects/${projectId}/folds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: desc || null })
+    });
+    const data = await r.json();
+    if (!r.ok) { showErr(data.error || '创建失败'); return; }
+    closeModal();
+    location.href = `/ingest/fold/${data.id}`;
+  } catch(e) {
+    showErr('网络错误：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '创建';
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('name-err');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+async function deleteFold(id, name) {
+  if (!confirm(`确定删除 Fold「${name}」？该操作将同时删除所有数据源配置和同步记录。`)) return;
+  try {
+    const r = await fetch(`/api/folds/${id}`, { method: 'DELETE' });
+    if (!r.ok) { alert('删除失败'); return; }
+    allFolds = allFolds.filter(f => f.id !== id);
+    renderFolds(allFolds);
+  } catch(e) { alert('删除失败：' + e.message); }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Enter key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('modal').classList.contains('open')) createFold();
+  if (e.key === 'Escape') closeModal();
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palantir · Source Adapters Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+  .topbar { background: #1a1d2e; border-bottom: 1px solid #2d3748;
+            padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 24px; }
+  .topbar h1 { font-size: 16px; font-weight: 600; color: #a78bfa; }
+  .topbar nav a { color: #94a3b8; text-decoration: none; font-size: 13px; }
+  .topbar nav a:hover { color: #e2e8f0; }
+  .container { max-width: 960px; margin: 32px auto; padding: 0 24px; }
+  .card { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px;
+          padding: 24px; margin-bottom: 24px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #c4b5fd; }
+
+  /* Type tabs */
+  .type-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .type-tab { padding: 6px 18px; border-radius: 6px; border: 1px solid #3d4258;
+              background: #252840; color: #94a3b8; cursor: pointer; font-size: 13px;
+              transition: all .15s; }
+  .type-tab:hover { border-color: #7c3aed; color: #e2e8f0; }
+  .type-tab.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+
+  /* Form */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; color: #94a3b8; font-weight: 500; }
+  input, textarea, select {
+    background: #0f1117; border: 1px solid #2d3748; border-radius: 6px;
+    color: #e2e8f0; font-size: 13px; padding: 8px 10px; outline: none;
+    transition: border-color .15s; width: 100%;
+  }
+  input:focus, textarea:focus { border-color: #7c3aed; }
+  textarea { resize: vertical; font-family: "Fira Code", "Consolas", monospace; }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
+         font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: #7c3aed; color: #fff; }
+  .btn-secondary { background: #1e40af; color: #fff; }
+  .btn-outline { background: transparent; border: 1px solid #4a5568; color: #94a3b8; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Results */
+  .result-box { margin-top: 20px; }
+  .result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-ok  { background: #14532d; color: #4ade80; }
+  .badge-err { background: #450a0a; color: #f87171; }
+  pre { background: #0a0c14; border: 1px solid #2d3748; border-radius: 6px;
+        padding: 14px; font-size: 12px; font-family: "Fira Code", monospace;
+        overflow-x: auto; white-space: pre-wrap; max-height: 420px; overflow-y: auto; color: #a5f3fc; }
+
+  /* Schema table */
+  .schema-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  .schema-table th { text-align: left; padding: 6px 10px; background: #0f1117;
+                     color: #7c3aed; border-bottom: 1px solid #2d3748; }
+  .schema-table td { padding: 6px 10px; border-bottom: 1px solid #1e2435; }
+  .schema-table tr:hover td { background: #1e2435; }
+  .type-chip { display: inline-block; padding: 1px 7px; border-radius: 10px;
+               font-size: 11px; background: #1e1b4b; color: #a78bfa; }
+  .nullable-yes { color: #fbbf24; font-size: 11px; }
+  .nullable-no  { color: #4b5563; font-size: 11px; }
+
+  /* Panel visibility */
+  .adapter-panel { display: none; }
+  .adapter-panel.active { display: block; }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #4a5568;
+             border-top-color: #a78bfa; border-radius: 50%; animation: spin .6s linear infinite;
+             vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+
+  /* Demo hints */
+  .hint { background: #1a2744; border: 1px solid #1e3a5f; border-radius: 6px;
+          padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #7dd3fc; }
+  .hint code { background: #0f1117; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Palantir</h1>
+  <nav style="display:flex;gap:20px;">
+    <a href="/">Projects</a>
+    <a href="/ontology">Ontology</a>
+    <a href="/connect">Data Connections</a>
+    <a href="/sources" style="color:#c4b5fd">Sources</a>
+    <a href="/workspace">Workspace</a>
+  </nav>
+</div>
+
+<div class="container">
+  <div class="card">
+    <h2>Source Adapter Demo</h2>
+    <p style="font-size:13px;color:#64748b;margin-bottom:18px;">
+      选择数据源类型，配置连接参数，测试连接 / 发现 Schema / 预览数据。
+    </p>
+
+    <div class="type-tabs">
+      <button class="type-tab active" onclick="switchType('csv')">CSV 文件</button>
+      <button class="type-tab" onclick="switchType('json')">JSON / JSONL</button>
+      <button class="type-tab" onclick="switchType('sql')">SQL (SQLite)</button>
+      <button class="type-tab" onclick="switchType('rest')">REST API</button>
+    </div>
+
+    <!-- CSV Panel -->
+    <div id="panel-csv" class="adapter-panel active">
+      <div class="hint">
+        上传 CSV 后可在 Workspace 使用；这里直接输入服务器端文件路径（demo 阶段）。<br>
+        样例：<code>data/uploads/&lt;project_id&gt;/employees.csv</code>
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>文件路径（服务器端绝对/相对路径）</label>
+          <input id="csv-path" type="text" placeholder="data/sample/employees.csv">
+        </div>
+      </div>
+    </div>
+
+    <!-- JSON Panel -->
+    <div id="panel-json" class="adapter-panel">
+      <div class="hint">
+        支持 JSON 数组 <code>[{...}]</code>、JSONL（每行一个对象）、嵌套结构 <code>{"data":[...]}</code>。
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>文件路径</label>
+          <input id="json-path" type="text" placeholder="data/sample/employees.json">
+        </div>
+        <div class="form-group full">
+          <label>Records Path（可选，如 <code>data</code> 或 <code>result.items</code>）</label>
+          <input id="json-records-path" type="text" placeholder="留空表示根节点就是数组">
+        </div>
+      </div>
+    </div>
+
+    <!-- SQL Panel -->
+    <div id="panel-sql" class="adapter-panel">
+      <div class="hint">
+        Demo 阶段使用 SQLite。DB Path 填写 SQLite 文件路径，Query 填写完整 SELECT 语句。
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>DB Path（SQLite 文件路径）</label>
+          <input id="sql-db-path" type="text" placeholder="data/sample/demo.db">
+        </div>
+        <div class="form-group full">
+          <label>SQL Query</label>
+          <textarea id="sql-query" rows="3" placeholder="SELECT * FROM employees LIMIT 100"></textarea>
+        </div>
+        <div class="form-group">
+          <label>ID Column</label>
+          <input id="sql-id-col" type="text" placeholder="id" value="id">
+        </div>
+        <div class="form-group">
+          <label>Cursor Column（增量水位线，可选）</label>
+          <input id="sql-cursor-col" type="text" placeholder="updated_at">
+        </div>
+      </div>
+    </div>
+
+    <!-- REST Panel -->
+    <div id="panel-rest" class="adapter-panel">
+      <div class="hint">
+        公开 API 样例：<code>https://jsonplaceholder.typicode.com/users</code>（无需 token）
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>URL</label>
+          <input id="rest-url" type="text" placeholder="https://jsonplaceholder.typicode.com/users">
+        </div>
+        <div class="form-group full">
+          <label>Records Path（可选，如 <code>data</code>；留空表示 response 直接是数组）</label>
+          <input id="rest-records-path" type="text" placeholder="">
+        </div>
+        <div class="form-group">
+          <label>Bearer Token（可选）</label>
+          <input id="rest-bearer" type="text" placeholder="">
+        </div>
+        <div class="form-group">
+          <label>API Key Header（可选，如 X-API-Key）</label>
+          <input id="rest-key-header" type="text" placeholder="">
+        </div>
+        <div class="form-group">
+          <label>API Key Value</label>
+          <input id="rest-key-value" type="text" placeholder="">
+        </div>
+        <div class="form-group">
+          <label>分页大小（0 = 不分页）</label>
+          <input id="rest-page-size" type="number" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label>Page 参数名</label>
+          <input id="rest-page-param" type="text" value="page">
+        </div>
+        <div class="form-group">
+          <label>Size 参数名</label>
+          <input id="rest-size-param" type="text" value="limit">
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="doAction('test')">
+        <span id="spin-test" class="spinner hidden"></span>
+        测试连接
+      </button>
+      <button class="btn btn-secondary" onclick="doAction('discover')">
+        <span id="spin-discover" class="spinner hidden"></span>
+        发现 Schema
+      </button>
+      <button class="btn btn-primary" onclick="doAction('preview')">
+        <span id="spin-preview" class="spinner hidden"></span>
+        预览数据
+      </button>
+    </div>
+  </div>
+
+  <!-- Result Panel -->
+  <div id="result-container" class="card hidden">
+    <div class="result-header">
+      <span id="result-badge" class="badge badge-ok">OK</span>
+      <span id="result-title" style="font-size:13px;color:#94a3b8;"></span>
+    </div>
+    <div id="result-schema" class="hidden"></div>
+    <pre id="result-json"></pre>
+  </div>
+</div>
+
+<script>
+let currentType = 'csv';
+
+function switchType(t) {
+  currentType = t;
+  document.querySelectorAll('.type-tab').forEach((el, i) => {
+    const types = ['csv','json','sql','rest'];
+    el.classList.toggle('active', types[i] === t);
+  });
+  document.querySelectorAll('.adapter-panel').forEach(el => {
+    el.classList.remove('active');
+  });
+  document.getElementById('panel-' + t).classList.add('active');
+  document.getElementById('result-container').classList.add('hidden');
+}
+
+function getConfig() {
+  switch(currentType) {
+    case 'csv':
+      return { path: document.getElementById('csv-path').value.trim() };
+    case 'json':
+      return {
+        path: document.getElementById('json-path').value.trim(),
+        records_path: document.getElementById('json-records-path').value.trim(),
+      };
+    case 'sql':
+      return {
+        db_path: document.getElementById('sql-db-path').value.trim(),
+        query: document.getElementById('sql-query').value.trim(),
+        id_column: document.getElementById('sql-id-col').value.trim() || 'id',
+        cursor_column: document.getElementById('sql-cursor-col').value.trim(),
+      };
+    case 'rest':
+      return {
+        url: document.getElementById('rest-url').value.trim(),
+        records_path: document.getElementById('rest-records-path').value.trim(),
+        bearer_token: document.getElementById('rest-bearer').value.trim(),
+        api_key_header: document.getElementById('rest-key-header').value.trim(),
+        api_key_value: document.getElementById('rest-key-value').value.trim(),
+        page_size: parseInt(document.getElementById('rest-page-size').value) || 0,
+        page_param: document.getElementById('rest-page-param').value.trim() || 'page',
+        size_param: document.getElementById('rest-size-param').value.trim() || 'limit',
+      };
+  }
+}
+
+function setLoading(action, on) {
+  document.getElementById('spin-' + action).classList.toggle('hidden', !on);
+}
+
+async function doAction(action) {
+  const endpoint = '/api/sources/' + action;
+  const body = { type: currentType, config: getConfig() };
+
+  setLoading(action, true);
+  document.getElementById('result-container').classList.add('hidden');
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    showResult(action, data);
+  } catch(e) {
+    showResult(action, { ok: false, error: e.message });
+  } finally {
+    setLoading(action, false);
+  }
+}
+
+function showResult(action, data) {
+  const container = document.getElementById('result-container');
+  const badge = document.getElementById('result-badge');
+  const title = document.getElementById('result-title');
+  const jsonEl = document.getElementById('result-json');
+  const schemaEl = document.getElementById('result-schema');
+
+  container.classList.remove('hidden');
+  schemaEl.classList.add('hidden');
+  schemaEl.innerHTML = '';
+
+  const ok = data.ok !== false;
+  badge.className = 'badge ' + (ok ? 'badge-ok' : 'badge-err');
+  badge.textContent = ok ? 'OK' : 'ERROR';
+
+  const labels = { test: '连接测试', discover: 'Schema 发现', preview: '数据预览' };
+  title.textContent = labels[action] || action;
+
+  // Render schema table for discover action
+  if (action === 'discover' && ok && data.schema && data.schema.fields) {
+    schemaEl.classList.remove('hidden');
+    const fields = data.schema.fields;
+    const cnt = data.schema.record_count_hint;
+    let html = `<div style="font-size:12px;color:#64748b;margin-bottom:8px;">
+      推断字段 ${fields.length} 个${cnt != null ? ' · 记录数 ' + cnt : ''}
+    </div>
+    <table class="schema-table">
+      <thead><tr>
+        <th>字段名</th><th>类型</th><th>可空</th><th>样本值</th>
+      </tr></thead><tbody>`;
+    for (const f of fields) {
+      html += `<tr>
+        <td style="color:#e2e8f0;font-family:monospace">${esc(f.name)}</td>
+        <td><span class="type-chip">${esc(f.inferred_type)}</span></td>
+        <td class="${f.nullable ? 'nullable-yes' : 'nullable-no'}">${f.nullable ? '◉' : '○'}</td>
+        <td style="color:#64748b;font-size:11px">${f.sample_values.map(esc).join(', ')}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    schemaEl.innerHTML = html;
+    // Show compact JSON below
+    const display = { ...data };
+    if (display.schema) display.schema = { ...display.schema, sample_records: '[...]' };
+    jsonEl.textContent = JSON.stringify(display, null, 2);
+  } else {
+    jsonEl.textContent = JSON.stringify(data, null, 2);
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

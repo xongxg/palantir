@@ -1,4 +1,7 @@
 target/
-aws 
+aws/
 awscliv2.zip
-palantir*
+# SQLite database files at repo root
+/palantir*.db
+/palantir*.db-shm
+/palantir*.db-wal

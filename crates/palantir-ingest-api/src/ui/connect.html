@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Connections — Palantir</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }
+  input, select, textarea {
+    background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 100%; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: #6366f1; }
+  button { cursor: pointer; border-radius: 6px; font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  button:hover:not(:disabled) { opacity: .85; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary  { background: #6366f1; color: #fff; padding: 6px 16px; border: none; }
+  .btn-success  { background: #059669; color: #fff; padding: 6px 16px; border: none; }
+  .btn-ghost    { background: transparent; border: 1px solid #334155; color: #94a3b8; padding: 5px 12px; }
+  .btn-danger   { background: #dc2626; color: #fff; padding: 4px 10px; border: none; font-size: 11px; }
+  .step-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .step-dot.done    { background: #059669; color: #fff; }
+  .step-dot.active  { background: #6366f1; color: #fff; }
+  .step-dot.pending { background: #1e293b; border: 1px solid #334155; color: #475569; }
+  .conn-card { padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: background .12s; }
+  .conn-card:hover  { background: #1e293b; }
+  .conn-card.active { background: #1e293b; border-left: 2px solid #6366f1; }
+  .type-badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+  .badge-csv  { background: #1a3a1a; color: #4ade80; }
+  .badge-json { background: #1a2e4a; color: #60a5fa; }
+  .badge-sql  { background: #2a1a3a; color: #c084fc; }
+  .badge-rest { background: #3a2a1a; color: #fb923c; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .status-ok      { background: #4ade80; }
+  .status-error   { background: #f87171; }
+  .status-syncing { background: #fbbf24; animation: pulse 1s infinite; }
+  .status-idle    { background: #475569; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .map-row { display: grid; grid-template-columns: 1fr 24px 1fr 80px; gap: 8px; align-items: center; }
+  pre { background: #0a0f1e; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; font-size: 11px; font-family: 'Fira Code', monospace; overflow-x: auto; white-space: pre-wrap; max-height: 280px; overflow-y: auto; color: #7dd3fc; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #334155; border-top-color: #6366f1; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-bar { height: 4px; background: #1e293b; border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 4px; transition: width .3s; }
+</style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<!-- TopBar -->
+<div class="flex items-center px-5 py-3 border-b border-slate-700/60 gap-4 flex-shrink-0">
+  <span class="text-indigo-400 font-bold text-sm tracking-wide">Palantir</span>
+  <span class="text-slate-600">|</span>
+  <nav class="flex gap-5 text-xs text-slate-400">
+    <a href="/" class="hover:text-slate-200">Projects</a>
+    <a href="/ontology" class="hover:text-slate-200">Ontology</a>
+    <a href="/connect" class="text-white font-medium">Data Connections</a>
+    <a href="/sources" class="hover:text-slate-200">Sources</a>
+    <a href="/workspace" class="hover:text-slate-200">Workspace</a>
+  </nav>
+</div>
+
+<!-- Main Layout -->
+<div class="flex flex-1 overflow-hidden">
+
+  <!-- Left Sidebar: Connection List -->
+  <div class="w-64 flex-shrink-0 border-r border-slate-700/60 flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700/40">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Connections</span>
+      <button class="btn-primary text-xs px-2 py-1" onclick="newConnection()">+ New</button>
+    </div>
+    <div id="conn-list" class="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+      <div class="text-xs text-slate-600 text-center py-8">No connections yet.<br>Click + New to add one.</div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="flex-1 overflow-y-auto" id="right-panel">
+
+    <!-- Empty state -->
+    <div id="empty-state" class="flex flex-col items-center justify-center h-full text-slate-500">
+      <div class="text-5xl mb-4">⛓</div>
+      <div class="text-sm font-medium mb-1">No connection selected</div>
+      <div class="text-xs">Create a new connection to start syncing data into the Ontology.</div>
+      <button class="btn-primary mt-6 text-sm" onclick="newConnection()">+ New Connection</button>
+    </div>
+
+    <!-- Wizard Panel (hidden by default) -->
+    <div id="wizard-panel" class="hidden p-6 max-w-3xl">
+
+      <!-- Wizard Header -->
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 id="wizard-title" class="text-base font-semibold text-white">New Connection</h2>
+          <p class="text-xs text-slate-400 mt-0.5" id="wizard-subtitle">Connect a data source to an Ontology dataset</p>
+        </div>
+        <button class="btn-ghost text-xs" onclick="closeWizard()">Cancel</button>
+      </div>
+
+      <!-- Step Indicator -->
+      <div class="flex items-center gap-2 mb-8">
+        <div class="flex items-center gap-2" id="step-1-indicator">
+          <div class="step-dot active" id="dot-1">1</div>
+          <span class="text-xs text-slate-300" id="label-1">Source</span>
+        </div>
+        <div class="h-px flex-1 bg-slate-700"></div>
+        <div class="flex items-center gap-2" id="step-2-indicator">
+          <div class="step-dot pending" id="dot-2">2</div>
+          <span class="text-xs text-slate-500" id="label-2">Preview</span>
+        </div>
+        <div class="h-px flex-1 bg-slate-700"></div>
+        <div class="flex items-center gap-2" id="step-3-indicator">
+          <div class="step-dot pending" id="dot-3">3</div>
+          <span class="text-xs text-slate-500" id="label-3">Map Fields</span>
+        </div>
+        <div class="h-px flex-1 bg-slate-700"></div>
+        <div class="flex items-center gap-2" id="step-4-indicator">
+          <div class="step-dot pending" id="dot-4">4</div>
+          <span class="text-xs text-slate-500" id="label-4">Sync</span>
+        </div>
+      </div>
+
+      <!-- ── STEP 1: Source Config ── -->
+      <div id="step-1" class="card p-5">
+        <div class="text-sm font-medium text-white mb-4">Configure Data Source</div>
+
+        <!-- Source Type Tabs -->
+        <div class="flex gap-2 mb-5">
+          <button class="type-tab active px-3 py-1.5 rounded text-xs border border-indigo-600 bg-indigo-600/20 text-indigo-300" data-type="csv" onclick="switchSrcType('csv',this)">CSV</button>
+          <button class="type-tab px-3 py-1.5 rounded text-xs border border-slate-600 text-slate-400" data-type="json" onclick="switchSrcType('json',this)">JSON</button>
+          <button class="type-tab px-3 py-1.5 rounded text-xs border border-slate-600 text-slate-400" data-type="sql" onclick="switchSrcType('sql',this)">SQL</button>
+          <button class="type-tab px-3 py-1.5 rounded text-xs border border-slate-600 text-slate-400" data-type="rest" onclick="switchSrcType('rest',this)">REST API</button>
+        </div>
+
+        <!-- CSV -->
+        <div id="src-csv" class="src-form space-y-3">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Connection Name</label>
+            <input id="csv-name" type="text" placeholder="e.g. Employee Records">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">File Path (server-side)</label>
+            <input id="csv-path" type="text" placeholder="data/sample/employees.csv">
+          </div>
+        </div>
+
+        <!-- JSON -->
+        <div id="src-json" class="src-form space-y-3 hidden">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Connection Name</label>
+            <input id="json-name" type="text" placeholder="e.g. Employee JSON">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">File Path</label>
+            <input id="json-path" type="text" placeholder="data/sample/employees.json">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Records Path <span class="text-slate-600">(optional, e.g. data)</span></label>
+            <input id="json-rp" type="text" placeholder="留空自动检测">
+          </div>
+        </div>
+
+        <!-- SQL -->
+        <div id="src-sql" class="src-form space-y-3 hidden">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Connection Name</label>
+            <input id="sql-name" type="text" placeholder="e.g. HR Database">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">DB Path (SQLite)</label>
+            <input id="sql-db" type="text" placeholder="data/sample/demo.db">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">SQL Query</label>
+            <textarea id="sql-query" rows="2" placeholder="SELECT * FROM employees"></textarea>
+          </div>
+        </div>
+
+        <!-- REST -->
+        <div id="src-rest" class="src-form space-y-3 hidden">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Connection Name</label>
+            <input id="rest-name" type="text" placeholder="e.g. Rick & Morty Characters">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">URL</label>
+            <input id="rest-url" type="text" placeholder="https://rickandmortyapi.com/api/character">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">Records Path <span class="text-slate-600">(optional)</span></label>
+              <input id="rest-rp" type="text" placeholder="results">
+            </div>
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">Bearer Token <span class="text-slate-600">(optional)</span></label>
+              <input id="rest-token" type="text" placeholder="">
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">Page Size <span class="text-slate-600">(0=off)</span></label>
+              <input id="rest-psize" type="number" value="0" min="0">
+            </div>
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">Page Param</label>
+              <input id="rest-pparam" type="text" value="page">
+            </div>
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">Size Param</label>
+              <input id="rest-sparam" type="text" value="limit">
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end mt-5">
+          <button class="btn-primary" onclick="goPreview()">
+            <span id="spin-preview" class="spinner hidden mr-1"></span>
+            Preview Data →
+          </button>
+        </div>
+      </div>
+
+      <!-- ── STEP 2: Preview ── -->
+      <div id="step-2" class="card p-5 hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div class="text-sm font-medium text-white">Data Preview</div>
+          <span id="preview-count" class="text-xs text-slate-400"></span>
+        </div>
+        <div id="preview-table-wrap" class="overflow-x-auto mb-4">
+          <table id="preview-table" class="w-full text-xs border-collapse">
+            <thead id="preview-thead"></thead>
+            <tbody id="preview-tbody"></tbody>
+          </table>
+        </div>
+        <div class="flex justify-between mt-4">
+          <button class="btn-ghost" onclick="goStep(1)">← Back</button>
+          <button class="btn-primary" onclick="goMapFields()">Map Fields →</button>
+        </div>
+      </div>
+
+      <!-- ── STEP 3: Map Fields ── -->
+      <div id="step-3" class="card p-5 hidden">
+        <div class="text-sm font-medium text-white mb-1">Map to Ontology Dataset</div>
+        <p class="text-xs text-slate-500 mb-4">Choose an Entity Type and map source fields to ontology fields.</p>
+
+        <!-- Entity Type Selector -->
+        <div class="mb-5">
+          <label class="text-xs text-slate-400 mb-1 block">Target Entity Type</label>
+          <div class="flex gap-2">
+            <select id="entity-type-select" class="flex-1" onchange="onEntityTypeChange()">
+              <option value="">-- Select or create new --</option>
+            </select>
+            <button class="btn-ghost text-xs px-3" onclick="createEntityTypeInline()">+ New Type</button>
+          </div>
+          <!-- Create new inline -->
+          <div id="new-type-form" class="hidden mt-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+            <div class="text-xs text-slate-400 mb-2">New Entity Type</div>
+            <div class="flex gap-2">
+              <input id="new-type-name" type="text" placeholder="e.g. Employee" class="flex-1">
+              <button class="btn-primary text-xs px-3" onclick="confirmCreateType()">Create</button>
+              <button class="btn-ghost text-xs px-2" onclick="cancelCreateType()">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Field Mapping Table -->
+        <div id="field-mapping-wrap" class="hidden">
+          <div class="text-xs text-slate-400 mb-2">Field Mapping</div>
+          <div class="space-y-1 mb-1">
+            <div class="map-row text-xs text-slate-500 px-1">
+              <span>Source Field</span><span></span><span>Ontology Field</span><span>Include</span>
+            </div>
+          </div>
+          <div id="field-mapping-rows" class="space-y-2"></div>
+          <p class="text-xs text-slate-600 mt-3">Fields without a mapping will be stored as-is in the object payload.</p>
+        </div>
+
+        <div class="flex justify-between mt-5">
+          <button class="btn-ghost" onclick="goStep(2)">← Back</button>
+          <button class="btn-primary" id="btn-go-sync" onclick="goSyncStep()" disabled>Review & Sync →</button>
+        </div>
+      </div>
+
+      <!-- ── STEP 4: Sync ── -->
+      <div id="step-4" class="card p-5 hidden">
+        <div class="text-sm font-medium text-white mb-4">Sync to Ontology</div>
+
+        <!-- Summary -->
+        <div class="bg-slate-800/50 rounded-lg p-4 mb-5 space-y-2 text-xs">
+          <div class="flex justify-between"><span class="text-slate-400">Source</span><span id="sync-src-name" class="text-white font-medium"></span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Type</span><span id="sync-src-type" class=""></span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Target Entity Type</span><span id="sync-entity-type" class="text-indigo-300 font-medium"></span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Mapped Fields</span><span id="sync-field-count" class="text-white"></span></div>
+        </div>
+
+        <!-- Progress -->
+        <div id="sync-progress-wrap" class="hidden mb-5">
+          <div class="flex items-center justify-between text-xs mb-2">
+            <span class="text-slate-400" id="sync-status-text">Syncing...</span>
+            <span class="text-white font-medium" id="sync-count-text">0 records</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="sync-progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div id="sync-result" class="hidden bg-emerald-900/30 border border-emerald-700/50 rounded-lg p-4 text-xs text-emerald-300 mb-4"></div>
+        <div id="sync-error"  class="hidden bg-red-900/30 border border-red-700/50 rounded-lg p-4 text-xs text-red-300 mb-4"></div>
+
+        <div class="flex justify-between mt-2">
+          <button class="btn-ghost" onclick="goStep(3)" id="btn-back-sync">← Back</button>
+          <div class="flex gap-2">
+            <button class="btn-primary" id="btn-run-sync" onclick="runSync()">
+              <span id="spin-sync" class="spinner hidden mr-1"></span>
+              Run Sync
+            </button>
+            <button class="btn-ghost hidden" id="btn-view-ontology" onclick="window.location='/ontology'">View in Ontology →</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /wizard-panel -->
+
+    <!-- Connection Detail Panel (for existing connections) -->
+    <div id="detail-panel" class="hidden p-6 max-w-3xl">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <div class="status-dot" id="detail-status-dot"></div>
+          <div>
+            <h2 id="detail-name" class="text-base font-semibold text-white"></h2>
+            <p class="text-xs text-slate-400 mt-0.5" id="detail-meta"></p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn-ghost text-xs px-2" title="Edit connection" onclick="editConnection()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn-danger text-xs" onclick="deleteConnection()">Delete</button>
+          <button class="btn-success text-xs px-4" id="btn-detail-sync" onclick="quickSync()">
+            <span id="spin-detail" class="spinner hidden mr-1"></span>
+            Sync Now
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="card p-4 text-center">
+          <div id="detail-records" class="text-2xl font-bold text-white">—</div>
+          <div class="text-xs text-slate-400 mt-1">Total Records</div>
+        </div>
+        <div class="card p-4 text-center">
+          <div id="detail-last-sync" class="text-sm font-medium text-white">—</div>
+          <div class="text-xs text-slate-400 mt-1">Last Sync</div>
+        </div>
+        <div class="card p-4 text-center">
+          <div id="detail-entity-type" class="text-sm font-medium text-indigo-300">—</div>
+          <div class="text-xs text-slate-400 mt-1">Entity Type</div>
+        </div>
+      </div>
+
+      <!-- Quick Sync Progress -->
+      <div id="quick-sync-wrap" class="hidden card p-4 mb-4">
+        <div class="flex items-center justify-between text-xs mb-2">
+          <span class="text-slate-400" id="qs-status">Syncing...</span>
+          <span class="text-white" id="qs-count">0 records</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="qs-fill" style="width:0%"></div></div>
+      </div>
+
+      <!-- Sync Result -->
+      <div id="qs-result" class="hidden card p-4 mb-4 text-xs text-emerald-300 bg-emerald-900/20 border-emerald-700/50"></div>
+      <div id="qs-error"  class="hidden card p-4 mb-4 text-xs text-red-300 bg-red-900/20 border-red-700/50"></div>
+
+      <!-- Config Summary -->
+      <div class="card p-4">
+        <div class="text-xs font-medium text-slate-400 mb-3 uppercase tracking-wide">Configuration</div>
+        <pre id="detail-config" class="text-xs"></pre>
+      </div>
+    </div><!-- /detail-panel -->
+
+  </div><!-- /right-panel -->
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────
+let connections = JSON.parse(localStorage.getItem('palantir_connections') || '[]');
+let currentConnId = null;
+let currentStep = 1;
+let srcType = 'csv';
+let previewData = [];
+let discoveredFields = [];
+let entityTypes = [];
+let wizardMode = 'new'; // 'new' | 'edit'
+
+// ── Init ───────────────────────────────────────────────
+(async () => {
+  await loadEntityTypes();
+  renderConnList();
+  if (connections.length > 0) selectConn(connections[0].id);
+})();
+
+async function loadEntityTypes() {
+  try {
+    const res = await fetch('/api/ontology/schema');
+    const data = await res.json();
+    entityTypes = data.entity_types || (Array.isArray(data) ? data : []);
+  } catch(e) {
+    entityTypes = [];
+  }
+}
+
+// ── Connection List ────────────────────────────────────
+function renderConnList() {
+  const el = document.getElementById('conn-list');
+  if (connections.length === 0) {
+    el.innerHTML = '<div class="text-xs text-slate-600 text-center py-8">No connections yet.<br>Click + New to add one.</div>';
+    return;
+  }
+  el.innerHTML = connections.map(c => `
+    <div class="conn-card ${c.id === currentConnId ? 'active' : ''}" onclick="selectConn('${c.id}')">
+      <div class="flex items-center gap-2">
+        <div class="status-dot ${statusClass(c.status)}"></div>
+        <span class="text-xs font-medium text-white truncate flex-1">${esc(c.name)}</span>
+        <span class="type-badge badge-${c.srcType}">${c.srcType.toUpperCase()}</span>
+      </div>
+      <div class="flex items-center gap-2 mt-1 pl-3.5">
+        <span class="text-xs text-slate-500">${c.entityTypeName || '—'}</span>
+        ${c.recordCount != null ? `<span class="text-xs text-slate-600">· ${c.recordCount} records</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function statusClass(s) {
+  return { ok: 'status-ok', error: 'status-error', syncing: 'status-syncing' }[s] || 'status-idle';
+}
+
+function selectConn(id) {
+  currentConnId = id;
+  const c = connections.find(x => x.id === id);
+  if (!c) return;
+  renderConnList();
+  showDetail(c);
+}
+
+function showDetail(c) {
+  hide('empty-state'); hide('wizard-panel');
+  show('detail-panel');
+  document.getElementById('detail-name').textContent = c.name;
+  document.getElementById('detail-meta').textContent = `${c.srcType.toUpperCase()} · Created ${fmtDate(c.createdAt)}`;
+  document.getElementById('detail-status-dot').className = `status-dot ${statusClass(c.status)}`;
+  document.getElementById('detail-records').textContent = c.recordCount ?? '—';
+  document.getElementById('detail-last-sync').textContent = c.lastSync ? fmtDate(c.lastSync) : 'Never';
+  document.getElementById('detail-entity-type').textContent = c.entityTypeName || '—';
+  document.getElementById('detail-config').textContent = JSON.stringify(c.srcConfig, null, 2);
+  hide('qs-result'); hide('qs-error'); hide('quick-sync-wrap');
+}
+
+// ── New / Edit Connection ──────────────────────────────
+function newConnection() {
+  wizardMode = 'new';
+  currentConnId = null;
+  hide('empty-state'); hide('detail-panel');
+  show('wizard-panel');
+  resetWizard();
+  goStep(1);
+}
+
+function editConnection() {
+  const c = connections.find(x => x.id === currentConnId);
+  if (!c) return;
+  wizardMode = 'edit';
+  hide('detail-panel');
+  show('wizard-panel');
+  resetWizard();
+  // Populate fields
+  srcType = c.srcType;
+  switchSrcType(srcType, document.querySelector(`.type-tab[data-type="${srcType}"]`));
+  populateSrcForm(c.srcConfig);
+  // Lock source type — cannot change type of an existing connection
+  document.querySelectorAll('.type-tab').forEach(b => {
+    b.disabled = true;
+    b.title = 'Source type cannot be changed after creation';
+    b.style.cursor = 'not-allowed';
+    b.style.opacity = b.dataset.type === srcType ? '1' : '0.3';
+  });
+  goStep(1);
+}
+
+function populateSrcForm(cfg) {
+  if (srcType === 'csv') {
+    setVal('csv-name', cfg.name || '');
+    setVal('csv-path', cfg.path || '');
+  } else if (srcType === 'json') {
+    setVal('json-name', cfg.name || '');
+    setVal('json-path', cfg.path || '');
+    setVal('json-rp', cfg.records_path || '');
+  } else if (srcType === 'sql') {
+    setVal('sql-name', cfg.name || '');
+    setVal('sql-db', cfg.db_path || '');
+    setVal('sql-query', cfg.query || '');
+  } else if (srcType === 'rest') {
+    setVal('rest-name', cfg.name || '');
+    setVal('rest-url', cfg.url || '');
+    setVal('rest-rp', cfg.records_path || '');
+    setVal('rest-token', cfg.bearer_token || '');
+    setVal('rest-psize', cfg.page_size ?? 0);
+    setVal('rest-pparam', cfg.page_param || 'page');
+    setVal('rest-sparam', cfg.size_param || 'limit');
+  }
+}
+
+function closeWizard() {
+  hide('wizard-panel');
+  if (currentConnId) {
+    const c = connections.find(x => x.id === currentConnId);
+    if (c) { showDetail(c); return; }
+  }
+  show('empty-state');
+}
+
+function deleteConnection() {
+  if (!confirm('Delete this connection?')) return;
+  connections = connections.filter(x => x.id !== currentConnId);
+  saveConns();
+  currentConnId = null;
+  renderConnList();
+  hide('detail-panel');
+  show('empty-state');
+}
+
+// ── Source Type Switch ─────────────────────────────────
+function switchSrcType(type, btn) {
+  srcType = type;
+  document.querySelectorAll('.type-tab').forEach(b => {
+    b.className = 'type-tab px-3 py-1.5 rounded text-xs border border-slate-600 text-slate-400';
+  });
+  if (btn) btn.className = 'type-tab active px-3 py-1.5 rounded text-xs border border-indigo-600 bg-indigo-600/20 text-indigo-300';
+  document.querySelectorAll('.src-form').forEach(f => f.classList.add('hidden'));
+  document.getElementById('src-' + type).classList.remove('hidden');
+}
+
+// ── Step Navigation ────────────────────────────────────
+function goStep(n) {
+  currentStep = n;
+  [1,2,3,4].forEach(i => {
+    hide('step-' + i);
+    const dot = document.getElementById('dot-' + i);
+    const lbl = document.getElementById('label-' + i);
+    if (i < n)       { dot.className = 'step-dot done';    lbl.className = 'text-xs text-slate-300'; dot.textContent = '✓'; }
+    else if (i === n){ dot.className = 'step-dot active';   lbl.className = 'text-xs text-white'; dot.textContent = i; }
+    else             { dot.className = 'step-dot pending';  lbl.className = 'text-xs text-slate-500'; dot.textContent = i; }
+  });
+  show('step-' + n);
+}
+
+function resetWizard() {
+  previewData = []; discoveredFields = [];
+  document.getElementById('wizard-title').textContent = wizardMode === 'new' ? 'New Connection' : 'Edit Connection';
+  document.getElementById('field-mapping-wrap').classList.add('hidden');
+  document.getElementById('btn-go-sync').disabled = true;
+  document.getElementById('new-type-form').classList.add('hidden');
+  hide('sync-result'); hide('sync-error'); hide('sync-progress-wrap');
+  document.getElementById('btn-run-sync').disabled = false;
+  document.getElementById('btn-view-ontology').classList.add('hidden');
+  // Unlock type tabs (relevant when coming from a new connection flow)
+  document.querySelectorAll('.type-tab').forEach(b => {
+    b.disabled = false;
+    b.title = '';
+    b.style.cursor = '';
+    b.style.opacity = '';
+  });
+}
+
+// ── Step 1 → 2: Preview ───────────────────────────────
+async function goPreview() {
+  const cfg = getSrcConfig();
+  if (!cfg) return;
+  setLoading('preview', true);
+  try {
+    const res = await fetch('/api/sources/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type: srcType, config: cfg })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Preview failed');
+    previewData = data.records || [];
+    if (previewData.length === 0) throw new Error('No records returned. Check your configuration.');
+    renderPreviewTable(previewData);
+    // Discover schema
+    const sr = await fetch('/api/sources/discover', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type: srcType, config: cfg })
+    });
+    const sd = await sr.json();
+    discoveredFields = sd.schema?.fields || Object.keys(previewData[0]).map(k => ({ name: k }));
+    goStep(2);
+    document.getElementById('preview-count').textContent = `${previewData.length} records (preview)`;
+  } catch(e) {
+    alert('Preview error: ' + e.message);
+  } finally {
+    setLoading('preview', false);
+  }
+}
+
+function renderPreviewTable(records) {
+  if (!records.length) return;
+  const cols = Object.keys(records[0]);
+  const thead = document.getElementById('preview-thead');
+  const tbody = document.getElementById('preview-tbody');
+  thead.innerHTML = '<tr>' + cols.map(c =>
+    `<th class="text-left px-3 py-2 text-xs text-slate-400 border-b border-slate-700 whitespace-nowrap">${esc(c)}</th>`
+  ).join('') + '</tr>';
+  tbody.innerHTML = records.slice(0,10).map(r =>
+    '<tr class="border-b border-slate-800 hover:bg-slate-800/50">' +
+    cols.map(c => `<td class="px-3 py-2 text-xs text-slate-300 whitespace-nowrap max-w-xs truncate">${esc(String(r[c] ?? ''))}</td>`).join('') +
+    '</tr>'
+  ).join('');
+}
+
+// ── Step 2 → 3: Map Fields ────────────────────────────
+async function goMapFields() {
+  await loadEntityTypes();
+  const sel = document.getElementById('entity-type-select');
+  sel.innerHTML = '<option value="">-- Select or create new --</option>' +
+    entityTypes.map(et => `<option value="${et.id}">${esc(et.name)}</option>`).join('');
+  renderFieldMapping();
+  goStep(3);
+}
+
+function onEntityTypeChange() {
+  renderFieldMapping();
+  const v = document.getElementById('entity-type-select').value;
+  document.getElementById('btn-go-sync').disabled = !v;
+}
+
+function renderFieldMapping() {
+  const wrap = document.getElementById('field-mapping-wrap');
+  const rows = document.getElementById('field-mapping-rows');
+  if (!discoveredFields.length) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+
+  const etId = document.getElementById('entity-type-select').value;
+  const et = entityTypes.find(x => x.id === etId);
+  const etFields = et?.fields || [];
+
+  rows.innerHTML = discoveredFields.map((f, i) => {
+    const matched = etFields.find(ef => ef.name.toLowerCase() === f.name.toLowerCase());
+    const options = etFields.map(ef =>
+      `<option value="${esc(ef.name)}" ${matched?.name === ef.name ? 'selected' : ''}>${esc(ef.name)}</option>`
+    ).join('');
+    return `
+    <div class="map-row">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-slate-300 font-mono bg-slate-800 px-2 py-1 rounded">${esc(f.name)}</span>
+        ${f.inferred_type ? `<span class="text-xs text-slate-600">${f.inferred_type}</span>` : ''}
+      </div>
+      <span class="text-slate-600 text-center">→</span>
+      <select class="field-target text-xs" id="map-${i}" style="padding:4px 6px">
+        <option value="">— skip —</option>
+        <option value="${esc(f.name)}" ${!etFields.length || !matched ? 'selected' : ''}>${esc(f.name)} (auto)</option>
+        ${options}
+      </select>
+      <label class="flex items-center gap-1 text-xs text-slate-400 justify-center">
+        <input type="checkbox" class="field-include" id="inc-${i}" checked>
+        Include
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function createEntityTypeInline() {
+  document.getElementById('new-type-form').classList.remove('hidden');
+  document.getElementById('new-type-name').focus();
+}
+function cancelCreateType() {
+  document.getElementById('new-type-form').classList.add('hidden');
+}
+async function confirmCreateType() {
+  const name = document.getElementById('new-type-name').value.trim();
+  if (!name) return;
+  try {
+    const res = await fetch('/api/ontology/schema', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name, display_name: name, fields: [] })
+    });
+    const et = await res.json();
+    entityTypes.push(et);
+    const sel = document.getElementById('entity-type-select');
+    const opt = document.createElement('option');
+    opt.value = et.id; opt.textContent = et.name; opt.selected = true;
+    sel.appendChild(opt);
+    document.getElementById('new-type-form').classList.add('hidden');
+    document.getElementById('new-type-name').value = '';
+    onEntityTypeChange();
+  } catch(e) {
+    alert('Failed to create entity type: ' + e.message);
+  }
+}
+
+// ── Step 3 → 4: Review ────────────────────────────────
+function goSyncStep() {
+  const cfg = getSrcConfig();
+  if (!cfg) return;
+  const etId = document.getElementById('entity-type-select').value;
+  const et = entityTypes.find(x => x.id === etId);
+  document.getElementById('sync-src-name').textContent = cfg.name || cfg.path || cfg.url || cfg.db_path || '—';
+  const typeBadge = `<span class="type-badge badge-${srcType}">${srcType.toUpperCase()}</span>`;
+  document.getElementById('sync-src-type').innerHTML = typeBadge;
+  document.getElementById('sync-entity-type').textContent = et?.name || '—';
+  const included = document.querySelectorAll('.field-include:checked').length;
+  document.getElementById('sync-field-count').textContent = `${included} / ${discoveredFields.length}`;
+  goStep(4);
+}
+
+// ── Step 4: Run Sync ───────────────────────────────────
+async function runSync() {
+  const cfg = getSrcConfig();
+  if (!cfg) return;
+  const etId = document.getElementById('entity-type-select').value;
+  const et = entityTypes.find(x => x.id === etId);
+
+  // Build field mapping
+  const fieldMap = {};
+  discoveredFields.forEach((f, i) => {
+    const inc = document.getElementById('inc-' + i)?.checked;
+    const target = document.getElementById('map-' + i)?.value;
+    if (inc) fieldMap[f.name] = target || f.name;
+  });
+
+  const payload = {
+    type: srcType,
+    config: cfg,
+    entity_type_id: etId,
+    entity_type_name: et?.name,
+    field_mapping: fieldMap,
+  };
+
+  setLoading('sync', true);
+  document.getElementById('btn-run-sync').disabled = true;
+  document.getElementById('btn-back-sync').disabled = true;
+  show('sync-progress-wrap');
+  hide('sync-result'); hide('sync-error');
+  animateProgress();
+
+  try {
+    const res = await fetch('/api/connections/sync', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    stopProgress();
+    if (!data.ok) throw new Error(data.error || 'Sync failed');
+
+    // Save connection
+    const connId = wizardMode === 'edit' ? currentConnId : 'conn_' + Date.now();
+    const conn = {
+      id: connId,
+      name: cfg.name || cfg.path || cfg.url || cfg.db_path || 'Connection',
+      srcType, srcConfig: cfg,
+      entityTypeId: etId,
+      entityTypeName: et?.name,
+      fieldMapping: fieldMap,
+      status: 'ok',
+      recordCount: data.count,
+      lastSync: new Date().toISOString(),
+      createdAt: wizardMode === 'edit'
+        ? (connections.find(x=>x.id===connId)?.createdAt || new Date().toISOString())
+        : new Date().toISOString(),
+    };
+    if (wizardMode === 'edit') {
+      connections = connections.map(x => x.id === connId ? conn : x);
+    } else {
+      connections.push(conn);
+    }
+    currentConnId = connId;
+    saveConns();
+    renderConnList();
+
+    document.getElementById('sync-result').textContent = `✓ Synced ${data.count} records into "${et?.name}".`;
+    show('sync-result');
+    show('btn-view-ontology');
+    document.getElementById('sync-progress-fill').style.width = '100%';
+    document.getElementById('sync-status-text').textContent = 'Complete';
+    document.getElementById('sync-count-text').textContent = `${data.count} records`;
+  } catch(e) {
+    stopProgress();
+    document.getElementById('sync-error').textContent = '✗ ' + e.message;
+    show('sync-error');
+    document.getElementById('btn-run-sync').disabled = false;
+  } finally {
+    setLoading('sync', false);
+    document.getElementById('btn-back-sync').disabled = false;
+  }
+}
+
+// ── Quick Sync (from detail panel) ────────────────────
+async function quickSync() {
+  const c = connections.find(x => x.id === currentConnId);
+  if (!c) return;
+  document.getElementById('btn-detail-sync').disabled = true;
+  show('quick-sync-wrap');
+  hide('qs-result'); hide('qs-error');
+  animateProgress('qs-fill', 'qs-status', 'qs-count');
+  c.status = 'syncing';
+  renderConnList();
+  try {
+    const res = await fetch('/api/connections/sync', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        type: c.srcType,
+        config: c.srcConfig,
+        entity_type_id: c.entityTypeId,
+        entity_type_name: c.entityTypeName,
+        field_mapping: c.fieldMapping,
+      })
+    });
+    const data = await res.json();
+    stopProgress('qs-fill', 'qs-status', 'qs-count');
+    if (!data.ok) throw new Error(data.error || 'Sync failed');
+    c.status = 'ok';
+    c.recordCount = data.count;
+    c.lastSync = new Date().toISOString();
+    saveConns();
+    renderConnList();
+    showDetail(c);
+    document.getElementById('qs-result').textContent = `✓ Synced ${data.count} records.`;
+    show('qs-result');
+    document.getElementById('qs-fill').style.width = '100%';
+  } catch(e) {
+    c.status = 'error';
+    saveConns();
+    renderConnList();
+    stopProgress('qs-fill', 'qs-status', 'qs-count');
+    document.getElementById('qs-error').textContent = '✗ ' + e.message;
+    show('qs-error');
+  } finally {
+    document.getElementById('btn-detail-sync').disabled = false;
+  }
+}
+
+// ── Progress Animation ─────────────────────────────────
+let progressTimer = null;
+function animateProgress(fillId='sync-progress-fill', statusId='sync-status-text', countId='sync-count-text') {
+  let pct = 0;
+  clearInterval(progressTimer);
+  progressTimer = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 8, 90);
+    document.getElementById(fillId).style.width = pct + '%';
+  }, 300);
+}
+function stopProgress(fillId='sync-progress-fill', statusId='sync-status-text', countId='sync-count-text') {
+  clearInterval(progressTimer);
+}
+
+// ── Helpers ────────────────────────────────────────────
+function getSrcConfig() {
+  let cfg = {};
+  if (srcType === 'csv') {
+    const name = document.getElementById('csv-name').value.trim();
+    const path = document.getElementById('csv-path').value.trim();
+    if (!path) { alert('File path is required.'); return null; }
+    cfg = { name: name || path, path };
+  } else if (srcType === 'json') {
+    const name = document.getElementById('json-name').value.trim();
+    const path = document.getElementById('json-path').value.trim();
+    if (!path) { alert('File path is required.'); return null; }
+    cfg = { name: name || path, path, records_path: document.getElementById('json-rp').value.trim() };
+  } else if (srcType === 'sql') {
+    const name = document.getElementById('sql-name').value.trim();
+    const db   = document.getElementById('sql-db').value.trim();
+    const q    = document.getElementById('sql-query').value.trim();
+    if (!db) { alert('DB path is required.'); return null; }
+    if (!q)  { alert('SQL query is required.'); return null; }
+    cfg = { name: name || db, db_path: db, query: q, id_column: 'id' };
+  } else if (srcType === 'rest') {
+    const name = document.getElementById('rest-name').value.trim();
+    const url  = document.getElementById('rest-url').value.trim();
+    if (!url) { alert('URL is required.'); return null; }
+    cfg = {
+      name: name || url, url,
+      records_path:  document.getElementById('rest-rp').value.trim(),
+      bearer_token:  document.getElementById('rest-token').value.trim(),
+      page_size:     parseInt(document.getElementById('rest-psize').value) || 0,
+      page_param:    document.getElementById('rest-pparam').value.trim() || 'page',
+      size_param:    document.getElementById('rest-sparam').value.trim() || 'limit',
+    };
+  }
+  return cfg;
+}
+
+function setLoading(id, on) {
+  const el = document.getElementById('spin-' + id);
+  if (el) el.classList.toggle('hidden', !on);
+}
+function show(id) { const e = document.getElementById(id); if (e) e.classList.remove('hidden'); }
+function hide(id) { const e = document.getElementById(id); if (e) e.classList.add('hidden'); }
+function setVal(id, v) { const e = document.getElementById(id); if (e) e.value = v; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+}
+function saveConns() { localStorage.setItem('palantir_connections', JSON.stringify(connections)); }
+</script>
+</body>
+</html>
