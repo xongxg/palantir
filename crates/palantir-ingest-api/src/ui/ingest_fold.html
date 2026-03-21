@@ -385,6 +385,17 @@ let batchGroupName = '';
 let typeCache = {};
 let typeNames = {};
 
+// ── Entity types cache ────────────────────────────────────────────────────────
+let entityTypes = [];
+
+async function loadEntityTypes() {
+  try {
+    const r = await fetch('/api/ontology/schema');
+    const d = await r.json();
+    entityTypes = d.entity_types || (Array.isArray(d) ? d : []);
+  } catch(_) { entityTypes = []; }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   // Load fold info
@@ -405,6 +416,7 @@ async function boot() {
     }
   } catch(_) {}
 
+  await loadEntityTypes();
   // Load sources
   await loadSources();
 }
