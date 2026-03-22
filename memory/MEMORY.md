@@ -1,5 +1,7 @@
 # Memory Index
 
+- [project_ontology_refactor.md](project_ontology_refactor.md) — 进展评估（数据模型85%/API65%/UI40%）、Sync Mode 实现、Sources↔Ontology 管道
+
 - [project_architecture.md](project_architecture.md) — Crate 结构、SourceAdapter trait、OntologyEvent、关键类型
 - [project_persistence.md](project_persistence.md) — SQLite 持久化层、项目管理、Build 历史
 - [project_workspace_ui.md](project_workspace_ui.md) — Workspace UI、映射持久化、项目导航
@@ -9,3 +11,5 @@
 - [project_microservices_design.md](project_microservices_design.md) — 微服务划分、6条ADR决策、实现顺序、Palantir官方参考（2026-03-19）
 - [project_frontend_design.md](project_frontend_design.md) — 前端架构基准：Admin/Business 分域、Persona 代码分割、CSS Token 白标、Shell 结构（2026-03-19 阶段基准，用户确认）
 - [project_storage_architecture.md](project_storage_architecture.md) — palantir-storage crate 设计、Iter-1/2 实现、per-tenant bucket 路由（方案B，用户确认）
+- [project_ontology_refactor.md](project_ontology_refactor.md) — Ontology P0 实现状态、Sources↔Ontology 管道、object_type_mappings、演进路径
+- [project_frontend_design.md](project_frontend_design.md) — 导航流程方案A（Project统一工作台）、路由映射、设计原则

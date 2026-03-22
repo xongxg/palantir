@@ -7,6 +7,24 @@ use futures_util::stream;
 use std::path::PathBuf;
 use time::OffsetDateTime;
 
+/// If path is a directory, return the first .csv file inside it.
+/// If path is a file, return it as-is.
+fn resolve_csv_path(path: &PathBuf) -> Result<PathBuf, AdapterError> {
+    if path.is_dir() {
+        let mut files: Vec<PathBuf> = std::fs::read_dir(path)
+            .map_err(|e| AdapterError::Message(e.to_string()))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("csv"))
+            .collect();
+        files.sort();
+        files.into_iter().next()
+            .ok_or_else(|| AdapterError::Message(format!("No .csv files in folder: {}", path.display())))
+    } else {
+        Ok(path.clone())
+    }
+}
+
 #[derive(Clone)]
 pub struct CsvAdapter {
     id: String,
@@ -49,15 +67,26 @@ impl SourceAdapter for CsvAdapter {
     }
 
     async fn test_connection(&self) -> Result<String, AdapterError> {
-        if self.path.exists() {
+        if self.path.is_dir() {
+            let count = std::fs::read_dir(&self.path)
+                .map(|rd| rd.filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("csv"))
+                    .count())
+                .unwrap_or(0);
+            if count == 0 {
+                return Err(AdapterError::Message(format!("No .csv files in folder: {}", self.path.display())));
+            }
+            Ok(format!("Folder found: {} ({} CSV files)", self.path.display(), count))
+        } else if self.path.exists() {
             Ok(format!("File found: {}", self.path.display()))
         } else {
-            Err(AdapterError::Message(format!("File not found: {}", self.path.display())))
+            Err(AdapterError::Message(format!("Path not found: {}", self.path.display())))
         }
     }
 
     async fn fetch_preview(&self, limit: usize) -> Result<Vec<serde_json::Value>, AdapterError> {
-        let mut rdr = csv::Reader::from_path(&self.path)
+        let file_path = resolve_csv_path(&self.path)?;
+        let mut rdr = csv::Reader::from_path(&file_path)
             .map_err(|e| AdapterError::Message(e.to_string()))?;
         let headers = rdr.headers()
             .map_err(|e| AdapterError::Message(e.to_string()))?.clone();
@@ -76,7 +105,8 @@ impl SourceAdapter for CsvAdapter {
     }
 
     async fn discover_schema(&self) -> Result<crate::adapters::DiscoveredSchema, AdapterError> {
-        let mut rdr = csv::Reader::from_path(&self.path)
+        let file_path = resolve_csv_path(&self.path)?;
+        let mut rdr = csv::Reader::from_path(&file_path)
             .map_err(|e| AdapterError::Message(e.to_string()))?;
         let headers = rdr.headers()
             .map_err(|e| AdapterError::Message(e.to_string()))?.clone();

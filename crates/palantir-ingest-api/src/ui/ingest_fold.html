@@ -1359,7 +1359,15 @@ async function startSync() {
     }
     if (!r.ok) { alert('启动失败：' + (data.error||'')); return; }
     updateSrcStatus(currentSrc.id, 'syncing');
-    pollJob(data.job_id);
+    if (data.mode === 'folder' && data.job_ids?.length) {
+      // Per-file mode: multiple jobs, show summary and poll the last one
+      const el = document.getElementById('progress-content');
+      el.innerHTML = `<div class="status-badge status-run">● 多文件同步中</div>
+        <div style="font-size:12px;color:#64748b;margin-top:8px">${data.job_ids.length} 个文件并行同步，稍后刷新查看结果</div>`;
+      setTimeout(() => { loadVersionsQuiet(); updateSrcStatus(currentSrc.id, 'synced'); }, 3000);
+    } else if (data.job_id) {
+      pollJob(data.job_id);
+    }
   } catch(e) {
     alert('网络错误：' + e.message);
   } finally {
@@ -1368,11 +1376,13 @@ async function startSync() {
 }
 
 function pollJob(jobId) {
+  if (!jobId) return;
   clearInterval(pollTimer);
   let dots = 0;
   pollTimer = setInterval(async () => {
     try {
       const r = await fetch(`/api/jobs/${jobId}`);
+      if (!r.ok) { clearInterval(pollTimer); return; }
       const data = await r.json();
       renderProgress(data);
       if (data.status === 'completed') {

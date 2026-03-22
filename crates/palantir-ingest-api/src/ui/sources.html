@@ -1,367 +1,814 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Palantir · Source Adapters Demo</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Sources — Palantir</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-  .topbar { background: #1a1d2e; border-bottom: 1px solid #2d3748;
-            padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 24px; }
-  .topbar h1 { font-size: 16px; font-weight: 600; color: #a78bfa; }
-  .topbar nav a { color: #94a3b8; text-decoration: none; font-size: 13px; }
-  .topbar nav a:hover { color: #e2e8f0; }
-  .container { max-width: 960px; margin: 32px auto; padding: 0 24px; }
-  .card { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px;
-          padding: 24px; margin-bottom: 24px; }
-  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #c4b5fd; }
-
-  /* Type tabs */
-  .type-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-  .type-tab { padding: 6px 18px; border-radius: 6px; border: 1px solid #3d4258;
-              background: #252840; color: #94a3b8; cursor: pointer; font-size: 13px;
-              transition: all .15s; }
-  .type-tab:hover { border-color: #7c3aed; color: #e2e8f0; }
-  .type-tab.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
-
-  /* Form */
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .form-group { display: flex; flex-direction: column; gap: 5px; }
-  .form-group.full { grid-column: 1 / -1; }
-  label { font-size: 12px; color: #94a3b8; font-weight: 500; }
-  input, textarea, select {
-    background: #0f1117; border: 1px solid #2d3748; border-radius: 6px;
-    color: #e2e8f0; font-size: 13px; padding: 8px 10px; outline: none;
-    transition: border-color .15s; width: 100%;
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  input, select, textarea {
+    background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 100%; outline: none;
   }
-  input:focus, textarea:focus { border-color: #7c3aed; }
-  textarea { resize: vertical; font-family: "Fira Code", "Consolas", monospace; }
-
-  /* Buttons */
-  .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-  .btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
-         font-size: 13px; font-weight: 500; transition: opacity .15s; }
-  .btn:hover { opacity: .85; }
-  .btn-primary { background: #7c3aed; color: #fff; }
-  .btn-secondary { background: #1e40af; color: #fff; }
-  .btn-outline { background: transparent; border: 1px solid #4a5568; color: #94a3b8; }
-  .btn:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Results */
-  .result-box { margin-top: 20px; }
-  .result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-  .badge-ok  { background: #14532d; color: #4ade80; }
-  .badge-err { background: #450a0a; color: #f87171; }
-  pre { background: #0a0c14; border: 1px solid #2d3748; border-radius: 6px;
-        padding: 14px; font-size: 12px; font-family: "Fira Code", monospace;
-        overflow-x: auto; white-space: pre-wrap; max-height: 420px; overflow-y: auto; color: #a5f3fc; }
-
-  /* Schema table */
-  .schema-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
-  .schema-table th { text-align: left; padding: 6px 10px; background: #0f1117;
-                     color: #7c3aed; border-bottom: 1px solid #2d3748; }
-  .schema-table td { padding: 6px 10px; border-bottom: 1px solid #1e2435; }
-  .schema-table tr:hover td { background: #1e2435; }
-  .type-chip { display: inline-block; padding: 1px 7px; border-radius: 10px;
-               font-size: 11px; background: #1e1b4b; color: #a78bfa; }
-  .nullable-yes { color: #fbbf24; font-size: 11px; }
-  .nullable-no  { color: #4b5563; font-size: 11px; }
-
-  /* Panel visibility */
-  .adapter-panel { display: none; }
-  .adapter-panel.active { display: block; }
-
-  /* Spinner */
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #4a5568;
-             border-top-color: #a78bfa; border-radius: 50%; animation: spin .6s linear infinite;
-             vertical-align: middle; margin-right: 6px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .hidden { display: none !important; }
-
-  /* Demo hints */
-  .hint { background: #1a2744; border: 1px solid #1e3a5f; border-radius: 6px;
-          padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #7dd3fc; }
-  .hint code { background: #0f1117; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+  input:focus, select:focus, textarea:focus { border-color: #6366f1; }
+  button { cursor: pointer; border-radius: 6px; font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  button:hover { opacity: .85; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: #6366f1; color: #fff; padding: 6px 14px; }
+  .btn-ghost   { background: transparent; border: 1px solid #334155; color: #94a3b8; padding: 5px 10px; }
+  .btn-sm      { padding: 4px 10px; font-size: 12px; }
+  .btn-danger  { background: #dc2626; color: #fff; padding: 4px 8px; font-size: 11px; }
+  .btn-green   { background: #16a34a; color: #fff; padding: 6px 14px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .type-btn { padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 500;
+              border: 1px solid #334155; color: #94a3b8; background: transparent; cursor: pointer; }
+  .type-btn.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+  .drop-zone { border: 2px dashed #334155; border-radius: 8px; padding: 24px;
+               text-align: center; cursor: pointer; transition: border-color .15s; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: #6366f1; }
+  .status-idle     { background: #1e293b; color: #64748b; }
+  .status-syncing  { background: #1e3a5f; color: #60a5fa; }
+  .status-synced   { background: #064e3b; color: #4ade80; }
+  .status-error    { background: #450a0a; color: #f87171; }
 </style>
 </head>
-<body>
+<body style="height:100vh;overflow:hidden;display:flex;flex-direction:column;">
 
-<div class="topbar">
-  <h1>Palantir</h1>
-  <nav style="display:flex;gap:20px;">
-    <a href="/">Projects</a>
-    <a href="/ontology">Ontology</a>
-    <a href="/connect">Data Connections</a>
-    <a href="/sources" style="color:#c4b5fd">Sources</a>
-    <a href="/workspace">Workspace</a>
+<!-- TopBar -->
+<div style="display:flex;align-items:center;flex-shrink:0;border-bottom:1px solid #334155;padding:10px 20px;gap:12px;">
+  <a href="/" class="text-indigo-400 font-bold text-sm tracking-wide">Palantir</a>
+  <span class="text-slate-700">|</span>
+  <span class="text-white text-sm font-medium">Data Sources</span>
+  <div style="flex:1;"></div>
+  <nav class="flex gap-4 text-xs text-slate-500">
+    <a href="/ontology" class="hover:text-slate-300">Ontology</a>
+    <a href="/" class="hover:text-slate-300">Projects</a>
   </nav>
 </div>
 
-<div class="container">
-  <div class="card">
-    <h2>Source Adapter Demo</h2>
-    <p style="font-size:13px;color:#64748b;margin-bottom:18px;">
-      选择数据源类型，配置连接参数，测试连接 / 发现 Schema / 预览数据。
-    </p>
+<!-- Main -->
+<div style="flex:1;overflow:hidden;display:flex;min-height:0;">
 
-    <div class="type-tabs">
-      <button class="type-tab active" onclick="switchType('csv')">CSV 文件</button>
-      <button class="type-tab" onclick="switchType('json')">JSON / JSONL</button>
-      <button class="type-tab" onclick="switchType('sql')">SQL (SQLite)</button>
-      <button class="type-tab" onclick="switchType('rest')">REST API</button>
+  <!-- Left: source list -->
+  <div style="width:280px;flex-shrink:0;border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden;">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700/60">
+      <p class="text-sm font-semibold text-white">数据源</p>
+      <button onclick="openNewPanel()" class="btn-primary btn-sm">+ 新建</button>
     </div>
-
-    <!-- CSV Panel -->
-    <div id="panel-csv" class="adapter-panel active">
-      <div class="hint">
-        上传 CSV 后可在 Workspace 使用；这里直接输入服务器端文件路径（demo 阶段）。<br>
-        样例：<code>data/uploads/&lt;project_id&gt;/employees.csv</code>
-      </div>
-      <div class="form-grid">
-        <div class="form-group full">
-          <label>文件路径（服务器端绝对/相对路径）</label>
-          <input id="csv-path" type="text" placeholder="data/sample/employees.csv">
-        </div>
-      </div>
-    </div>
-
-    <!-- JSON Panel -->
-    <div id="panel-json" class="adapter-panel">
-      <div class="hint">
-        支持 JSON 数组 <code>[{...}]</code>、JSONL（每行一个对象）、嵌套结构 <code>{"data":[...]}</code>。
-      </div>
-      <div class="form-grid">
-        <div class="form-group full">
-          <label>文件路径</label>
-          <input id="json-path" type="text" placeholder="data/sample/employees.json">
-        </div>
-        <div class="form-group full">
-          <label>Records Path（可选，如 <code>data</code> 或 <code>result.items</code>）</label>
-          <input id="json-records-path" type="text" placeholder="留空表示根节点就是数组">
-        </div>
-      </div>
-    </div>
-
-    <!-- SQL Panel -->
-    <div id="panel-sql" class="adapter-panel">
-      <div class="hint">
-        Demo 阶段使用 SQLite。DB Path 填写 SQLite 文件路径，Query 填写完整 SELECT 语句。
-      </div>
-      <div class="form-grid">
-        <div class="form-group full">
-          <label>DB Path（SQLite 文件路径）</label>
-          <input id="sql-db-path" type="text" placeholder="data/sample/demo.db">
-        </div>
-        <div class="form-group full">
-          <label>SQL Query</label>
-          <textarea id="sql-query" rows="3" placeholder="SELECT * FROM employees LIMIT 100"></textarea>
-        </div>
-        <div class="form-group">
-          <label>ID Column</label>
-          <input id="sql-id-col" type="text" placeholder="id" value="id">
-        </div>
-        <div class="form-group">
-          <label>Cursor Column（增量水位线，可选）</label>
-          <input id="sql-cursor-col" type="text" placeholder="updated_at">
-        </div>
-      </div>
-    </div>
-
-    <!-- REST Panel -->
-    <div id="panel-rest" class="adapter-panel">
-      <div class="hint">
-        公开 API 样例：<code>https://jsonplaceholder.typicode.com/users</code>（无需 token）
-      </div>
-      <div class="form-grid">
-        <div class="form-group full">
-          <label>URL</label>
-          <input id="rest-url" type="text" placeholder="https://jsonplaceholder.typicode.com/users">
-        </div>
-        <div class="form-group full">
-          <label>Records Path（可选，如 <code>data</code>；留空表示 response 直接是数组）</label>
-          <input id="rest-records-path" type="text" placeholder="">
-        </div>
-        <div class="form-group">
-          <label>Bearer Token（可选）</label>
-          <input id="rest-bearer" type="text" placeholder="">
-        </div>
-        <div class="form-group">
-          <label>API Key Header（可选，如 X-API-Key）</label>
-          <input id="rest-key-header" type="text" placeholder="">
-        </div>
-        <div class="form-group">
-          <label>API Key Value</label>
-          <input id="rest-key-value" type="text" placeholder="">
-        </div>
-        <div class="form-group">
-          <label>分页大小（0 = 不分页）</label>
-          <input id="rest-page-size" type="number" value="0" min="0">
-        </div>
-        <div class="form-group">
-          <label>Page 参数名</label>
-          <input id="rest-page-param" type="text" value="page">
-        </div>
-        <div class="form-group">
-          <label>Size 参数名</label>
-          <input id="rest-size-param" type="text" value="limit">
-        </div>
-      </div>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn btn-outline" onclick="doAction('test')">
-        <span id="spin-test" class="spinner hidden"></span>
-        测试连接
-      </button>
-      <button class="btn btn-secondary" onclick="doAction('discover')">
-        <span id="spin-discover" class="spinner hidden"></span>
-        发现 Schema
-      </button>
-      <button class="btn btn-primary" onclick="doAction('preview')">
-        <span id="spin-preview" class="spinner hidden"></span>
-        预览数据
-      </button>
+    <div id="source-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+      <p class="text-xs text-slate-600 text-center py-6">加载中…</p>
     </div>
   </div>
 
-  <!-- Result Panel -->
-  <div id="result-container" class="card hidden">
-    <div class="result-header">
-      <span id="result-badge" class="badge badge-ok">OK</span>
-      <span id="result-title" style="font-size:13px;color:#94a3b8;"></span>
+  <!-- Right: detail / new panel -->
+  <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+
+    <!-- Empty state -->
+    <div id="panel-empty" class="h-full flex flex-col items-center justify-center text-center px-8">
+      <div class="text-5xl mb-4">🔌</div>
+      <h2 class="text-lg font-semibold text-white mb-2">连接数据源</h2>
+      <p class="text-sm text-slate-400 max-w-sm">添加 CSV 文件夹、JSON 文件、SQL 数据库或 REST API，同步后在 Ontology 页面 Promote 成实体对象。</p>
+      <button onclick="openNewPanel()" class="btn-primary mt-6">+ 添加第一个数据源</button>
     </div>
-    <div id="result-schema" class="hidden"></div>
-    <pre id="result-json"></pre>
+
+    <!-- New / Edit form -->
+    <div id="panel-form" class="hidden p-6 max-w-xl mx-auto">
+      <div class="flex items-center justify-between mb-5">
+        <h2 id="form-title" class="text-lg font-bold text-white">新建数据源</h2>
+        <button onclick="closeForm()" class="btn-ghost btn-sm">✕ 取消</button>
+      </div>
+
+      <!-- Name -->
+      <div class="mb-4">
+        <label class="text-xs text-slate-400 block mb-1">名称</label>
+        <input id="f-name" placeholder="e.g. 客户数据" />
+      </div>
+
+      <!-- Type selector -->
+      <div class="mb-4">
+        <label class="text-xs text-slate-400 block mb-2">数据源类型</label>
+        <div class="flex gap-2 flex-wrap">
+          <button class="type-btn active" onclick="setType('csv',this)">CSV 文件</button>
+          <button class="type-btn" onclick="setType('json',this)">JSON</button>
+          <button class="type-btn" onclick="setType('db',this)">SQL</button>
+          <button class="type-btn" onclick="setType('rest',this)">REST API</button>
+          <button class="type-btn" onclick="setType('s3',this)">S3 / RustFS</button>
+        </div>
+      </div>
+
+      <!-- CSV config -->
+      <div id="cfg-csv" class="space-y-3 mb-5">
+        <div class="drop-zone" id="drop-zone"
+             onclick="document.getElementById('file-input').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="onDrop(event)">
+          <p class="text-slate-400 text-sm mb-3">拖拽 CSV 文件 / 文件夹到此处，或点击选择</p>
+          <div class="flex gap-2 justify-center">
+            <button type="button" class="btn-ghost btn-sm"
+              onclick="event.stopPropagation();document.getElementById('file-input').click()">选择文件（多选）</button>
+            <button type="button" class="btn-ghost btn-sm"
+              onclick="event.stopPropagation();document.getElementById('folder-input').click()">选择文件夹</button>
+          </div>
+          <input id="file-input"   type="file" multiple accept=".csv" class="hidden" onchange="uploadFiles(this.files)"/>
+          <input id="folder-input" type="file" webkitdirectory accept=".csv" class="hidden" onchange="uploadFiles(this.files)"/>
+        </div>
+        <div id="upload-status" class="hidden text-xs text-slate-400 space-y-1"></div>
+        <div class="flex items-center gap-2 my-1">
+          <div class="flex-1 h-px bg-slate-700"></div>
+          <span class="text-xs text-slate-600">或填写服务器路径</span>
+          <div class="flex-1 h-px bg-slate-700"></div>
+        </div>
+        <div>
+          <label class="text-xs text-slate-500 block mb-1">服务器端路径（文件或文件夹）</label>
+          <input id="f-csv-path" placeholder="data/uploads/sources/  或  data/sample/employees.csv"/>
+        </div>
+      </div>
+
+      <!-- JSON config -->
+      <div id="cfg-json" class="hidden space-y-3 mb-5">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">文件路径</label>
+          <input id="f-json-path" placeholder="data/sample/records.json"/>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Records Path <span class="text-slate-600">（可选，如 data.items）</span></label>
+          <input id="f-json-rp" placeholder="留空表示根节点就是数组"/>
+        </div>
+      </div>
+
+      <!-- SQL config -->
+      <div id="cfg-db" class="hidden space-y-3 mb-5">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">SQLite 文件路径</label>
+          <input id="f-db-path" placeholder="data/sample/demo.db"/>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">SQL 查询</label>
+          <textarea id="f-db-query" rows="3" placeholder="SELECT * FROM employees" style="font-family:monospace;font-size:12px"></textarea>
+        </div>
+      </div>
+
+      <!-- S3 config -->
+      <div id="cfg-s3" class="hidden space-y-3 mb-5">
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <label class="text-xs text-slate-400 block mb-1">Endpoint</label>
+            <input id="f-s3-endpoint" placeholder="http://localhost:9000"/>
+          </div>
+          <div class="flex-1">
+            <label class="text-xs text-slate-400 block mb-1">Bucket</label>
+            <input id="f-s3-bucket" placeholder="mybucket1"/>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <label class="text-xs text-slate-400 block mb-1">Access Key</label>
+            <input id="f-s3-access" placeholder="minioadmin"/>
+          </div>
+          <div class="flex-1">
+            <label class="text-xs text-slate-400 block mb-1">Secret Key</label>
+            <input id="f-s3-secret" placeholder="minioadmin" type="password"/>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Prefix <span class="text-slate-600">（可选，如 data/csv/）</span></label>
+          <input id="f-s3-prefix" placeholder="留空表示全桶"/>
+        </div>
+      </div>
+
+      <!-- REST config -->
+      <div id="cfg-rest" class="hidden space-y-3 mb-5">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">API URL</label>
+          <input id="f-rest-url" placeholder="https://api.example.com/users"/>
+        </div>
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <label class="text-xs text-slate-400 block mb-1">Records Path <span class="text-slate-600">（可选）</span></label>
+            <input id="f-rest-rp" placeholder="data"/>
+          </div>
+          <div class="flex-1">
+            <label class="text-xs text-slate-400 block mb-1">Bearer Token <span class="text-slate-600">（可选）</span></label>
+            <input id="f-rest-token" placeholder="sk-xxx" type="password"/>
+          </div>
+        </div>
+      </div>
+
+      <div id="form-error" class="hidden text-xs text-red-400 mb-3 p-2 bg-red-900/20 rounded"></div>
+
+      <div class="flex gap-3">
+        <button id="test-btn" onclick="testSourceConfig()" class="btn-ghost">预览数据</button>
+        <button onclick="saveSource()" class="btn-primary flex-1 py-2">保存数据源</button>
+      </div>
+      <div id="test-result" class="hidden mt-3 text-xs p-2 rounded"></div>
+    </div>
+
+    <!-- Source detail -->
+    <div id="panel-detail" class="hidden" style="display:none;flex-direction:column;flex:1;min-height:0;">
+
+      <!-- Header bar -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-700/60 flex-shrink-0">
+        <div>
+          <h2 id="d-name" class="text-lg font-bold text-white"></h2>
+          <p id="d-meta" class="text-xs text-slate-500 mt-0.5"></p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="sync-btn" onclick="syncSource()" class="btn-green">▶ Sync Now</button>
+          <button onclick="editSource()" class="btn-ghost btn-sm">编辑</button>
+          <button onclick="deleteSource()" class="btn-danger btn-sm">删除</button>
+        </div>
+      </div>
+
+      <!-- Sync status bar -->
+      <div class="px-6 py-2 border-b border-slate-700/40 flex-shrink-0 flex items-center gap-4 text-xs text-slate-500">
+        <span id="d-last-sync"></span>
+        <a href="/ontology" class="ml-auto text-indigo-400 hover:underline">→ 去 Ontology 页面 Promote</a>
+      </div>
+
+      <!-- 2-column grid body -->
+      <div class="flex-1 overflow-y-auto p-6 grid gap-6 content-start" style="grid-template-columns: 3fr 2fr;">
+
+        <!-- Datasets（主区域） -->
+        <div class="col-span-1">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Datasets</p>
+          <div id="d-datasets" class="space-y-1.5"></div>
+        </div>
+
+        <!-- Sync history（次要） -->
+        <div class="col-span-1">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Sync 历史</p>
+          <div id="d-jobs" class="space-y-1.5"></div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 </div>
 
 <script>
-let currentType = 'csv';
+let sources      = [];
+let currentSrc   = null;
+let currentType  = 'csv';
+let editingId    = null;
+let pollTimer    = null;
 
-function switchType(t) {
+// ── Bootstrap ──────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', loadSources);
+
+async function loadSources() {
+  const res  = await fetch('/api/sources');
+  const data = await res.json();
+  sources = data.sources || [];
+  renderSourceList();
+  if (currentSrc) {
+    const fresh = sources.find(s => s.id === currentSrc.id);
+    if (fresh) { currentSrc = fresh; selectSource(fresh); }
+  } else {
+    showPanel('empty');
+  }
+}
+
+function renderSourceList() {
+  const el = document.getElementById('source-list');
+  if (!sources.length) {
+    el.innerHTML = '<p class="text-xs text-slate-600 text-center py-6">暂无数据源</p>';
+    return;
+  }
+  el.innerHTML = '';
+  sources.forEach(s => {
+    const isActive = currentSrc?.id === s.id;
+    const statusCls = {idle:'text-slate-500', syncing:'text-blue-400', synced:'text-green-400', error:'text-red-400'}[s.status] || 'text-slate-500';
+    const dot = {idle:'bg-slate-600', syncing:'bg-blue-400 animate-pulse', synced:'bg-green-500', error:'bg-red-500'}[s.status] || 'bg-slate-600';
+    const typeIcon = {csv:'📄', json:'📋', db:'🗄', rest:'🌐', s3:'🪣'}[s.source_type] || '📦';
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left px-3 py-2.5 rounded-lg transition-colors ' +
+      (isActive ? 'bg-indigo-900/40 border border-indigo-700/40' : 'hover:bg-slate-700/40');
+    btn.innerHTML = `
+      <div class="flex items-center gap-2">
+        <span class="text-base">${typeIcon}</span>
+        <span class="text-sm text-white font-medium truncate flex-1">${esc(s.name)}</span>
+        <span class="w-2 h-2 rounded-full flex-shrink-0 ${dot}"></span>
+      </div>
+      <p class="text-xs ${statusCls} mt-0.5 pl-6">${s.record_count != null ? s.record_count + ' records' : s.status}</p>`;
+    btn.onclick = () => selectSource(s);
+    el.appendChild(btn);
+  });
+}
+
+// ── Source selection ───────────────────────────────────────────────────────
+async function selectSource(s) {
+  currentSrc = s;
+  editingId  = null;
+  renderSourceList();
+  showPanel('detail');
+
+  document.getElementById('d-name').textContent = s.name;
+  document.getElementById('d-meta').textContent =
+    `${s.source_type.toUpperCase()}  ·  fold: ${s.fold_id.slice(0,8)}…`;
+  document.getElementById('d-last-sync').textContent =
+    s.last_sync_at ? '上次同步: ' + fmtDate(s.last_sync_at) : '从未同步';
+
+  loadJobs(s.id);
+  loadDatasets(s.id);
+}
+
+async function loadJobs(srcId) {
+  const res  = await fetch(`/api/sources/${srcId}/jobs`);
+  const data = await res.json();
+  const jobs = (data.jobs || []).slice(0, 10);
+  const el   = document.getElementById('d-jobs');
+  if (!jobs.length) { el.innerHTML = '<p class="text-xs text-slate-600">暂无记录</p>'; return; }
+  el.innerHTML = jobs.map(j => {
+    const cls = {completed:'text-green-400', failed:'text-red-400', running:'text-blue-400'}[j.status] || 'text-slate-400';
+    return `<div class="flex items-center justify-between px-3 py-1.5 rounded bg-slate-800/50 text-xs">
+      <span class="${cls} font-medium w-20">${j.status}</span>
+      <span class="text-slate-400 flex-1 truncate">${j.current || ''}</span>
+      <span class="text-slate-600">${j.processed != null ? j.processed + ' rows' : ''}</span>
+    </div>`;
+  }).join('');
+}
+
+let dsMapping = {}; // dataset_id → mapping object
+
+async function loadDatasets(srcId) {
+  const res  = await fetch(`/api/sources/${srcId}/datasets`);
+  const data = await res.json();
+  const datasets = data.datasets || [];
+  const el = document.getElementById('d-datasets');
+  if (!datasets.length) { el.innerHTML = '<p style="font-size:11px;color:#475569;padding:8px 0;">暂无 dataset，请先 Sync</p>'; return; }
+
+  // Fetch mappings in parallel
+  const mappings = await Promise.all(
+    datasets.map(d => fetch(`/api/datasets/${d.id}/mapping`).then(r => r.json()).catch(() => ({mapping:null})))
+  );
+  datasets.forEach((d, i) => { dsMapping[d.id] = mappings[i].mapping || null; });
+
+  el.innerHTML = datasets.map(d => {
+    const m = dsMapping[d.id];
+    const etName = m?.entity_type_name || m?.entity_type_id || '';
+    const statusHtml = m
+      ? `<span style="color:#4ade80;font-size:10px;">🔗 ${esc(etName)}</span>`
+      : `<span style="color:#f59e0b;font-size:10px;">⚠ 未映射</span>`;
+    const btnLabel = m ? '修改映射' : '配置映射';
+    return `<div style="background:#1e293b;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:12px;color:#e2e8f0;font-weight:500;">${esc(d.name || d.id)}</span>
+        <span style="font-size:11px;color:#64748b;">${d.record_count ?? 0} 条</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        ${statusHtml}
+        <button onclick="openMappingModal('${d.id}','${esc(d.name||d.id)}')"
+          style="font-size:10px;padding:2px 8px;background:transparent;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;">
+          ${btnLabel}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Mapping modal ───────────────────────────────────────────────────────────
+let modalDsId = null;
+let modalColumns = [];
+let modalETs = [];
+
+async function openMappingModal(dsId, dsName) {
+  modalDsId = dsId;
+  document.getElementById('modal-mapping-title').textContent = `配置 Ontology 映射 — ${dsName}`;
+  document.getElementById('modal-mapping-result').style.display = 'none';
+
+  // Load entity types
+  const etRes = await fetch('/api/ontology/schema');
+  const etData = await etRes.json();
+  modalETs = (etData.entity_types || []).filter(e => e.id !== 'default');
+
+  const etSel = document.getElementById('modal-et-sel');
+  etSel.innerHTML = '<option value="">— 选择已有 Entity Type —</option>' +
+    modalETs.map(e => `<option value="${e.id}">${esc(e.display_name)}</option>`).join('');
+
+  // Load saved mapping
+  const saved = dsMapping[dsId];
+  if (saved?.entity_type_id) etSel.value = saved.entity_type_id;
+  document.getElementById('modal-new-et').value = '';
+
+  // Load sample records → discover columns
+  modalColumns = [];
+  try {
+    const r = await fetch(`/api/datasets/${dsId}/records?limit=3`);
+    const rd = await r.json();
+    const recs = rd.records || [];
+    if (recs.length) {
+      const first = recs[0];
+      const fields = typeof first.fields === 'string' ? JSON.parse(first.fields) : (first.fields || first);
+      modalColumns = Object.keys(fields).map(col => ({
+        name: col,
+        samples: recs.map(row => {
+          const f = typeof row.fields === 'string' ? JSON.parse(row.fields) : (row.fields || row);
+          return f[col] != null ? String(f[col]) : '';
+        }).filter(Boolean),
+        savedTarget: saved?.field_mapping ? JSON.parse(saved.field_mapping)[col] || col : col,
+      }));
+    }
+  } catch(_) {}
+
+  renderModalTable(saved?.primary_key_col || '');
+  document.getElementById('modal-mapping').style.display = 'flex';
+}
+
+function renderModalTable(savedPk) {
+  const tbody = document.getElementById('modal-schema-body');
+  if (!modalColumns.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:#475569;">暂无数据，请先 Sync</td></tr>';
+    return;
+  }
+  // guess PK
+  const pkGuess = savedPk || (() => {
+    const names = modalColumns.map(c => c.name.toLowerCase());
+    for (const k of ['id','_id','uuid','key','pk']) { const i = names.indexOf(k); if (i>=0) return modalColumns[i].name; }
+    return modalColumns[0]?.name || '';
+  })();
+
+  const typeOpts = ['string','number','boolean','date','datetime']
+    .map(t => `<option value="${t}">${t}</option>`).join('');
+
+  tbody.innerHTML = modalColumns.map(col => {
+    const sample = col.samples.slice(0,2).join(' / ') || '—';
+    const inferred = inferModalType(col.samples);
+    return `<tr style="border-bottom:1px solid #1e293b;" data-col="${esc(col.name)}">
+      <td style="padding:5px 8px;font-size:12px;font-family:monospace;color:#e2e8f0;">${esc(col.name)}</td>
+      <td style="padding:5px 8px;">
+        <select class="modal-type-sel" style="font-size:11px;padding:2px 4px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;">
+          ${typeOpts.replace(`value="${inferred}"`,`value="${inferred}" selected`)}
+        </select>
+      </td>
+      <td style="padding:5px 8px;font-size:11px;color:#64748b;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(sample)}</td>
+      <td style="padding:5px 8px;text-align:center;">
+        <input type="radio" name="modal-pk" value="${esc(col.name)}" ${col.name===pkGuess?'checked':''} style="width:auto;cursor:pointer;"/>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function inferModalType(samples) {
+  const vals = samples.filter(s => s !== '');
+  if (!vals.length) return 'string';
+  if (vals.every(s => /^-?\d+(\.\d+)?$/.test(s))) return 'number';
+  if (vals.every(s => /^\d{4}-\d{2}-\d{2}/.test(s))) return 'date';
+  return 'string';
+}
+
+async function saveMappingFromModal() {
+  const etId  = document.getElementById('modal-et-sel').value;
+  const newEt = document.getElementById('modal-new-et').value.trim();
+  const pkVal = document.querySelector('input[name="modal-pk"]:checked')?.value || '';
+  const resultEl = document.getElementById('modal-mapping-result');
+
+  if (!etId && !newEt) {
+    resultEl.style.display='block'; resultEl.style.color='#f87171';
+    resultEl.textContent='请选择或创建 Entity Type'; return;
+  }
+
+  let finalEtId = etId;
+
+  if (newEt && !etId) {
+    // Create new ET with discovered fields
+    const createRes = await fetch('/api/ontology/schema', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name: newEt.toLowerCase().replace(/\s+/g,'_'), display_name: newEt, color:'#6366f1', icon:'●' }),
+    });
+    if (!createRes.ok) {
+      resultEl.style.display='block'; resultEl.style.color='#f87171';
+      resultEl.textContent='创建 Entity Type 失败'; return;
+    }
+    const created = await createRes.json();
+    finalEtId = created.id;
+    // Add fields
+    for (const col of modalColumns) {
+      const row = document.querySelector(`#modal-schema-body tr[data-col="${col.name}"]`);
+      const type = row?.querySelector('.modal-type-sel')?.value || 'string';
+      await fetch(`/api/ontology/schema/${finalEtId}/fields`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name: col.name, data_type: type, classification:'Internal', is_required: col.name===pkVal }),
+      });
+    }
+  }
+
+  // Build field mapping (identity: col → col)
+  const fieldMapping = {};
+  modalColumns.forEach(col => { fieldMapping[col.name] = col.name; });
+
+  // Save mapping
+  const saveRes = await fetch(`/api/datasets/${modalDsId}/mapping`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ entity_type_id: finalEtId, primary_key_col: pkVal, field_mapping: fieldMapping }),
+  });
+
+  if (saveRes.ok) {
+    // Update local cache
+    const etName = modalETs.find(e=>e.id===finalEtId)?.display_name || newEt;
+    dsMapping[modalDsId] = { entity_type_id: finalEtId, entity_type_name: etName, primary_key_col: pkVal, field_mapping: JSON.stringify(fieldMapping) };
+    resultEl.style.display='block'; resultEl.style.color='#4ade80';
+    resultEl.textContent=`✓ 映射已保存 → ${etName}，后续 Sync 将自动 Promote`;
+    // Refresh dataset list
+    if (currentSrc) setTimeout(() => loadDatasets(currentSrc.id), 500);
+  } else {
+    resultEl.style.display='block'; resultEl.style.color='#f87171';
+    resultEl.textContent='保存失败，请重试';
+  }
+}
+
+function closeMappingModal() {
+  document.getElementById('modal-mapping').style.display = 'none';
+}
+
+// ── Sync ───────────────────────────────────────────────────────────────────
+async function syncSource() {
+  if (!currentSrc) return;
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true; btn.textContent = '同步中…';
+
+  try {
+    const res  = await fetch(`/api/sources/${currentSrc.id}/sync`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}',
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    // Poll until done
+    pollJobStatus(data.job_id || (data.job_ids && data.job_ids[0]));
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '▶ Sync Now';
+    alert('Sync 失败: ' + e.message);
+  }
+}
+
+function pollJobStatus(jobId) {
+  if (!jobId) { refreshAfterSync(); return; }
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/jobs/${jobId}`);
+      const d = await r.json();
+      if (d.status === 'completed' || d.status === 'failed') {
+        clearInterval(pollTimer);
+        refreshAfterSync();
+        if (d.status === 'failed') alert('Sync 失败: ' + (d.error || ''));
+      }
+    } catch(_) { clearInterval(pollTimer); refreshAfterSync(); }
+  }, 1500);
+}
+
+async function refreshAfterSync() {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = false; btn.textContent = '▶ Sync Now';
+  await loadSources();
+}
+
+// ── New / Edit form ────────────────────────────────────────────────────────
+function openNewPanel() {
+  editingId = null;
+  document.getElementById('form-title').textContent = '新建数据源';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-csv-path').value = '';
+  document.getElementById('f-json-path').value = '';
+  document.getElementById('f-json-rp').value = '';
+  document.getElementById('f-db-path').value = '';
+  document.getElementById('f-db-query').value = '';
+  document.getElementById('f-rest-url').value = '';
+  document.getElementById('f-rest-rp').value = '';
+  document.getElementById('f-rest-token').value = '';
+  document.getElementById('f-s3-endpoint').value = '';
+  document.getElementById('f-s3-bucket').value = '';
+  document.getElementById('f-s3-access').value = '';
+  document.getElementById('f-s3-secret').value = '';
+  document.getElementById('f-s3-prefix').value = '';
+  document.getElementById('upload-status').classList.add('hidden');
+  document.getElementById('form-error').classList.add('hidden');
+  document.getElementById('test-result').classList.add('hidden');
+  setType('csv', document.querySelector('.type-btn'));
+  showPanel('form');
+}
+
+function editSource() {
+  if (!currentSrc) return;
+  editingId = currentSrc.id;
+  const s   = currentSrc;
+  const cfg = s.config || {};
+  document.getElementById('form-title').textContent = '编辑数据源';
+  document.getElementById('f-name').value = s.name;
+  document.getElementById('form-error').classList.add('hidden');
+  document.getElementById('test-result').classList.add('hidden');
+
+  setType(s.source_type, null);
+  if (s.source_type === 'csv')  document.getElementById('f-csv-path').value  = cfg.path || '';
+  if (s.source_type === 'json') { document.getElementById('f-json-path').value = cfg.path || ''; document.getElementById('f-json-rp').value = cfg.records_path || ''; }
+  if (s.source_type === 'db')   { document.getElementById('f-db-path').value = cfg.db_path || ''; document.getElementById('f-db-query').value = cfg.query || ''; }
+  if (s.source_type === 'rest') { document.getElementById('f-rest-url').value = cfg.url || ''; document.getElementById('f-rest-rp').value = cfg.records_path || ''; document.getElementById('f-rest-token').value = cfg.bearer_token || ''; }
+  if (s.source_type === 's3')  { document.getElementById('f-s3-endpoint').value = cfg.endpoint || ''; document.getElementById('f-s3-bucket').value = cfg.bucket || ''; document.getElementById('f-s3-access').value = cfg.access_key || ''; document.getElementById('f-s3-secret').value = cfg.secret_key || ''; document.getElementById('f-s3-prefix').value = cfg.prefix || ''; }
+  showPanel('form');
+}
+
+function closeForm() {
+  if (currentSrc) showPanel('detail');
+  else if (sources.length) showPanel('empty');
+  else showPanel('empty');
+}
+
+function setType(t, btn) {
   currentType = t;
-  document.querySelectorAll('.type-tab').forEach((el, i) => {
-    const types = ['csv','json','sql','rest'];
-    el.classList.toggle('active', types[i] === t);
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    const idx = {csv:0,json:1,db:2,rest:3,s3:4}[t] ?? 0;
+    document.querySelectorAll('.type-btn')[idx]?.classList.add('active');
+  }
+  ['csv','json','db','s3','rest'].forEach(type => {
+    document.getElementById('cfg-' + type).classList.toggle('hidden', type !== t);
   });
-  document.querySelectorAll('.adapter-panel').forEach(el => {
-    el.classList.remove('active');
-  });
-  document.getElementById('panel-' + t).classList.add('active');
-  document.getElementById('result-container').classList.add('hidden');
+  const testBtn = document.getElementById('test-btn');
+  if (testBtn) {
+    testBtn.textContent = {csv:'预览数据', json:'预览数据', db:'测试连接', rest:'测试连接', s3:'测试连接'}[t] || '测试连接';
+  }
 }
 
 function getConfig() {
-  switch(currentType) {
-    case 'csv':
-      return { path: document.getElementById('csv-path').value.trim() };
-    case 'json':
-      return {
-        path: document.getElementById('json-path').value.trim(),
-        records_path: document.getElementById('json-records-path').value.trim(),
-      };
-    case 'sql':
-      return {
-        db_path: document.getElementById('sql-db-path').value.trim(),
-        query: document.getElementById('sql-query').value.trim(),
-        id_column: document.getElementById('sql-id-col').value.trim() || 'id',
-        cursor_column: document.getElementById('sql-cursor-col').value.trim(),
-      };
-    case 'rest':
-      return {
-        url: document.getElementById('rest-url').value.trim(),
-        records_path: document.getElementById('rest-records-path').value.trim(),
-        bearer_token: document.getElementById('rest-bearer').value.trim(),
-        api_key_header: document.getElementById('rest-key-header').value.trim(),
-        api_key_value: document.getElementById('rest-key-value').value.trim(),
-        page_size: parseInt(document.getElementById('rest-page-size').value) || 0,
-        page_param: document.getElementById('rest-page-param').value.trim() || 'page',
-        size_param: document.getElementById('rest-size-param').value.trim() || 'limit',
-      };
-  }
+  if (currentType === 'csv')  return { path: document.getElementById('f-csv-path').value.trim() };
+  if (currentType === 'json') return { path: document.getElementById('f-json-path').value.trim(), records_path: document.getElementById('f-json-rp').value.trim() };
+  if (currentType === 'db')   return { db_path: document.getElementById('f-db-path').value.trim(), query: document.getElementById('f-db-query').value.trim() };
+  if (currentType === 'rest') return { url: document.getElementById('f-rest-url').value.trim(), records_path: document.getElementById('f-rest-rp').value.trim(), bearer_token: document.getElementById('f-rest-token').value.trim() };
+  if (currentType === 's3')   return { endpoint: document.getElementById('f-s3-endpoint').value.trim(), bucket: document.getElementById('f-s3-bucket').value.trim(), access_key: document.getElementById('f-s3-access').value.trim(), secret_key: document.getElementById('f-s3-secret').value.trim(), prefix: document.getElementById('f-s3-prefix').value.trim() };
+  return {};
 }
 
-function setLoading(action, on) {
-  document.getElementById('spin-' + action).classList.toggle('hidden', !on);
-}
-
-async function doAction(action) {
-  const endpoint = '/api/sources/' + action;
-  const body = { type: currentType, config: getConfig() };
-
-  setLoading(action, true);
-  document.getElementById('result-container').classList.add('hidden');
+async function saveSource() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { showFormError('请填写名称'); return; }
+  const config = getConfig();
+  const body   = { name, source_type: currentType, config };
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    let res;
+    if (editingId) {
+      res = await fetch(`/api/sources/${editingId}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      });
+    } else {
+      res = await fetch('/api/sources', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      });
+    }
+    const data = await res.json();
+    if (!res.ok) { showFormError(data.error || '保存失败'); return; }
+    await loadSources();
+    const saved = sources.find(s => s.id === (data.id || editingId));
+    if (saved) selectSource(saved);
+    else showPanel('empty');
+  } catch(e) { showFormError(e.message); }
+}
+
+async function deleteSource() {
+  if (!currentSrc || !confirm(`删除数据源 "${currentSrc.name}"？`)) return;
+  await fetch(`/api/sources/${currentSrc.id}`, { method: 'DELETE' });
+  currentSrc = null;
+  await loadSources();
+  showPanel('empty');
+}
+
+async function testSourceConfig() {
+  const config = getConfig();
+  const resultEl = document.getElementById('test-result');
+  resultEl.classList.remove('hidden');
+  resultEl.className = 'mt-3 text-xs p-2 rounded bg-slate-800 text-slate-400';
+  resultEl.textContent = '测试中…';
+  try {
+    const res  = await fetch('/api/sources/quick-test', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ source_type: currentType, config }),
     });
     const data = await res.json();
-    showResult(action, data);
+    if (data.ok) {
+      resultEl.className = 'mt-3 text-xs p-2 rounded bg-green-900/30 text-green-300';
+      const okLabel = (currentType === 'csv' || currentType === 'json') ? '文件有效' : '连接成功';
+      let html = '<div>✓ ' + (data.message || okLabel) + '</div>';
+      if (data.columns && data.columns.length > 0) {
+        html += '<div style="margin-top:6px;color:#94a3b8">字段：' + data.columns.join(', ') + '</div>';
+      }
+      if (data.preview && data.preview.length > 0) {
+        const cols = data.columns || Object.keys(data.preview[0]);
+        html += '<div style="margin-top:6px;overflow-x:auto"><table style="border-collapse:collapse;width:100%">';
+        html += '<tr>' + cols.map(c => `<th style="padding:2px 6px;border:1px solid #334155;color:#94a3b8">${c}</th>`).join('') + '</tr>';
+        data.preview.slice(0, 3).forEach(row => {
+          html += '<tr>' + cols.map(c => `<td style="padding:2px 6px;border:1px solid #334155;color:#cbd5e1">${row[c] ?? ''}</td>`).join('') + '</tr>';
+        });
+        html += '</table></div>';
+      }
+      resultEl.innerHTML = html;
+    } else {
+      resultEl.className = 'mt-3 text-xs p-2 rounded bg-red-900/30 text-red-300';
+      const failLabel = (currentType === 'csv' || currentType === 'json') ? '文件验证失败' : '连接失败';
+      resultEl.textContent = '✗ ' + (data.error || failLabel);
+    }
   } catch(e) {
-    showResult(action, { ok: false, error: e.message });
-  } finally {
-    setLoading(action, false);
+    resultEl.className = 'mt-3 text-xs p-2 rounded bg-red-900/30 text-red-300';
+    resultEl.textContent = '✗ ' + e.message;
   }
 }
 
-function showResult(action, data) {
-  const container = document.getElementById('result-container');
-  const badge = document.getElementById('result-badge');
-  const title = document.getElementById('result-title');
-  const jsonEl = document.getElementById('result-json');
-  const schemaEl = document.getElementById('result-schema');
+// ── File upload ────────────────────────────────────────────────────────────
+async function uploadFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.name.endsWith('.csv'));
+  if (!files.length) { alert('没有找到 .csv 文件'); return; }
+  const statusEl = document.getElementById('upload-status');
+  statusEl.classList.remove('hidden');
+  statusEl.innerHTML = `<p class="text-slate-400">上传中… (0/${files.length})</p>`;
 
-  container.classList.remove('hidden');
-  schemaEl.classList.add('hidden');
-  schemaEl.innerHTML = '';
-
-  const ok = data.ok !== false;
-  badge.className = 'badge ' + (ok ? 'badge-ok' : 'badge-err');
-  badge.textContent = ok ? 'OK' : 'ERROR';
-
-  const labels = { test: '连接测试', discover: 'Schema 发现', preview: '数据预览' };
-  title.textContent = labels[action] || action;
-
-  // Render schema table for discover action
-  if (action === 'discover' && ok && data.schema && data.schema.fields) {
-    schemaEl.classList.remove('hidden');
-    const fields = data.schema.fields;
-    const cnt = data.schema.record_count_hint;
-    let html = `<div style="font-size:12px;color:#64748b;margin-bottom:8px;">
-      推断字段 ${fields.length} 个${cnt != null ? ' · 记录数 ' + cnt : ''}
-    </div>
-    <table class="schema-table">
-      <thead><tr>
-        <th>字段名</th><th>类型</th><th>可空</th><th>样本值</th>
-      </tr></thead><tbody>`;
-    for (const f of fields) {
-      html += `<tr>
-        <td style="color:#e2e8f0;font-family:monospace">${esc(f.name)}</td>
-        <td><span class="type-chip">${esc(f.inferred_type)}</span></td>
-        <td class="${f.nullable ? 'nullable-yes' : 'nullable-no'}">${f.nullable ? '◉' : '○'}</td>
-        <td style="color:#64748b;font-size:11px">${f.sample_values.map(esc).join(', ')}</td>
-      </tr>`;
-    }
-    html += '</tbody></table>';
-    schemaEl.innerHTML = html;
-    // Show compact JSON below
-    const display = { ...data };
-    if (display.schema) display.schema = { ...display.schema, sample_records: '[...]' };
-    jsonEl.textContent = JSON.stringify(display, null, 2);
-  } else {
-    jsonEl.textContent = JSON.stringify(data, null, 2);
+  const fd = new FormData();
+  files.forEach(f => fd.append('file', f, f.name));
+  try {
+    const res  = await fetch('/api/upload/source', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error);
+    const uploaded = data.files || [];
+    const path = uploaded.length === 1
+      ? uploaded[0].path
+      : uploaded[0].path.replace(/\/[^/]+$/, '/');
+    document.getElementById('f-csv-path').value = path;
+    if (!document.getElementById('f-name').value)
+      document.getElementById('f-name').value = uploaded.length === 1
+        ? uploaded[0].name.replace(/\.csv$/i, '')
+        : path.split('/').filter(Boolean).pop() || 'CSV 数据';
+    statusEl.innerHTML = uploaded.map(f =>
+      `<p class="text-green-400">✓ ${esc(f.name)} (${(f.size/1024).toFixed(1)} KB)</p>`
+    ).join('');
+  } catch(e) {
+    statusEl.innerHTML = `<p class="text-red-400">✗ 上传失败: ${esc(e.message)}</p>`;
   }
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv'));
+  if (files.length) uploadFiles(files);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function showPanel(name) {
+  document.getElementById('panel-empty').style.display  = name === 'empty'  ? 'flex'  : 'none';
+  document.getElementById('panel-form').style.display   = name === 'form'   ? 'block' : 'none';
+  document.getElementById('panel-detail').style.display = name === 'detail' ? 'flex'  : 'none';
+}
+
+function showFormError(msg) {
+  const el = document.getElementById('form-error');
+  el.textContent = msg; el.classList.remove('hidden');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(parseInt(iso) * 1000 || iso).toLocaleString('zh-CN', {
+    month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'
+  });
 }
 
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 </script>
+
+<!-- Mapping Config Modal -->
+<div id="modal-mapping" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);align-items:center;justify-content:center;z-index:50;">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;width:640px;max-height:82vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 id="modal-mapping-title" style="font-size:14px;font-weight:600;color:#fff;"></h3>
+      <button onclick="closeMappingModal()" style="background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <p style="font-size:11px;color:#64748b;margin-bottom:8px;">从数据集样本推断列结构，选择主键后映射到 Entity Type：</p>
+    <div style="overflow-x:auto;margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="border-bottom:1px solid #334155;">
+          <th style="text-align:left;padding:5px 8px;color:#64748b;">列名</th>
+          <th style="text-align:left;padding:5px 8px;color:#64748b;">类型</th>
+          <th style="text-align:left;padding:5px 8px;color:#64748b;">样例值</th>
+          <th style="text-align:center;padding:5px 8px;color:#64748b;">主键</th>
+        </tr></thead>
+        <tbody id="modal-schema-body"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <input id="modal-new-et" placeholder="新建 Entity Type 名称（留空则选已有）" style="flex:1;"/>
+      <span style="color:#475569;font-size:12px;white-space:nowrap;">或选已有</span>
+      <select id="modal-et-sel" style="flex:1;"></select>
+    </div>
+    <p id="modal-mapping-result" style="display:none;font-size:12px;padding:8px;border-radius:6px;margin-bottom:10px;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeMappingModal()" class="btn-ghost">取消</button>
+      <button onclick="saveMappingFromModal()" class="btn-primary">保存映射</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

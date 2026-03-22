@@ -59,6 +59,7 @@ pub struct EntityTypeRow {
     pub display_name: String,
     pub color: String,
     pub icon: String,
+    pub fold_id: Option<String>,
     pub created_at: String,
 }
 
@@ -93,6 +94,13 @@ pub struct OntologyLinkRow {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LinkTypeMappingInput {
+    pub from_fk_col: String,
+    pub to_entity_type_id: String,
+    pub rel_type: String,
+}
+
 // ── Ingest row types ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -119,6 +127,8 @@ pub struct DataSourceRow {
     pub deprecated: bool,
     pub deleted_at: Option<String>,
     pub group_id: Option<String>,
+    /// snapshot | append | upsert
+    pub sync_mode: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -410,6 +420,44 @@ impl Db {
             .execute(&self.pool)
             .await;
 
+        // Upsert index: dedup by (entity_type_id, external_id).
+        // NULL external_id rows are never deduplicated (SQLite NULL != NULL).
+        let _ = sqlx::query(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_oo_upsert \
+             ON ontology_objects(entity_type_id, external_id)",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // Mapping persistence: remember dataset→entity_type mapping + field_mapping for re-sync
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS object_type_mappings (
+                id              TEXT PRIMARY KEY,
+                dataset_id      TEXT NOT NULL UNIQUE REFERENCES datasets(id) ON DELETE CASCADE,
+                entity_type_id  TEXT NOT NULL REFERENCES entity_types(id),
+                primary_key_col TEXT NOT NULL DEFAULT '',
+                field_mapping   TEXT NOT NULL DEFAULT '{}',
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Link type mappings: FK col → target entity type, drives resolve_links after promote
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS link_type_mappings (
+                id                  TEXT PRIMARY KEY,
+                dataset_id          TEXT NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+                from_fk_col         TEXT NOT NULL,
+                to_entity_type_id   TEXT NOT NULL REFERENCES entity_types(id),
+                rel_type            TEXT NOT NULL DEFAULT 'HAS',
+                created_at          TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         // DatasetVersion: manifest_path column added in Iter-1 (idempotent)
         let _ = sqlx::query("ALTER TABLE dataset_versions ADD COLUMN manifest_path TEXT")
             .execute(&self.pool)
@@ -427,9 +475,18 @@ impl Db {
             .execute(&self.pool).await;
         let _ = sqlx::query("ALTER TABLE data_sources ADD COLUMN group_id TEXT")
             .execute(&self.pool).await;
+        // DataSource: sync_mode column — snapshot | append | upsert (idempotent)
+        let _ = sqlx::query("ALTER TABLE data_sources ADD COLUMN sync_mode TEXT NOT NULL DEFAULT 'snapshot'")
+            .execute(&self.pool).await;
         let _ = sqlx::query(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_source_name ON data_sources(fold_id, name)",
         ).execute(&self.pool).await;
+        // Dataset-level sync_mode in object_type_mappings (idempotent)
+        let _ = sqlx::query("ALTER TABLE object_type_mappings ADD COLUMN sync_mode TEXT NOT NULL DEFAULT 'snapshot'")
+            .execute(&self.pool).await;
+        // ET → Fold association (idempotent)
+        let _ = sqlx::query("ALTER TABLE entity_types ADD COLUMN fold_id TEXT REFERENCES folds(id)")
+            .execute(&self.pool).await;
 
         // Platform config table: stores platform-wide settings (e.g. storage backend)
         sqlx::query(
@@ -510,6 +567,16 @@ impl Db {
             created_at: r.get("created_at"),
             updated_at: r.get("updated_at"),
         }))
+    }
+
+    pub async fn rename_project(&self, id: &str, name: &str) -> Result<()> {
+        sqlx::query("UPDATE projects SET name = ?, updated_at = ? WHERE id = ?")
+            .bind(name)
+            .bind(Self::now_str())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn delete_project(&self, id: &str) -> Result<()> {
@@ -776,18 +843,20 @@ impl Db {
         display_name: &str,
         color: &str,
         icon: &str,
+        fold_id: Option<&str>,
     ) -> Result<EntityTypeRow> {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
         sqlx::query(
-            "INSERT INTO entity_types (id, name, display_name, color, icon, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(name)
         .bind(display_name)
         .bind(color)
         .bind(icon)
+        .bind(fold_id)
         .bind(&now)
         .execute(&self.pool)
         .await?;
@@ -797,13 +866,14 @@ impl Db {
             display_name: display_name.to_string(),
             color: color.to_string(),
             icon: icon.to_string(),
+            fold_id: fold_id.map(|s| s.to_string()),
             created_at: now,
         })
     }
 
     pub async fn list_entity_types(&self) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, created_at
+            "SELECT id, name, display_name, color, icon, fold_id, created_at
              FROM entity_types ORDER BY created_at ASC",
         )
         .fetch_all(&self.pool)
@@ -816,9 +886,19 @@ impl Db {
                 display_name: r.get("display_name"),
                 color: r.get("color"),
                 icon: r.get("icon"),
+                fold_id: r.get("fold_id"),
                 created_at: r.get("created_at"),
             })
             .collect())
+    }
+
+    pub async fn update_entity_type_fold(&self, et_id: &str, fold_id: Option<&str>) -> Result<()> {
+        sqlx::query("UPDATE entity_types SET fold_id = ? WHERE id = ?")
+            .bind(fold_id)
+            .bind(et_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn delete_entity_type(&self, id: &str) -> Result<()> {
@@ -899,6 +979,7 @@ impl Db {
     /// Expose pool for raw queries (used by sync background tasks)
     pub fn pool(&self) -> &SqlitePool { &self.pool }
 
+    /// Sync path: always insert a new row (external_id = None → no dedup).
     pub async fn create_ontology_object_with_lineage(
         &self,
         entity_type_id: &str,
@@ -908,25 +989,24 @@ impl Db {
         dataset_id: &str,
         sync_run_id: &str,
     ) -> Result<OntologyObjectRow> {
-        let id = Uuid::new_v4().to_string();
+        self.upsert_ontology_object(
+            entity_type_id, entity_type_name, None,
+            label, fields_json, dataset_id, sync_run_id,
+        ).await?;
+        // Return a minimal row (callers only use it for error checking)
         let now = Self::now_str();
-        sqlx::query(
-            "INSERT INTO ontology_objects
-             (id, entity_type_id, entity_type_name, label, fields, dataset_id, sync_run_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&id).bind(entity_type_id).bind(entity_type_name).bind(label).bind(fields_json)
-        .bind(dataset_id).bind(sync_run_id).bind(&now).bind(&now)
-        .execute(&self.pool)
-        .await?;
         Ok(OntologyObjectRow {
-            id, entity_type_id: entity_type_id.to_string(),
+            id: String::new(),
+            entity_type_id: entity_type_id.to_string(),
             entity_type_name: entity_type_name.to_string(),
-            label: label.to_string(), fields: fields_json.to_string(),
-            created_at: now.clone(), updated_at: now,
+            label: label.to_string(),
+            fields: fields_json.to_string(),
+            created_at: now.clone(),
+            updated_at: now,
         })
     }
 
+    /// connections_sync path: insert without lineage (dataset_id / run_id unknown).
     pub async fn create_ontology_object(
         &self,
         entity_type_id: &str,
@@ -934,24 +1014,13 @@ impl Db {
         label: &str,
         fields_json: &str,
     ) -> Result<OntologyObjectRow> {
-        let id = Uuid::new_v4().to_string();
+        self.upsert_ontology_object(
+            entity_type_id, entity_type_name, None,
+            label, fields_json, "", "",
+        ).await?;
         let now = Self::now_str();
-        sqlx::query(
-            "INSERT INTO ontology_objects
-             (id, entity_type_id, entity_type_name, label, fields, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(entity_type_id)
-        .bind(entity_type_name)
-        .bind(label)
-        .bind(fields_json)
-        .bind(&now)
-        .bind(&now)
-        .execute(&self.pool)
-        .await?;
         Ok(OntologyObjectRow {
-            id,
+            id: String::new(),
             entity_type_id: entity_type_id.to_string(),
             entity_type_name: entity_type_name.to_string(),
             label: label.to_string(),
@@ -1222,21 +1291,33 @@ impl Db {
         source_type: &str,
         config: &str,
         group_id: Option<&str>,
+        sync_mode: &str,
     ) -> Result<DataSourceRow> {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
         sqlx::query(
-            "INSERT INTO data_sources (id, fold_id, name, source_type, config, status, created_at, group_id)
-             VALUES (?, ?, ?, ?, ?, 'idle', ?, ?)",
+            "INSERT INTO data_sources (id, fold_id, name, source_type, config, status, created_at, group_id, sync_mode)
+             VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?)",
         )
-        .bind(&id).bind(fold_id).bind(name).bind(source_type).bind(config).bind(&now).bind(group_id)
+        .bind(&id).bind(fold_id).bind(name).bind(source_type).bind(config).bind(&now).bind(group_id).bind(sync_mode)
         .execute(&self.pool)
         .await?;
         Ok(DataSourceRow { id, fold_id: fold_id.to_string(), name: name.to_string(),
             source_type: source_type.to_string(), config: config.to_string(),
             status: "idle".to_string(), write_lock: None, last_sync_at: None,
             record_count: None, created_at: now, deprecated: false, deleted_at: None,
-            group_id: group_id.map(|s| s.to_string()) })
+            group_id: group_id.map(|s| s.to_string()),
+            sync_mode: sync_mode.to_string() })
+    }
+
+    pub async fn list_all_sources(&self) -> Result<Vec<DataSourceRow>> {
+        let rows = sqlx::query(
+            "SELECT id, fold_id, name, source_type, config, status, write_lock,
+                    last_sync_at, record_count, created_at, deprecated, deleted_at, group_id
+             FROM data_sources WHERE deleted_at IS NULL ORDER BY created_at DESC",
+        )
+        .fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(Self::map_source_row).collect())
     }
 
     pub async fn list_data_sources(&self, fold_id: &str) -> Result<Vec<DataSourceRow>> {
@@ -1260,12 +1341,12 @@ impl Db {
     }
 
     pub async fn update_data_source(
-        &self, id: &str, name: &str, source_type: &str, config: &str,
+        &self, id: &str, name: &str, source_type: &str, config: &str, sync_mode: &str,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE data_sources SET name = ?, source_type = ?, config = ?, status = 'idle', write_lock = NULL WHERE id = ?",
+            "UPDATE data_sources SET name = ?, source_type = ?, config = ?, sync_mode = ?, status = 'idle', write_lock = NULL WHERE id = ?",
         )
-        .bind(name).bind(source_type).bind(config).bind(id).execute(&self.pool).await?;
+        .bind(name).bind(source_type).bind(config).bind(sync_mode).bind(id).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -1325,6 +1406,7 @@ impl Db {
             deprecated: r.get::<i64, _>("deprecated") != 0,
             deleted_at: r.get("deleted_at"),
             group_id: r.get("group_id"),
+            sync_mode: r.try_get("sync_mode").unwrap_or_else(|_| "snapshot".to_string()),
         }
     }
 
@@ -1415,6 +1497,30 @@ impl Db {
             entity_type_id: None, current_version: 0, created_at: now })
     }
 
+    /// List all datasets across all sources, with record count (raw only).
+    pub async fn list_all_datasets(&self) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT d.id, d.source_id, d.name, d.entity_type_id, d.current_version, d.created_at,
+                    COALESCE(
+                        (SELECT dv.total_rows FROM dataset_versions dv
+                         WHERE dv.dataset_id = d.id AND dv.is_current = 1 LIMIT 1),
+                        0
+                    ) AS record_count
+             FROM datasets d ORDER BY d.created_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "id":              r.get::<String, _>("id"),
+            "source_id":       r.get::<String, _>("source_id"),
+            "name":            r.get::<String, _>("name"),
+            "entity_type_id":  r.get::<Option<String>, _>("entity_type_id"),
+            "current_version": r.get::<i64, _>("current_version"),
+            "created_at":      r.get::<String, _>("created_at"),
+            "record_count":    r.get::<i64, _>("record_count"),
+        })).collect())
+    }
+
     pub async fn list_datasets(&self, source_id: &str) -> Result<Vec<DatasetRow>> {
         let rows = sqlx::query(
             "SELECT id, source_id, name, entity_type_id, current_version, created_at
@@ -1426,6 +1532,29 @@ impl Db {
             entity_type_id: r.get("entity_type_id"), current_version: r.get("current_version"),
             created_at: r.get("created_at"),
         }).collect())
+    }
+
+    /// Like list_datasets but includes record_count from dataset_versions.total_rows (S3-first).
+    pub async fn list_datasets_with_count(&self, source_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT d.id, d.source_id, d.name, d.entity_type_id, d.current_version, d.created_at,
+                    COALESCE(
+                        (SELECT dv.total_rows FROM dataset_versions dv
+                         WHERE dv.dataset_id = d.id AND dv.is_current = 1 LIMIT 1),
+                        0
+                    ) AS record_count
+             FROM datasets d WHERE d.source_id = ? ORDER BY d.created_at DESC",
+        )
+        .bind(source_id).fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "id":              r.get::<String, _>("id"),
+            "source_id":       r.get::<String, _>("source_id"),
+            "name":            r.get::<String, _>("name"),
+            "entity_type_id":  r.get::<Option<String>, _>("entity_type_id"),
+            "current_version": r.get::<i64, _>("current_version"),
+            "created_at":      r.get::<String, _>("created_at"),
+            "record_count":    r.get::<i64, _>("record_count"),
+        })).collect())
     }
 
     pub async fn get_dataset(&self, id: &str) -> Result<Option<DatasetRow>> {
@@ -1652,6 +1781,19 @@ impl Db {
         Ok(())
     }
 
+    /// Get the currently active (is_current=1) version for a dataset.
+    pub async fn get_current_dataset_version(&self, dataset_id: &str) -> Result<Option<DatasetVersionRow>> {
+        let row = sqlx::query(
+            "SELECT id, dataset_id, version, sync_run_id, status, schema_json, schema_change,
+                    total_rows, is_current, created_at, manifest_path
+             FROM dataset_versions WHERE dataset_id = ? AND is_current = 1 LIMIT 1",
+        )
+        .bind(dataset_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(Self::map_version_row))
+    }
+
     fn map_version_row(r: sqlx::sqlite::SqliteRow) -> DatasetVersionRow {
         use sqlx::Row;
         DatasetVersionRow {
@@ -1673,7 +1815,8 @@ impl Db {
     ) -> Result<Vec<OntologyObjectRow>> {
         let rows = sqlx::query(
             "SELECT id, entity_type_id, entity_type_name, label, fields, created_at, updated_at
-             FROM ontology_objects WHERE dataset_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+             FROM ontology_objects WHERE dataset_id = ? AND sync_run_id != 'promote'
+             ORDER BY created_at ASC LIMIT ? OFFSET ?",
         )
         .bind(dataset_id)
         .bind(limit)
@@ -1693,12 +1836,256 @@ impl Db {
 
     pub async fn count_dataset_records(&self, dataset_id: &str) -> Result<i64> {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM ontology_objects WHERE dataset_id = ?",
+            "SELECT COUNT(*) FROM ontology_objects WHERE dataset_id = ? AND sync_run_id != 'promote'",
         )
         .bind(dataset_id)
         .fetch_one(&self.pool)
         .await?;
         Ok(count)
+    }
+
+    /// Upsert a single ontology object.
+    /// If `external_id` is Some, deduplicates by (entity_type_id, external_id).
+    /// If `external_id` is None, always inserts a new row.
+    pub async fn upsert_ontology_object(
+        &self,
+        entity_type_id: &str,
+        entity_type_name: &str,
+        external_id: Option<&str>,
+        label: &str,
+        fields: &str,
+        dataset_id: &str,
+        run_id: &str,
+    ) -> Result<()> {
+        let now = Self::now_str();
+        let id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO ontology_objects
+                (id, entity_type_id, entity_type_name, external_id, label, fields,
+                 dataset_id, sync_run_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(entity_type_id, external_id) DO UPDATE SET
+                label      = excluded.label,
+                fields     = excluded.fields,
+                updated_at = excluded.updated_at",
+        )
+        .bind(&id)
+        .bind(entity_type_id)
+        .bind(entity_type_name)
+        .bind(external_id)
+        .bind(label)
+        .bind(fields)
+        .bind(dataset_id)
+        .bind(run_id)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    // ── Object Type Mappings ───────────────────────────────────────────────────
+
+    pub async fn save_object_type_mapping(
+        &self,
+        dataset_id: &str,
+        entity_type_id: &str,
+        primary_key_col: &str,
+        field_mapping: &str,
+        sync_mode: &str,
+    ) -> Result<()> {
+        let now = Self::now_str();
+        let id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO object_type_mappings
+                (id, dataset_id, entity_type_id, primary_key_col, field_mapping, sync_mode, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(dataset_id) DO UPDATE SET
+                entity_type_id  = excluded.entity_type_id,
+                primary_key_col = excluded.primary_key_col,
+                field_mapping   = excluded.field_mapping,
+                sync_mode       = excluded.sync_mode,
+                updated_at      = excluded.updated_at",
+        )
+        .bind(&id)
+        .bind(dataset_id)
+        .bind(entity_type_id)
+        .bind(primary_key_col)
+        .bind(field_mapping)
+        .bind(sync_mode)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_dataset_sync_mode(&self, dataset_id: &str, sync_mode: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE object_type_mappings SET sync_mode = ? WHERE dataset_id = ?",
+        )
+        .bind(sync_mode)
+        .bind(dataset_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_object_type_mapping(
+        &self,
+        dataset_id: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let row = sqlx::query(
+            "SELECT entity_type_id, primary_key_col, field_mapping, sync_mode, updated_at
+             FROM object_type_mappings WHERE dataset_id = ?",
+        )
+        .bind(dataset_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| {
+            serde_json::json!({
+                "entity_type_id":  r.get::<String, _>("entity_type_id"),
+                "primary_key_col": r.get::<String, _>("primary_key_col"),
+                "field_mapping":   r.get::<String, _>("field_mapping"),
+                "sync_mode":       r.try_get::<String, _>("sync_mode").unwrap_or_else(|_| "snapshot".to_string()),
+                "updated_at":      r.get::<String, _>("updated_at"),
+            })
+        }))
+    }
+
+    pub async fn delete_ontology_objects_by_dataset(&self, dataset_id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM ontology_objects WHERE dataset_id = ?")
+            .bind(dataset_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Save (upsert) link type mappings for a dataset (replaces all existing entries).
+    pub async fn save_link_type_mappings(
+        &self,
+        dataset_id: &str,
+        links: &[LinkTypeMappingInput],
+    ) -> Result<()> {
+        let now = Self::now_str();
+        sqlx::query("DELETE FROM link_type_mappings WHERE dataset_id = ?")
+            .bind(dataset_id)
+            .execute(&self.pool)
+            .await?;
+        for link in links {
+            let id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO link_type_mappings (id, dataset_id, from_fk_col, to_entity_type_id, rel_type, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(dataset_id)
+            .bind(&link.from_fk_col)
+            .bind(&link.to_entity_type_id)
+            .bind(&link.rel_type)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn get_link_type_mappings(&self, dataset_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT from_fk_col, to_entity_type_id, rel_type FROM link_type_mappings WHERE dataset_id = ?",
+        )
+        .bind(dataset_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "from_fk_col":       r.get::<String, _>("from_fk_col"),
+            "to_entity_type_id": r.get::<String, _>("to_entity_type_id"),
+            "rel_type":          r.get::<String, _>("rel_type"),
+        })).collect())
+    }
+
+    /// Return all schema-level relationships: (from_et_id, from_et_name, fk_col, rel_type, to_et_id, to_et_name)
+    pub async fn list_schema_links(&self) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT ltm.from_fk_col, ltm.to_entity_type_id, ltm.rel_type,
+                    otm.entity_type_id AS from_entity_type_id,
+                    et_from.display_name AS from_et_name,
+                    et_to.display_name  AS to_et_name
+             FROM link_type_mappings ltm
+             JOIN object_type_mappings otm ON otm.dataset_id = ltm.dataset_id
+             JOIN entity_types et_from ON et_from.id = otm.entity_type_id
+             JOIN entity_types et_to   ON et_to.id  = ltm.to_entity_type_id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "from_entity_type_id": r.get::<String, _>("from_entity_type_id"),
+            "from_et_name":        r.get::<String, _>("from_et_name"),
+            "fk_col":              r.get::<String, _>("from_fk_col"),
+            "rel_type":            r.get::<String, _>("rel_type"),
+            "to_entity_type_id":   r.get::<String, _>("to_entity_type_id"),
+            "to_et_name":          r.get::<String, _>("to_et_name"),
+        })).collect())
+    }
+
+    /// After promote, resolve FK columns → ontology_links using link_type_mappings.
+    pub async fn resolve_links_for_dataset(&self, dataset_id: &str) -> Result<usize> {
+        let mappings = self.get_link_type_mappings(dataset_id).await?;
+        let now = Self::now_str();
+        let mut total = 0usize;
+
+        for m in &mappings {
+            let fk_col = m["from_fk_col"].as_str().unwrap_or_default();
+            let to_et  = m["to_entity_type_id"].as_str().unwrap_or_default();
+            let rel    = m["rel_type"].as_str().unwrap_or("HAS");
+
+            // Find source objects promoted from this dataset
+            let src_rows = sqlx::query(
+                "SELECT id, fields FROM ontology_objects
+                 WHERE dataset_id = ? AND sync_run_id = 'promote'",
+            )
+            .bind(dataset_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            for src in &src_rows {
+                let src_id: String = src.get("id");
+                let fields_str: String = src.get("fields");
+                let fields: serde_json::Value = serde_json::from_str(&fields_str).unwrap_or_default();
+                let fk_val = match fields.get(fk_col).and_then(|v| v.as_str()) {
+                    Some(v) => v.to_string(),
+                    None => continue,
+                };
+
+                // Look up target object by external_id
+                let tgt: Option<String> = sqlx::query_scalar(
+                    "SELECT id FROM ontology_objects
+                     WHERE entity_type_id = ? AND external_id = ? AND sync_run_id = 'promote'",
+                )
+                .bind(to_et)
+                .bind(&fk_val)
+                .fetch_optional(&self.pool)
+                .await?;
+
+                if let Some(tgt_id) = tgt {
+                    let link_id = Uuid::new_v4().to_string();
+                    let _ = sqlx::query(
+                        "INSERT OR IGNORE INTO ontology_links
+                         (id, from_id, to_id, rel_type, created_at)
+                         VALUES (?, ?, ?, ?, ?)",
+                    )
+                    .bind(&link_id)
+                    .bind(&src_id)
+                    .bind(&tgt_id)
+                    .bind(rel)
+                    .bind(&now)
+                    .execute(&self.pool)
+                    .await;
+                    total += 1;
+                }
+            }
+        }
+        Ok(total)
     }
 
     pub async fn clear_project_graph(&self, project_id: &str) -> Result<()> {

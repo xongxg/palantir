@@ -9,5 +9,5 @@ pub use backend::StorageBackend;
 pub use local::LocalFsBackend;
 pub use manifest::{DatasetManifest, DatasetSchema, FileEntry, SchemaField};
 pub use s3::S3Backend;
-pub use store::DatasetStore;
+pub use store::{DatasetStore, read_records_from_manifest_path};
 pub use writer::DatasetWriter;

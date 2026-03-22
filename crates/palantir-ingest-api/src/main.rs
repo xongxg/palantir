@@ -23,7 +23,7 @@ use palantir_ontology_manager::{
     mapping_toml::TomlMapping,
     model::{OntologyEvent, OntologySchema, Value},
 };
-use palantir_persistence::{BuildRow, ConnectorRow, Db, EntityRow, RelRow};
+use palantir_persistence::{BuildRow, ConnectorRow, Db, EntityRow, LinkTypeMappingInput, RelRow};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
@@ -96,6 +96,9 @@ async fn viz_page() -> Html<&'static str> {
 async fn ingest_project_page() -> Html<&'static str> {
     Html(include_str!("ui/ingest_project.html"))
 }
+async fn project_workspace_page() -> Html<&'static str> {
+    Html(include_str!("ui/project_workspace.html"))
+}
 async fn ingest_fold_page() -> Html<&'static str> {
     Html(include_str!("ui/ingest_fold.html"))
 }
@@ -156,6 +159,20 @@ async fn get_project(Path(id): Path<String>) -> impl IntoResponse {
         )
             .into_response(),
     }
+}
+
+#[derive(serde::Deserialize)]
+struct PatchProjectReq { name: Option<String> }
+async fn patch_project(
+    Path(id): Path<String>,
+    Json(req): Json<PatchProjectReq>,
+) -> impl IntoResponse {
+    if let Some(name) = req.name {
+        if let Err(e) = db().rename_project(&id, &name).await {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response();
+        }
+    }
+    (StatusCode::OK, Json(json!({"ok": true}))).into_response()
 }
 
 async fn list_project_connectors(Path(id): Path<String>) -> impl IntoResponse {
@@ -452,6 +469,40 @@ async fn upload_csv(
         1 => (StatusCode::OK, Json(items.remove(0))).into_response(),
         _ => (StatusCode::OK, Json(json!({"items": items}))).into_response(),
     }
+}
+
+/// POST /api/upload/source — upload one or more CSV files for use as a data source.
+/// No project_id needed. Files saved to data/uploads/sources/.
+/// Returns [{ name, path, size }]
+async fn upload_source_files(mut mp: Multipart) -> impl IntoResponse {
+    let upload_dir = "data/uploads/sources";
+    if let Err(e) = tokio::fs::create_dir_all(upload_dir).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("create dir failed: {e}")}))).into_response();
+    }
+    let mut items: Vec<serde_json::Value> = Vec::new();
+    while let Ok(Some(field)) = mp.next_field().await {
+        let name = match field.file_name().map(|s| s.to_string()) {
+            Some(n) if !n.is_empty() => n,
+            _ => continue,
+        };
+        match field.bytes().await {
+            Ok(bytes) => {
+                let dest = format!("{}/{}", upload_dir, name);
+                if let Err(e) = tokio::fs::write(&dest, &bytes).await {
+                    return (StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("write failed: {e}")}))).into_response();
+                }
+                items.push(json!({ "name": name, "path": dest, "size": bytes.len() }));
+            }
+            Err(e) => return (StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("read failed: {e}")}))).into_response(),
+        }
+    }
+    if items.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "no files received"}))).into_response();
+    }
+    (StatusCode::OK, Json(json!({ "files": items }))).into_response()
 }
 
 // ── Inspect ───────────────────────────────────────────────────────────────────
@@ -1083,6 +1134,8 @@ struct CreateEntityTypeReqClean {
     color: String,
     #[serde(default = "default_icon")]
     icon: String,
+    #[serde(default)]
+    fold_id: Option<String>,
 }
 
 async fn list_entity_types_handler() -> impl IntoResponse {
@@ -1112,7 +1165,7 @@ async fn create_entity_type_handler(
     Json(req): Json<CreateEntityTypeReqClean>,
 ) -> impl IntoResponse {
     match db()
-        .create_entity_type(&req.name, &req.display_name, &req.color, &req.icon)
+        .create_entity_type(&req.name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref())
         .await
     {
         Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
@@ -1291,33 +1344,88 @@ async fn delete_link_handler(Path(id): Path<String>) -> impl IntoResponse {
     }
 }
 
-async fn get_ontology_graph_handler() -> impl IntoResponse {
-    match db().get_ontology_graph().await {
-        Ok((objects, links)) => {
-            let nodes: Vec<_> = objects
-                .iter()
-                .map(|o| {
-                    let fields: serde_json::Value =
-                        serde_json::from_str(&o.fields).unwrap_or_default();
-                    json!({
-                        "id": o.id, "label": o.label,
-                        "entity_type": o.entity_type_name,
-                        "entity_type_id": o.entity_type_id,
-                        "fields": fields,
-                    })
-                })
-                .collect();
-            let edges: Vec<_> = links
-                .iter()
-                .map(|l| json!({"id": l.id, "from": l.from_id, "to": l.to_id, "rel_type": l.rel_type}))
-                .collect();
-            (StatusCode::OK, Json(json!({"nodes": nodes, "edges": edges}))).into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
+async fn get_ontology_graph_handler(
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let project_id = params.get("project_id").map(|s| s.as_str()).unwrap_or("");
+
+    // Load entity types (for color/fold/role metadata)
+    let ets = db().list_entity_types().await.unwrap_or_default();
+    let et_map: std::collections::HashMap<_, _> = ets.iter()
+        .map(|e| (e.id.clone(), e))
+        .collect();
+
+    // Folds for BC grouping
+    let folds: Vec<serde_json::Value> = if !project_id.is_empty() {
+        db().list_folds(project_id).await.unwrap_or_default()
+            .into_iter()
+            .map(|f| json!({ "id": f.id, "name": f.name }))
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Nodes = actual ontology object instances
+    let objs = db().list_ontology_objects(None).await.unwrap_or_default();
+    let nodes: Vec<serde_json::Value> = objs.iter().map(|o| {
+        let is_default = o.entity_type_id == "default";
+        let et = et_map.get(&o.entity_type_id);
+        // Include first 5 fields as preview properties for tooltip
+        let props: serde_json::Value = serde_json::from_str(&o.fields).unwrap_or(json!({}));
+        let preview: serde_json::Map<String, serde_json::Value> = props
+            .as_object()
+            .map(|m| m.iter().take(5).map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+        json!({
+            "id":         o.id,
+            "label":      o.label,
+            "et_id":      o.entity_type_id,
+            "et_name":    o.entity_type_name,
+            "color":      if is_default { "#334155" } else { et.map(|e| e.color.as_str()).unwrap_or("#6366f1") },
+            "fold_id":    et.and_then(|e| e.fold_id.as_deref()),
+            "is_default": is_default,
+            "props":      preview,
+        })
+    }).collect();
+
+    // Edges = actual instance-level ontology links
+    let edges: Vec<serde_json::Value> = if let Ok((_, links)) = db().get_ontology_graph().await {
+        links.iter().map(|l| json!({
+            "source": l.from_id,
+            "target": l.to_id,
+            "label":  l.rel_type,
+            "kind":   "INSTANCE",
+        })).collect()
+    } else {
+        vec![]
+    };
+
+    // ET summary for stats (count per type)
+    let et_counts: std::collections::HashMap<String, u64> = {
+        let mut m = std::collections::HashMap::new();
+        for o in &objs { *m.entry(o.entity_type_id.clone()).or_insert(0) += 1; }
+        m
+    };
+    let et_summary: Vec<serde_json::Value> = ets.iter()
+        .filter(|e| e.id != "default")
+        .map(|e| json!({
+            "id": e.id, "label": e.display_name, "color": e.color,
+            "fold_id": e.fold_id, "count": et_counts.get(&e.id).copied().unwrap_or(0),
+        }))
+        .collect();
+
+    (StatusCode::OK, Json(json!({
+        "nodes": nodes,
+        "edges": edges,
+        "folds": folds,
+        "et_summary": et_summary,
+    }))).into_response()
+}
+
+async fn list_schema_links_handler() -> impl IntoResponse {
+    match db().list_schema_links().await {
+        Ok(links) => (StatusCode::OK, Json(json!({"links": links}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 
@@ -1583,15 +1691,81 @@ struct CreateSourceReq {
     source_type: String,
     config: serde_json::Value,
     group_id: Option<String>,
+    /// snapshot (default) | append | upsert
+    #[serde(default = "default_sync_mode")]
+    sync_mode: String,
 }
+
+fn default_sync_mode() -> String { "snapshot".to_string() }
 
 #[derive(Deserialize)]
 struct UpdateSourceReq {
     name: Option<String>,
     source_type: Option<String>,
     config: Option<serde_json::Value>,
+    sync_mode: Option<String>,
 }
 
+
+/// POST /api/sources — create source using default fold (first available or auto-created)
+async fn create_source_simple(Json(req): Json<CreateSourceReq>) -> impl IntoResponse {
+    // Find or create a default fold
+    let fold_id = {
+        let projects = db().list_projects().await.unwrap_or_default();
+        let proj = if let Some(p) = projects.into_iter().next() {
+            p
+        } else {
+            match db().create_project("Default").await {
+                Ok(p) => p,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("create project: {e}")}))).into_response(),
+            }
+        };
+        let folds = db().list_folds(&proj.id).await.unwrap_or_default();
+        if let Some(f) = folds.into_iter().next() {
+            f.id
+        } else {
+            match db().create_fold(&proj.id, "Default Fold", None).await {
+                Ok(f) => f.id,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("create fold: {e}")}))).into_response(),
+            }
+        }
+    };
+    let config_str = serde_json::to_string(&req.config).unwrap_or_else(|_| "{}".into());
+    match db().create_data_source(&fold_id, &req.name, &req.source_type, &config_str, req.group_id.as_deref(), &req.sync_mode).await {
+        Ok(row) => (StatusCode::CREATED, Json(json!({
+            "id": row.id, "name": row.name, "source_type": row.source_type,
+            "fold_id": row.fold_id, "status": row.status,
+        }))).into_response(),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("UNIQUE") {
+                (StatusCode::CONFLICT, Json(json!({"error": format!("已存在同名数据源: {}", req.name)}))).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))).into_response()
+            }
+        }
+    }
+}
+
+async fn list_all_sources_handler() -> impl IntoResponse {
+    match db().list_all_sources().await {
+        Ok(rows) => {
+            let sources: Vec<serde_json::Value> = rows.into_iter().map(|s| {
+                let config: serde_json::Value = serde_json::from_str(&s.config).unwrap_or(json!({}));
+                json!({
+                    "id": s.id, "fold_id": s.fold_id, "name": s.name,
+                    "source_type": s.source_type, "config": config, "status": s.status,
+                    "last_sync_at": s.last_sync_at, "record_count": s.record_count,
+                    "created_at": s.created_at,
+                })
+            }).collect();
+            (StatusCode::OK, Json(json!({ "sources": sources }))).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
 
 async fn list_sources(Path(fold_id): Path<String>) -> impl IntoResponse {
     match db().list_data_sources(&fold_id).await {
@@ -1604,7 +1778,7 @@ async fn list_sources(Path(fold_id): Path<String>) -> impl IntoResponse {
                     "write_lock": s.write_lock, "last_sync_at": s.last_sync_at,
                     "record_count": s.record_count, "created_at": s.created_at,
                     "deprecated": s.deprecated, "deleted_at": s.deleted_at,
-                    "group_id": s.group_id
+                    "group_id": s.group_id, "sync_mode": s.sync_mode
                 })
             }).collect();
             (StatusCode::OK, Json(json!({ "sources": sources }))).into_response()
@@ -1618,7 +1792,7 @@ async fn create_source(
     Json(req): Json<CreateSourceReq>,
 ) -> impl IntoResponse {
     let config_str = serde_json::to_string(&req.config).unwrap_or_else(|_| "{}".into());
-    match db().create_data_source(&fold_id, &req.name, &req.source_type, &config_str, req.group_id.as_deref()).await {
+    match db().create_data_source(&fold_id, &req.name, &req.source_type, &config_str, req.group_id.as_deref(), &req.sync_mode).await {
         Ok(row) => (StatusCode::CREATED, Json(json!({
             "id": row.id, "name": row.name, "source_type": row.source_type,
             "status": row.status, "fold_id": row.fold_id, "group_id": row.group_id
@@ -1642,7 +1816,8 @@ async fn get_source_handler(Path(id): Path<String>) -> impl IntoResponse {
                 "id": s.id, "fold_id": s.fold_id, "name": s.name,
                 "source_type": s.source_type, "config": config,
                 "status": s.status, "write_lock": s.write_lock,
-                "last_sync_at": s.last_sync_at, "record_count": s.record_count
+                "last_sync_at": s.last_sync_at, "record_count": s.record_count,
+                "sync_mode": s.sync_mode
             }))).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response(),
@@ -1664,7 +1839,8 @@ async fn update_source_handler(
         serde_json::from_str(&src.config).unwrap_or(json!({}))
     });
     let config_str = serde_json::to_string(&config_val).unwrap_or_else(|_| "{}".into());
-    match db().update_data_source(&id, &name, &src.source_type, &config_str).await {
+    let sync_mode = req.sync_mode.as_deref().unwrap_or(&src.sync_mode).to_string();
+    match db().update_data_source(&id, &name, &src.source_type, &config_str, &sync_mode).await {
         Ok(_) => (StatusCode::OK, Json(json!({"id": id, "status": "idle"}))).into_response(),
         Err(e) => {
             let msg = e.to_string();
@@ -1778,6 +1954,85 @@ async fn run_test_connection(source_type: &str, config: &serde_json::Value) -> s
             }
         }
         "s3" | "ftp" => test_s3(config).await,
+        "csv" => {
+            let path_str = config["path"].as_str().unwrap_or("");
+            if path_str.is_empty() {
+                return json!({"ok":false,"error":"path is required","error_type":"config"});
+            }
+            let path = std::path::Path::new(path_str);
+            // Resolve actual CSV file
+            let csv_file = if path.is_dir() {
+                let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(path)
+                    .map(|rd| rd.filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("csv"))
+                        .collect())
+                    .unwrap_or_default();
+                files.sort();
+                match files.into_iter().next() {
+                    Some(f) => f,
+                    None => return json!({"ok":false,"error":format!("目录中没有 CSV 文件: {}", path_str),"error_type":"not_found"}),
+                }
+            } else if path.exists() {
+                path.to_path_buf()
+            } else {
+                return json!({"ok":false,"error":format!("路径不存在: {}", path_str),"error_type":"not_found"});
+            };
+            // Read up to 5 preview rows
+            match csv::Reader::from_path(&csv_file) {
+                Err(e) => json!({"ok":false,"error":format!("无法读取 CSV: {}", e),"error_type":"format"}),
+                Ok(mut rdr) => {
+                    let headers: Vec<String> = rdr.headers()
+                        .map(|h| h.iter().map(|s| s.to_string()).collect())
+                        .unwrap_or_default();
+                    let mut rows: Vec<serde_json::Value> = vec![];
+                    let mut total = 0usize;
+                    for rec in rdr.records() {
+                        total += 1;
+                        if rows.len() < 5 {
+                            if let Ok(r) = rec {
+                                let obj: serde_json::Map<String, serde_json::Value> = headers.iter()
+                                    .zip(r.iter())
+                                    .map(|(k, v)| (k.clone(), serde_json::Value::String(v.to_string())))
+                                    .collect();
+                                rows.push(serde_json::Value::Object(obj));
+                            }
+                        }
+                    }
+                    json!({
+                        "ok": true,
+                        "message": format!("读取成功：{} 列，{} 行", headers.len(), total),
+                        "columns": headers,
+                        "row_count": total,
+                        "preview": rows,
+                    })
+                }
+            }
+        }
+        "json" => {
+            let path_str = config["path"].as_str().unwrap_or("");
+            if path_str.is_empty() {
+                return json!({"ok":false,"error":"path is required","error_type":"config"});
+            }
+            let path = std::path::Path::new(path_str);
+            if !path.exists() {
+                return json!({"ok":false,"error":format!("路径不存在: {}", path_str),"error_type":"not_found"});
+            }
+            match std::fs::read_to_string(path) {
+                Err(e) => json!({"ok":false,"error":format!("无法读取文件: {}", e),"error_type":"format"}),
+                Ok(content) => {
+                    match serde_json::from_str::<serde_json::Value>(&content) {
+                        Err(e) => json!({"ok":false,"error":format!("JSON 解析失败: {}", e),"error_type":"format"}),
+                        Ok(val) => {
+                            let rows = if let Some(arr) = val.as_array() {
+                                arr.len()
+                            } else { 1 };
+                            json!({"ok":true,"message":format!("JSON 读取成功：{} 条记录", rows),"row_count":rows})
+                        }
+                    }
+                }
+            }
+        }
         _ => json!({"ok":false,"error":format!("{} not yet supported for live test",source_type),"error_type":"unsupported"}),
     }
 }
@@ -1876,6 +2131,232 @@ async fn sync_source_handler(
         Ok(true) => {}
     }
 
+    let config: serde_json::Value = serde_json::from_str(&src.config).unwrap_or(json!({}));
+
+    // ── Folder mode: one dataset per CSV file ─────────────────────────────────
+    if src.source_type == "csv" {
+        let raw_path = config["path"].as_str().unwrap_or("").to_string();
+        let p = std::path::Path::new(&raw_path);
+        if p.is_dir() {
+            let mut csv_files: Vec<std::path::PathBuf> = std::fs::read_dir(p)
+                .map(|rd| rd
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("csv"))
+                    .collect())
+                .unwrap_or_default();
+            csv_files.sort();
+
+            if csv_files.is_empty() {
+                let _ = db().release_write_lock(&source_id, "error", None).await;
+                let _ = db().finish_sync_run(&run.id, "failed", Some("no CSV files in folder"), Some("empty_folder")).await;
+                return (StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "no .csv files found in folder"}))).into_response();
+            }
+
+            let project_id = db().get_fold(&src.fold_id).await
+                .ok().flatten()
+                .map(|f| f.project_id)
+                .unwrap_or_else(|| src.fold_id.clone());
+
+            let mut job_ids = vec![];
+            let existing_datasets = db().list_datasets(&source_id).await.unwrap_or_default();
+            let ds_by_name: std::collections::HashMap<String, _> =
+                existing_datasets.into_iter().map(|d| (d.name.clone(), d)).collect();
+
+            for file_path in csv_files {
+                let fname = file_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                // Get or create a dataset named after the file
+                let dataset = if let Some(d) = ds_by_name.get(&fname) {
+                    d.clone()
+                } else {
+                    match db().create_dataset(&source_id, &fname).await {
+                        Ok(d) => d,
+                        Err(e) => {
+                            eprintln!("[sync] failed to create dataset for {fname}: {e}");
+                            continue;
+                        }
+                    }
+                };
+
+                let file_run = match db().create_sync_run(&source_id).await {
+                    Ok(r) => r,
+                    Err(e) => { eprintln!("[sync] create_sync_run failed: {e}"); continue; }
+                };
+                let dv = match db().create_dataset_version(&dataset.id, &file_run.id).await {
+                    Ok(v) => v,
+                    Err(e) => { eprintln!("[sync] create_dataset_version failed: {e}"); continue; }
+                };
+
+                job_ids.push(file_run.id.clone());
+                let source_id2   = source_id.clone();
+                let run_id2      = file_run.id.clone();
+                let dataset_id2  = dataset.id.clone();
+                let dv_id2       = dv.id.clone();
+                let project_id2  = project_id.clone();
+                let source_type2 = src.source_type.clone();
+                let sync_mode2   = src.sync_mode.clone();
+                let file_config  = json!({ "path": file_path.to_string_lossy() });
+                let version2     = dv.version;
+
+                tokio::spawn(async move {
+                    let result = run_sync_job(
+                        &source_id2, &run_id2, &dataset_id2, &dv_id2,
+                        &source_type2, &file_config, &[], None,
+                    ).await;
+                    match result {
+                        Ok((records, _)) => {
+                            let records = merge_records_for_mode(&sync_mode2, &dataset_id2, records).await;
+                            let count = records.len();
+                            let schema_json = write_records_to_storage(records, &dataset_id2, version2, &run_id2, &dv_id2, &project_id2).await;
+                            let schema_change = if let Ok(Some(prev)) = db()
+                                .get_prev_committed_schema(&dataset_id2, version2).await
+                            { detect_schema_change(&prev, &schema_json) } else { "none" };
+                            let _ = db().commit_dataset_version(&dv_id2, &dataset_id2, count as i64, &schema_json).await;
+                            let _ = db().set_version_schema_change(&dv_id2, schema_change).await;
+                            let _ = db().finish_sync_run(&run_id2, "completed", None, None).await;
+                            auto_promote_if_mapped(&dataset_id2).await;
+                        }
+                        Err(e) => {
+                            let _ = db().abort_dataset_version(&dv_id2).await;
+                            let _ = db().finish_sync_run(&run_id2, "failed", Some(&e), Some("sync_error")).await;
+                        }
+                    }
+                });
+            }
+
+            // Release the main lock and mark the trigger run as completed
+            let _ = db().finish_sync_run(&run.id, "completed", None, None).await;
+            let _ = db().release_write_lock(&source_id, "synced", None).await;
+            return (StatusCode::ACCEPTED, Json(json!({
+                "mode": "folder",
+                "job_ids": job_ids,
+            }))).into_response();
+        }
+    }
+
+    // ── S3/FTP per-file mode: one dataset per file ───────────────────────────
+    // Triggered when multiple files are explicitly provided, OR when auto-discovery
+    // finds more than one file in the bucket/prefix.
+    // Single-file S3 sources fall through to the single-file mode below.
+    if src.source_type == "s3" || src.source_type == "ftp" {
+        // Resolve file list: from request body → config.selected_files → auto-discover
+        let selected_files: Vec<String> = if let Some(f) = req.files.clone().filter(|f| !f.is_empty()) {
+            f
+        } else if let Some(arr) = config.get("selected_files").and_then(|v| v.as_array()) {
+            // Use files previously saved in source config (from UI file selector)
+            arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+        } else {
+            match build_s3_store(&config) {
+                Ok(store) => {
+                    let prefix = config["prefix"].as_str().unwrap_or("").trim();
+                    let stream = if prefix.is_empty() { store.list(None) }
+                                 else { store.list(Some(&OsPath::from(prefix))) };
+                    stream.try_collect::<Vec<_>>().await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|m| m.location.to_string())
+                        .filter(|f| { let l = f.to_lowercase(); l.ends_with(".csv") || l.ends_with(".json") || l.ends_with(".jsonl") })
+                        .collect()
+                }
+                Err(_) => vec![],
+            }
+        };
+
+        // Only enter per-file mode when there are multiple files.
+        // A single file falls through to the single-file mode below.
+        if selected_files.len() <= 1 {
+            // nothing — fall through
+        } else {
+        let project_id = db().get_fold(&src.fold_id).await
+            .ok().flatten()
+            .map(|f| f.project_id)
+            .unwrap_or_else(|| src.fold_id.clone());
+
+        let existing_datasets = db().list_datasets(&source_id).await.unwrap_or_default();
+        let ds_by_name: std::collections::HashMap<String, _> =
+            existing_datasets.into_iter().map(|d| (d.name.clone(), d)).collect();
+
+        let mut job_ids = vec![];
+        for file_key in &selected_files {
+            // Extract the filename portion from the S3 key (e.g. "raw/employees.csv" → "employees.csv")
+            let fname = file_key.rsplit('/').next().unwrap_or(file_key.as_str()).to_string();
+
+            let dataset = if let Some(d) = ds_by_name.get(&fname) {
+                d.clone()
+            } else {
+                match db().create_dataset(&source_id, &fname).await {
+                    Ok(d) => d,
+                    Err(e) => { eprintln!("[sync] failed to create dataset for {fname}: {e}"); continue; }
+                }
+            };
+
+            let file_run = match db().create_sync_run(&source_id).await {
+                Ok(r) => r,
+                Err(e) => { eprintln!("[sync] create_sync_run failed: {e}"); continue; }
+            };
+            let dv = match db().create_dataset_version(&dataset.id, &file_run.id).await {
+                Ok(v) => v,
+                Err(e) => { eprintln!("[sync] create_dataset_version failed: {e}"); continue; }
+            };
+
+            job_ids.push(file_run.id.clone());
+            let source_id2   = source_id.clone();
+            let run_id2      = file_run.id.clone();
+            let dataset_id2  = dataset.id.clone();
+            let dv_id2       = dv.id.clone();
+            let project_id2  = project_id.clone();
+            let source_type2 = src.source_type.clone();
+            let sync_mode2   = src.sync_mode.clone();
+            let config2      = config.clone();
+            let this_file    = vec![file_key.clone()];
+            let version2     = dv.version;
+
+            tokio::spawn(async move {
+                let result = run_sync_job(
+                    &source_id2, &run_id2, &dataset_id2, &dv_id2,
+                    &source_type2, &config2, &this_file, None,
+                ).await;
+                match result {
+                    Ok((records, sync_count)) => {
+                        let records = merge_records_for_mode(&sync_mode2, &dataset_id2, records).await;
+                        let schema_json = if !records.is_empty() {
+                            write_records_to_storage(records.clone(), &dataset_id2, version2, &run_id2, &dv_id2, &project_id2).await
+                        } else {
+                            // S3 per-file: records were written to SQLite by sync_s3, flush to platform storage
+                            write_to_platform_storage(&dataset_id2, version2, &run_id2, &dv_id2, "s3", &serde_json::Value::Null, &project_id2).await
+                        };
+                        let count = if records.is_empty() { sync_count } else { records.len() };
+                        let schema_change = if let Ok(Some(prev)) = db()
+                            .get_prev_committed_schema(&dataset_id2, version2).await
+                        { detect_schema_change(&prev, &schema_json) } else { "none" };
+                        let _ = db().commit_dataset_version(&dv_id2, &dataset_id2, count as i64, &schema_json).await;
+                        let _ = db().set_version_schema_change(&dv_id2, schema_change).await;
+                        let _ = db().finish_sync_run(&run_id2, "completed", None, None).await;
+                        auto_promote_if_mapped(&dataset_id2).await;
+                    }
+                    Err(e) => {
+                        let _ = db().abort_dataset_version(&dv_id2).await;
+                        let _ = db().finish_sync_run(&run_id2, "failed", Some(&e), Some("sync_error")).await;
+                    }
+                }
+            });
+        }
+
+        let _ = db().finish_sync_run(&run.id, "completed", None, None).await;
+        let _ = db().release_write_lock(&source_id, "synced", None).await;
+        return (StatusCode::ACCEPTED, Json(json!({
+            "mode": "folder",
+            "job_ids": job_ids,
+        }))).into_response();
+        } // end else (per-file mode)
+    } // end if s3/ftp
+
+    // ── Single-file / non-CSV mode ────────────────────────────────────────────
     // Get or create Dataset
     let datasets = db().list_datasets(&source_id).await.unwrap_or_default();
     let dataset = if let Some(d) = datasets.into_iter().next() {
@@ -1910,9 +2391,9 @@ async fn sync_source_handler(
     let dataset_id_ret = dataset_id.clone();
     let dv_id = dv.id.clone();
     let version = dv.version;
-    let config: serde_json::Value = serde_json::from_str(&src.config).unwrap_or(json!({}));
     let selected_files = req.files.clone().unwrap_or_default();
     let entity_type_id = req.entity_type_id.clone();
+    let sync_mode = src.sync_mode.clone();
 
     // Spawn background sync task
     tokio::spawn(async move {
@@ -1922,20 +2403,18 @@ async fn sync_source_handler(
         ).await;
 
         match result {
-            Ok(count) => {
-                // ── Write to platform storage ─────────────────────────────────
-                let schema_json = write_to_platform_storage(
-                    &dataset_id, version, &run_id, &dv_id,
-                    &src.source_type, &config, &project_id,
-                ).await;
-                // ── Schema evolution detection ────────────────────────────────
+            Ok((records, sync_count)) => {
+                let records = merge_records_for_mode(&sync_mode, &dataset_id, records).await;
+                let schema_json = if !records.is_empty() {
+                    write_records_to_storage(records.clone(), &dataset_id, version, &run_id, &dv_id, &project_id).await
+                } else {
+                    write_to_platform_storage(&dataset_id, version, &run_id, &dv_id, &src.source_type, &config, &project_id).await
+                };
+                // Use sync_count for S3/legacy paths that return empty records vec
+                let count = if records.is_empty() { sync_count } else { records.len() };
                 let schema_change = if let Ok(Some(prev)) = db()
                     .get_prev_committed_schema(&dataset_id, version).await
-                {
-                    detect_schema_change(&prev, &schema_json)
-                } else {
-                    "none"
-                };
+                { detect_schema_change(&prev, &schema_json) } else { "none" };
                 let _ = db().commit_dataset_version(&dv_id, &dataset_id, count as i64, &schema_json).await;
                 let _ = db().set_version_schema_change(&dv_id, schema_change).await;
                 if schema_change == "breaking" {
@@ -1943,6 +2422,7 @@ async fn sync_source_handler(
                 }
                 let _ = db().finish_sync_run(&run_id, "completed", None, None).await;
                 let _ = db().release_write_lock(&source_id, "synced", Some(count as i64)).await;
+                auto_promote_if_mapped(&dataset_id).await;
             }
             Err(e) => {
                 let _ = db().abort_dataset_version(&dv_id).await;
@@ -1959,6 +2439,9 @@ async fn sync_source_handler(
     }))).into_response()
 }
 
+/// Run a sync job. Returns (direct_records, count):
+/// - For CSV/JSON: direct_records is populated, write them straight to S3 (no SQLite rows).
+/// - For REST/DB/S3: direct_records is empty, count rows already written to SQLite (legacy path).
 async fn run_sync_job(
     source_id: &str,
     run_id: &str,
@@ -1968,17 +2451,136 @@ async fn run_sync_job(
     config: &serde_json::Value,
     selected_files: &[String],
     entity_type_id: Option<&str>,
-) -> Result<usize, String> {
+) -> Result<(Vec<serde_json::Value>, usize), String> {
     let _ = db().update_sync_run_progress(run_id, 0, None, None).await;
     let _ = db().set_sync_run_status(run_id, "running").await;
 
     match source_type {
-        "rest" => sync_rest(run_id, source_id, config, entity_type_id, dataset_id).await,
-        "db"   => sync_db(run_id, source_id, config, entity_type_id, dataset_id).await,
         "csv"  => sync_csv(run_id, source_id, config, entity_type_id, dataset_id).await,
         "json" => sync_json(run_id, source_id, config, entity_type_id, dataset_id).await,
-        "s3" | "ftp" => sync_s3(run_id, source_id, config, entity_type_id, dataset_id, selected_files).await,
+        // Legacy: REST/DB/S3 still write rows to SQLite; return empty vec to signal legacy path.
+        "rest" => sync_rest(run_id, source_id, config, entity_type_id, dataset_id).await.map(|n| (vec![], n)),
+        "db"   => sync_db(run_id, source_id, config, entity_type_id, dataset_id).await.map(|n| (vec![], n)),
+        "s3" | "ftp" => sync_s3(run_id, source_id, config, entity_type_id, dataset_id, selected_files).await.map(|n| (vec![], n)),
         _ => Err(format!("{} not yet implemented", source_type)),
+    }
+}
+
+/// Write records directly to platform storage (S3/local) without touching SQLite.
+/// Returns schema_json for committing the dataset version.
+async fn write_records_to_storage(
+    records: Vec<serde_json::Value>,
+    dataset_id: &str,
+    version: i64,
+    run_id: &str,
+    dv_id: &str,
+    project_id: &str,
+) -> String {
+    use palantir_storage::DatasetSchema;
+    if records.is_empty() {
+        return json!({"fields":[]}).to_string();
+    }
+    let (backend, _is_s3) = build_platform_backend().await;
+    let prefix = format!("platform_datasets/{}", project_id);
+    let store = palantir_storage::DatasetStore::new(backend, &prefix);
+    let schema = DatasetSchema::infer_from_records(&records);
+    let schema_json = serde_json::to_string(&schema).unwrap_or_else(|_| json!({"fields":[]}).to_string());
+    let mut writer = store.begin_write(dataset_id, version, run_id);
+    if let Err(e) = writer.append_records(&records).await {
+        eprintln!("[storage] append_records error: {e}");
+        return schema_json;
+    }
+    match writer.commit(schema).await {
+        Ok(_manifest) => {
+            let manifest_path = format!("{}/{}/v{}/manifest.json", prefix, dataset_id, version);
+            let _ = db().update_version_manifest_path(dv_id, &manifest_path).await;
+            eprintln!("[storage] ✓ {} rows written to {}", records.len(), manifest_path);
+            schema_json
+        }
+        Err(e) => {
+            eprintln!("[storage] commit error: {e}");
+            schema_json
+        }
+    }
+}
+
+/// Merge new records with existing dataset data according to sync_mode:
+/// - snapshot: return new_records as-is (default, full replace)
+/// - append:   read current version records + add new_records at the end
+/// - upsert:   read current version records, merge by primary key (new wins on conflict)
+async fn merge_records_for_mode(
+    sync_mode: &str,
+    dataset_id: &str,
+    new_records: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    if sync_mode == "snapshot" {
+        return new_records;
+    }
+
+    // Read current version records from platform storage
+    let current = match db().get_current_dataset_version(dataset_id).await {
+        Ok(Some(dv)) if dv.manifest_path.is_some() => {
+            let (backend, _) = build_platform_backend().await;
+            let mp = dv.manifest_path.unwrap();
+            palantir_storage::read_records_from_manifest_path(&backend, &mp)
+                .await
+                .unwrap_or_default()
+        }
+        _ => vec![],
+    };
+
+    if current.is_empty() {
+        return new_records;
+    }
+
+    match sync_mode {
+        "append" => {
+            // Cumulative snapshot: keep all old rows + add new rows
+            let mut merged = current;
+            merged.extend(new_records);
+            merged
+        }
+        "upsert" => {
+            // Merge by primary key: look up pk_col from object_type_mappings
+            let pk_col = db().get_object_type_mapping(dataset_id).await
+                .ok().flatten()
+                .and_then(|m| m.get("primary_key_col").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .filter(|k: &String| !k.is_empty());
+
+            if let Some(pk) = pk_col {
+                // Build map from existing records keyed by pk value
+                // Build ordered list with a HashMap index for O(1) lookup
+                let mut keys: Vec<String> = Vec::with_capacity(current.len());
+                let mut map: std::collections::HashMap<String, serde_json::Value> =
+                    std::collections::HashMap::new();
+                for r in current {
+                    if let Some(key) = r.get(&pk).and_then(|v| v.as_str().map(|s| s.to_string())) {
+                        keys.push(key.clone());
+                        map.insert(key, r);
+                    }
+                }
+                // Upsert: new records overwrite existing entries with same pk
+                let mut extra: Vec<serde_json::Value> = vec![];
+                for rec in new_records {
+                    if let Some(key) = rec.get(&pk).and_then(|v| v.as_str().map(|s| s.to_string())) {
+                        if !map.contains_key(&key) { keys.push(key.clone()); }
+                        map.insert(key, rec);
+                    } else {
+                        extra.push(rec);
+                    }
+                }
+                let mut result: Vec<_> = keys.into_iter().filter_map(|k| map.remove(&k)).collect();
+                result.extend(extra);
+                result
+            } else {
+                // No mapping configured yet, fall back to append
+                eprintln!("[sync] upsert mode but no primary_key_col configured for dataset {dataset_id}, falling back to append");
+                let mut merged = current;
+                merged.extend(new_records);
+                merged
+            }
+        }
+        _ => new_records,
     }
 }
 
@@ -2135,38 +2737,31 @@ async fn sync_db_query(
     Ok(total)
 }
 
+/// Collect CSV records without writing to SQLite. Returns the raw records for direct S3 write.
 async fn sync_csv(
     run_id: &str,
     _source_id: &str,
     config: &serde_json::Value,
-    entity_type_id: Option<&str>,
-    dataset_id: &str,
-) -> Result<usize, String> {
+    _entity_type_id: Option<&str>,
+    _dataset_id: &str,
+) -> Result<(Vec<serde_json::Value>, usize), String> {
     let path = config["path"].as_str().unwrap_or("");
     if path.is_empty() { return Err("path is required".into()); }
     let adapter = CsvAdapter::new("sync", path, "ns", "schema");
     let records = adapter.fetch_preview(usize::MAX).await.map_err(|e| e.to_string())?;
     let total = records.len();
-    for (i, rec) in records.iter().enumerate() {
-        let label = extract_label(rec);
-        let fields = serde_json::to_string(rec).unwrap_or_else(|_| "{}".into());
-        let et_id = entity_type_id.unwrap_or("default");
-        db().create_ontology_object_with_lineage(et_id, et_id, &label, &fields, dataset_id, run_id)
-            .await.map_err(|e| format!("insert failed: {e}"))?;
-        if i % 50 == 0 {
-            let _ = db().update_sync_run_progress(run_id, i as i64, Some(total as i64), None).await;
-        }
-    }
-    Ok(total)
+    let _ = db().update_sync_run_progress(run_id, total as i64, Some(total as i64), None).await;
+    Ok((records, total))
 }
 
+/// Collect JSON records without writing to SQLite. Returns the raw records for direct S3 write.
 async fn sync_json(
     run_id: &str,
     _source_id: &str,
     config: &serde_json::Value,
-    entity_type_id: Option<&str>,
-    dataset_id: &str,
-) -> Result<usize, String> {
+    _entity_type_id: Option<&str>,
+    _dataset_id: &str,
+) -> Result<(Vec<serde_json::Value>, usize), String> {
     let path = config["path"].as_str().unwrap_or("");
     if path.is_empty() { return Err("path is required".into()); }
     let mut adapter = JsonAdapter::new("sync", path, "ns", "schema");
@@ -2175,17 +2770,8 @@ async fn sync_json(
     }
     let records = adapter.fetch_preview(usize::MAX).await.map_err(|e| e.to_string())?;
     let total = records.len();
-    for (i, rec) in records.iter().enumerate() {
-        let label = extract_label(rec);
-        let fields = serde_json::to_string(rec).unwrap_or_else(|_| "{}".into());
-        let et_id = entity_type_id.unwrap_or("default");
-        db().create_ontology_object_with_lineage(et_id, et_id, &label, &fields, dataset_id, run_id)
-            .await.map_err(|e| format!("insert failed: {e}"))?;
-        if i % 50 == 0 {
-            let _ = db().update_sync_run_progress(run_id, i as i64, Some(total as i64), None).await;
-        }
-    }
-    Ok(total)
+    let _ = db().update_sync_run_progress(run_id, total as i64, Some(total as i64), None).await;
+    Ok((records, total))
 }
 
 // ── Ingest API: Jobs ──────────────────────────────────────────────────────────
@@ -2219,10 +2805,18 @@ async fn list_jobs_handler(Path(source_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-// ── Ingest API: Datasets & Versions ──────────────────────────────────────────
+/// ── Ingest API: Datasets & Versions ──────────────────────────────────────────
+
+/// GET /api/datasets — list all datasets with record_count
+async fn list_all_datasets_handler() -> impl IntoResponse {
+    match db().list_all_datasets().await {
+        Ok(rows) => (StatusCode::OK, Json(json!({"datasets": rows}))).into_response(),
+        Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":e.to_string()}))).into_response(),
+    }
+}
 
 async fn list_datasets_handler(Path(source_id): Path<String>) -> impl IntoResponse {
-    match db().list_datasets(&source_id).await {
+    match db().list_datasets_with_count(&source_id).await {
         Ok(rows) => (StatusCode::OK, Json(json!({"datasets": rows}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":e.to_string()}))).into_response(),
     }
@@ -2304,13 +2898,40 @@ async fn list_dataset_records_handler(
     Path(id): Path<String>,
     Query(q): Query<RecordsQuery>,
 ) -> impl IntoResponse {
-    let limit = q.limit.unwrap_or(50).min(500);
-    let offset = q.offset.unwrap_or(0);
-    let total = match db().count_dataset_records(&id).await {
-        Ok(n) => n,
+    let limit = q.limit.unwrap_or(50).min(500) as usize;
+    let offset = q.offset.unwrap_or(0) as usize;
+
+    // Try S3-first path: read from manifest
+    let dv = match db().get_current_dataset_version(&id).await {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            return (StatusCode::OK, Json(json!({"records":[],"total":0,"limit":limit,"offset":offset}))).into_response();
+        }
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":e.to_string()}))).into_response(),
     };
-    match db().list_dataset_records(&id, limit, offset).await {
+
+    if let Some(manifest_path) = &dv.manifest_path {
+        let (backend, _) = build_platform_backend().await;
+        match palantir_storage::read_records_from_manifest_path(&backend, manifest_path).await {
+            Ok(all_records) => {
+                let total = all_records.len();
+                let page: Vec<serde_json::Value> = all_records.into_iter().skip(offset).take(limit).collect();
+                return (StatusCode::OK, Json(json!({
+                    "records": page,
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                }))).into_response();
+            }
+            Err(e) => {
+                eprintln!("[records] S3 read failed ({e}), falling back to SQLite");
+            }
+        }
+    }
+
+    // Fallback: SQLite (legacy REST/DB sources)
+    let total = db().count_dataset_records(&id).await.unwrap_or(0);
+    match db().list_dataset_records(&id, limit as i64, offset as i64).await {
         Ok(rows) => {
             let records: Vec<serde_json::Value> = rows.into_iter().map(|r| {
                 let fields: serde_json::Value = serde_json::from_str(&r.fields).unwrap_or(json!({}));
@@ -2324,6 +2945,278 @@ async fn list_dataset_records_handler(
             }))).into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":e.to_string()}))).into_response(),
+    }
+}
+
+// ── Promote dataset → ontology ────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct PromoteDatasetReq {
+    /// Existing entity type id, OR empty to auto-create from new_type_name
+    #[serde(default)]
+    entity_type_id: String,
+    /// Create a new entity type with this display name if entity_type_id is empty
+    #[serde(default)]
+    new_type_name: String,
+    /// Column in the record to use as external_id for upsert (dedup key).
+    /// Leave empty to always insert (no dedup).
+    #[serde(default)]
+    primary_key_col: String,
+    /// { "src_field": "target_attr" } — omit or empty to keep field names as-is
+    #[serde(default)]
+    field_mapping: serde_json::Value,
+    /// FK → entity type links to resolve after promote
+    #[serde(default)]
+    links: Vec<LinkTypeMappingInput>,
+    /// snapshot | append | update  (default: snapshot)
+    #[serde(default = "default_sync_mode")]
+    sync_mode: String,
+    /// Fold (sub-business BC) this ET belongs to; null = shared/common
+    #[serde(default)]
+    fold_id: Option<String>,
+}
+
+async fn promote_dataset_handler(
+    Path(dataset_id): Path<String>,
+    Json(req): Json<PromoteDatasetReq>,
+) -> impl IntoResponse {
+    // ── Resolve / create entity type ──────────────────────────────────────────
+    let (et_id, et_name) = if !req.entity_type_id.is_empty() {
+        let types = db().list_entity_types().await.unwrap_or_default();
+        match types.into_iter().find(|t| t.id == req.entity_type_id) {
+            Some(t) => (t.id, t.display_name),
+            None => return (StatusCode::BAD_REQUEST,
+                Json(json!({"ok": false, "error": "entity type not found"}))).into_response(),
+        }
+    } else if !req.new_type_name.is_empty() {
+        let name = req.new_type_name.trim().to_lowercase().replace(' ', "_");
+        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube", req.fold_id.as_deref()).await {
+            Ok(t) => (t.id, t.display_name),
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+        }
+    } else {
+        return (StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "error": "entity_type_id or new_type_name required"}))).into_response();
+    };
+
+    // ── Assign ET to fold if specified ───────────────────────────────────────
+    if let Some(ref fold_id) = req.fold_id {
+        let fid = if fold_id.is_empty() { None } else { Some(fold_id.as_str()) };
+        let _ = db().update_entity_type_fold(&et_id, fid).await;
+    }
+
+    // ── Persist mapping so re-sync can reuse it ───────────────────────────────
+    let mapping_str = req.field_mapping.to_string();
+    let _ = db().save_object_type_mapping(
+        &dataset_id, &et_id, &req.primary_key_col, &mapping_str, &req.sync_mode,
+    ).await;
+
+    // ── Persist link type mappings (FK → target entity type) ──────────────────
+    if !req.links.is_empty() {
+        let _ = db().save_link_type_mappings(&dataset_id, &req.links).await;
+    }
+
+    // ── Read raw records: S3-first, fallback to SQLite ────────────────────────
+    let raw_records: Vec<serde_json::Value> = {
+        // Try S3 path via manifest
+        let dv = db().get_current_dataset_version(&dataset_id).await
+            .ok().flatten();
+        let from_s3 = if let Some(dv) = &dv {
+            if let Some(mp) = &dv.manifest_path {
+                let (backend, _) = build_platform_backend().await;
+                palantir_storage::read_records_from_manifest_path(&backend, mp).await.ok()
+            } else { None }
+        } else { None };
+
+        if let Some(records) = from_s3 {
+            records
+        } else {
+            // Fallback: SQLite (legacy REST/DB sources)
+            let total = match db().count_dataset_records(&dataset_id).await {
+                Ok(n) => n,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+            };
+            match db().list_dataset_records(&dataset_id, total.max(1), 0).await {
+                Ok(rows) => rows.into_iter()
+                    .map(|r| serde_json::from_str(&r.fields).unwrap_or(json!({})))
+                    .collect(),
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+            }
+        }
+    };
+
+    if raw_records.is_empty() {
+        return (StatusCode::OK, Json(json!({"ok": true, "promoted": 0, "total": 0,
+            "note": "dataset has no records — run sync first"}))).into_response();
+    }
+
+    let mut promoted = 0usize;
+    let pk = req.primary_key_col.trim();
+
+    for raw in &raw_records {
+        let mapped = apply_field_mapping(raw, &req.field_mapping);
+        let label  = extract_label(&mapped);
+        let fields = mapped.to_string();
+        let ext_id: Option<String> = if !pk.is_empty() {
+            mapped.get(pk)
+                .or_else(|| raw.get(pk))
+                .map(|v| match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                })
+        } else {
+            None
+        };
+        if let Err(e) = db().upsert_ontology_object(
+            &et_id, &et_name, ext_id.as_deref(), &label, &fields, &dataset_id, "promote",
+        ).await {
+            return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"ok": false, "error": e.to_string()}))).into_response();
+        }
+        promoted += 1;
+    }
+    let total = raw_records.len();
+
+    // ── Resolve FK links → ontology_links ────────────────────────────────────
+    let links_resolved = db().resolve_links_for_dataset(&dataset_id).await.unwrap_or(0);
+
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "promoted": promoted,
+        "total": total,
+        "entity_type_id": et_id,
+        "entity_type_name": et_name,
+        "dedup": !pk.is_empty(),
+        "links_resolved": links_resolved,
+    }))).into_response()
+}
+
+/// Auto-promote a dataset if it has a saved mapping. Called after every successful sync.
+async fn auto_promote_if_mapped(dataset_id: &str) {
+    let mapping = match db().get_object_type_mapping(dataset_id).await {
+        Ok(Some(m)) => m,
+        _ => return,
+    };
+    let et_id = match mapping["entity_type_id"].as_str() {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return,
+    };
+    let types = db().list_entity_types().await.unwrap_or_default();
+    let et = match types.into_iter().find(|t| t.id == et_id) {
+        Some(t) => t,
+        None => { eprintln!("[auto-promote] entity type {} not found", et_id); return; }
+    };
+    let dv = match db().get_current_dataset_version(dataset_id).await.ok().flatten() {
+        Some(dv) => dv,
+        None => return,
+    };
+    let manifest_path = match dv.manifest_path {
+        Some(mp) => mp,
+        None => return,
+    };
+    let (backend, _) = build_platform_backend().await;
+    let records = match palantir_storage::read_records_from_manifest_path(&backend, &manifest_path).await {
+        Ok(r) => r,
+        Err(e) => { eprintln!("[auto-promote] read records error: {e}"); return; }
+    };
+    let field_mapping: serde_json::Value = mapping["field_mapping"].as_str()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(json!({}));
+    let pk = mapping["primary_key_col"].as_str().unwrap_or("").to_string();
+    let sync_mode = mapping["sync_mode"].as_str().unwrap_or("snapshot").to_string();
+
+    // SNAPSHOT: clear existing promoted objects for this dataset before re-inserting
+    if sync_mode == "snapshot" {
+        let _ = db().delete_ontology_objects_by_dataset(dataset_id).await;
+    }
+
+    let mut count = 0usize;
+    for raw in &records {
+        let mapped = apply_field_mapping(raw, &field_mapping);
+        let label  = extract_label(&mapped);
+        let fields = mapped.to_string();
+        let ext_id: Option<String> = if !pk.is_empty() {
+            mapped.get(&pk).or_else(|| raw.get(&pk)).map(|v| match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+        } else { None };
+        // APPEND: skip if object already exists (insert only new records)
+        if sync_mode == "append" && ext_id.is_some() {
+            // upsert_ontology_object will skip update if ext_id conflicts — good enough for append
+            // Use INSERT OR IGNORE semantics by checking first
+            let _ = db().upsert_ontology_object(
+                &et.id, &et.display_name, ext_id.as_deref(), &label, &fields, dataset_id, "auto-promote",
+            ).await;
+        } else {
+            let _ = db().upsert_ontology_object(
+                &et.id, &et.display_name, ext_id.as_deref(), &label, &fields, dataset_id, "auto-promote",
+            ).await;
+        }
+        count += 1;
+    }
+    eprintln!("[auto-promote] [{}] ✓ {} objects → \"{}\" (dataset {})", sync_mode, count, et.display_name, dataset_id);
+}
+
+#[derive(serde::Deserialize)]
+struct SaveDatasetMappingReq {
+    entity_type_id:  String,
+    primary_key_col: String,
+    field_mapping:   serde_json::Value,
+    #[serde(default = "default_sync_mode")]
+    sync_mode: String,
+    /// Fold (sub-business BC) to assign the ET to; null = shared/common
+    #[serde(default)]
+    fold_id: Option<String>,
+}
+async fn save_dataset_mapping_handler(
+    Path(dataset_id): Path<String>,
+    Json(req): Json<SaveDatasetMappingReq>,
+) -> impl IntoResponse {
+    let mapping_str = req.field_mapping.to_string();
+    // Update ET's fold assignment if provided
+    if let Some(ref fold_id) = req.fold_id {
+        let fid = if fold_id.is_empty() { None } else { Some(fold_id.as_str()) };
+        let _ = db().update_entity_type_fold(&req.entity_type_id, fid).await;
+    }
+    match db().save_object_type_mapping(&dataset_id, &req.entity_type_id, &req.primary_key_col, &mapping_str, &req.sync_mode).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn update_entity_type_fold_handler(
+    Path(et_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let fold_id = body["fold_id"].as_str();
+    match db().update_entity_type_fold(&et_id, fold_id).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateDatasetSyncModeReq { sync_mode: String }
+async fn update_dataset_sync_mode_handler(
+    Path(dataset_id): Path<String>,
+    Json(req): Json<UpdateDatasetSyncModeReq>,
+) -> impl IntoResponse {
+    match db().update_dataset_sync_mode(&dataset_id, &req.sync_mode).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// GET /api/datasets/:id/mapping — return saved promote mapping for a dataset
+async fn get_dataset_mapping_handler(Path(dataset_id): Path<String>) -> impl IntoResponse {
+    match db().get_object_type_mapping(&dataset_id).await {
+        Ok(Some(m)) => (StatusCode::OK, Json(json!({"ok": true, "mapping": m}))).into_response(),
+        Ok(None)    => (StatusCode::OK, Json(json!({"ok": true, "mapping": null}))).into_response(),
+        Err(e)      => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 
@@ -2950,12 +3843,18 @@ async fn main() -> anyhow::Result<()> {
         .route("/connect", get(connect_page))
         .route("/ingest", get(projects_page))
         .route("/ingest/project/:id", get(ingest_project_page))
+        .route("/project/:id",        get(project_workspace_page))
         .route("/ingest/fold/:id", get(ingest_fold_page))
+        .route("/static/d3.v7.min.js", get(|| async {
+            ([(axum::http::header::CONTENT_TYPE, "application/javascript")],
+             include_str!("ui/d3.v7.min.js"))
+        }))
         .route("/healthz", get(healthz))
         // Ontology TBox (Schema)
         .route("/api/ontology/schema", get(list_entity_types_handler).post(create_entity_type_handler))
         .route("/api/ontology/schema/:id", axum::routing::delete(delete_entity_type_handler))
         .route("/api/ontology/schema/:id/fields", post(add_field_handler))
+        .route("/api/ontology/schema/:id/fold", axum::routing::put(update_entity_type_fold_handler))
         .route("/api/ontology/fields/:id", axum::routing::delete(delete_field_handler))
         // Ontology ABox (Objects)
         .route("/api/ontology/objects", get(list_objects_handler).post(create_object_handler))
@@ -2970,11 +3869,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/ontology/links/:id", axum::routing::delete(delete_link_handler))
         // Graph view
         .route("/api/ontology/graph", get(get_ontology_graph_handler))
+        .route("/api/ontology/schema-links", get(list_schema_links_handler))
         // Project management
         .route("/api/projects", get(list_projects).post(create_project))
         .route(
             "/api/projects/:id",
-            get(get_project).delete(delete_project_handler),
+            get(get_project).delete(delete_project_handler).patch(patch_project),
         )
         .route("/api/projects/:id/connectors", get(list_project_connectors))
         .route("/api/projects/:id/builds", get(list_project_builds))
@@ -2985,6 +3885,7 @@ async fn main() -> anyhow::Result<()> {
         )
         // Ingest
         .route("/api/upload", post(upload_csv))
+        .route("/api/upload/source", post(upload_source_files))
         .route("/api/inspect", post(inspect))
         .route("/api/workspace/build", post(workspace_build))
         .route(
@@ -2992,6 +3893,7 @@ async fn main() -> anyhow::Result<()> {
             post(|| async { (StatusCode::OK, Json(json!({"ok":true}))) }),
         )
         // Sources multi-adapter demo
+        .route("/api/sources",           get(list_all_sources_handler).post(create_source_simple))
         .route("/api/sources/test",      post(source_test))
         .route("/api/sources/quick-test", post(quick_test_handler))
         .route("/api/sources/discover", post(source_discover))
@@ -3012,10 +3914,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/sources/:id/jobs",     get(list_jobs_handler))
         .route("/api/sources/:id/datasets", get(list_datasets_handler))
         .route("/api/jobs/:id",             get(get_job_handler))
+        .route("/api/datasets",              get(list_all_datasets_handler))
         .route("/api/datasets/:id",         get(get_dataset_handler))
         .route("/api/datasets/:id/versions", get(list_dataset_versions_handler))
         .route("/api/datasets/:id/rollback", post(rollback_dataset_handler))
         .route("/api/datasets/:id/gc",       post(gc_dataset_handler))
+        .route("/api/datasets/:id/promote",  post(promote_dataset_handler))
+        .route("/api/datasets/:id/mapping",  get(get_dataset_mapping_handler).post(save_dataset_mapping_handler))
+        .route("/api/datasets/:id/sync-mode", axum::routing::put(update_dataset_sync_mode_handler))
         .route("/api/datasets/:id/records", get(list_dataset_records_handler))
         .route("/api/datasets/:id/export/s3", post(export_dataset_s3_handler))
         // ── Admin: platform storage config ───────────────────────────────────

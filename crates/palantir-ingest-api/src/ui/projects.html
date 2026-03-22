@@ -235,8 +235,7 @@ function cardHtml(p) {
       <span class="status-badge ${badgeCls}">${badgeTxt}</span>
     </div>
     <div class="proj-actions" onclick="event.stopPropagation()">
-      <a href="/ingest/project/${p.id}" class="btn-enter">进入 →</a>
-      <a href="/workspace?project_id=${p.id}" class="btn-ontology">Ontology</a>
+      <a href="/project/${p.id}" class="btn-enter">进入 →</a>
       <button class="btn-del" onclick="delProject('${p.id}','${esc(p.name)}')">删除</button>
     </div>
   </div>`;
@@ -249,7 +248,7 @@ function filter(q) {
 }
 
 // ── Navigate ──────────────────────────────────────────────────────────────────
-function gotoProject(id) { location.href = `/ingest/project/${id}`; }
+function gotoProject(id) { location.href = `/project/${id}`; }
 
 // ── Create ────────────────────────────────────────────────────────────────────
 function openModal() {

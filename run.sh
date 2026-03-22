@@ -35,5 +35,13 @@ if [ ! -f "$BINARY" ]; then
     cargo build -p palantir_ingest_api
 fi
 
+# ── Kill any running instance ───────────────────────────────────────────────
+PIDS=$(pgrep -f "palantir_ingest_api" 2>/dev/null || true)
+if [ -n "$PIDS" ]; then
+    echo "[run.sh] killing existing process(es): $PIDS"
+    kill $PIDS
+    sleep 1
+fi
+
 echo "[run.sh] starting binary: $BINARY $*"
 exec "$BINARY" "$@"

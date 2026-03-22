@@ -4,6 +4,36 @@ use crate::writer::DatasetWriter;
 use anyhow::Result;
 use std::sync::Arc;
 
+/// Read all records from a committed dataset version given its manifest path.
+/// `manifest_path` is the full storage path to manifest.json, e.g.
+/// `platform_datasets/{project_id}/{dataset_id}/v{n}/manifest.json`.
+pub async fn read_records_from_manifest_path(
+    backend: &Arc<dyn StorageBackend>,
+    manifest_path: &str,
+) -> Result<Vec<serde_json::Value>> {
+    let bytes = backend.get(manifest_path).await?;
+    let manifest: DatasetManifest = serde_json::from_slice(&bytes)?;
+    let base = manifest_path.trim_end_matches("/manifest.json");
+    let mut all_records = Vec::new();
+    for file_entry in &manifest.files {
+        let path = format!("{}/{}", base, file_entry.path);
+        let data_bytes = backend.get(&path).await?;
+        let mut rdr = csv::Reader::from_reader(data_bytes.as_ref());
+        let headers = rdr.headers()?.clone();
+        for row in rdr.records() {
+            let row = row?;
+            let mut obj = serde_json::Map::new();
+            for (i, v) in row.iter().enumerate() {
+                if let Some(h) = headers.get(i) {
+                    obj.insert(h.to_string(), serde_json::Value::String(v.to_string()));
+                }
+            }
+            all_records.push(serde_json::Value::Object(obj));
+        }
+    }
+    Ok(all_records)
+}
+
 /// Version-aware dataset store built on top of a StorageBackend.
 ///
 /// Path convention (Iter-1, no tenant prefix):

@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Project — Palantir</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#0f172a;color:#e2e8f0;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-thumb{background:#334155;border-radius:4px;}
+
+/* ── TopBar ── */
+.topbar{display:flex;align-items:center;flex-shrink:0;border-bottom:1px solid #1e293b;
+        padding:0 20px;height:48px;gap:8px;background:#0f172a;}
+.logo{font-size:14px;font-weight:700;color:#a78bfa;flex-shrink:0;}
+.sep{color:#1e293b;font-size:18px;}
+.breadcrumb-link{color:#64748b;font-size:13px;text-decoration:none;}
+.breadcrumb-link:hover{color:#94a3b8;}
+.proj-name-label{font-size:13px;font-weight:600;color:#e2e8f0;}
+
+/* ── Tab bar ── */
+.tabbar{display:flex;align-items:center;flex-shrink:0;border-bottom:1px solid #1e293b;
+        padding:0 20px;height:44px;gap:0;background:#0f172a;}
+.tabbar .step{display:flex;align-items:center;gap:6px;padding:0 16px;height:100%;font-size:13px;
+              color:#64748b;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s;}
+.tabbar .step:hover{color:#94a3b8;}
+.tabbar .step.active{color:#a78bfa;border-bottom-color:#a78bfa;}
+.step-num{width:18px;height:18px;border-radius:50%;background:#1e293b;font-size:11px;font-weight:600;
+          display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.step.active .step-num{background:#a78bfa;color:#0f172a;}
+
+/* ── Content area ── */
+.content{flex:1;min-height:0;display:flex;flex-direction:column;}
+.tab-panel{display:none;flex:1;min-height:0;}
+.tab-panel.active{display:flex;}
+
+/* ── Shared inputs/buttons ── */
+input,select,textarea{
+  background:#0f172a;border:1px solid #334155;color:#e2e8f0;
+  border-radius:8px;padding:8px 12px;font-size:13px;outline:none;
+  line-height:1.5;box-sizing:border-box;
+  transition:border-color .15s,box-shadow .15s;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:#6366f1;
+  box-shadow:0 0 0 3px rgba(99,102,241,.15);
+}
+input::placeholder{color:#475569;}
+button{cursor:pointer;border-radius:8px;font-size:13px;font-weight:500;transition:opacity .15s;line-height:1.5;border:none;}
+button:hover{opacity:.85;}button:disabled{opacity:.4;cursor:not-allowed;}
+.btn-primary{background:#6366f1;color:#fff;padding:8px 20px;border:none;}
+.btn-ghost{background:transparent;border:1px solid #334155;color:#94a3b8;padding:7px 16px;}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.btn-danger{background:#dc2626;color:#fff;border:none;padding:6px 12px;font-size:12px;}
+.btn-green{background:#16a34a;color:#fff;border:none;padding:8px 20px;}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;}
+
+/* ── Sidebar ── */
+.sidebar{width:220px;flex-shrink:0;border-right:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden;}
+.sidebar-header{padding:12px 14px;font-size:11px;font-weight:600;color:#64748b;
+                text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #1e293b;
+                display:flex;align-items:center;justify-content:space-between;}
+.sidebar-body{flex:1;overflow-y:auto;padding:8px;}
+.sidebar-item{width:100%;text-align:left;padding:8px 10px;border-radius:6px;background:transparent;
+              border:none;color:#94a3b8;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;}
+.sidebar-item:hover{background:#1e293b;}
+.sidebar-item.active{background:#312e81;color:#a5b4fc;}
+
+/* ── Status dots ── */
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.dot-idle{background:#334155;}.dot-syncing{background:#f59e0b;}.dot-synced{background:#10b981;}.dot-error{background:#ef4444;}
+.status-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 7px;border-radius:20px;}
+.badge-synced{background:rgba(16,185,129,.1);color:#10b981;}
+.badge-error{background:rgba(239,68,68,.1);color:#ef4444;}
+.badge-idle{background:rgba(100,116,139,.1);color:#64748b;}
+.badge-mapped{background:rgba(99,102,241,.12);color:#818cf8;}
+.badge-unmapped{background:rgba(245,158,11,.1);color:#f59e0b;}
+</style>
+</head>
+<body>
+
+<!-- TopBar -->
+<div class="topbar">
+  <span class="logo">Palantir</span>
+  <span class="sep">/</span>
+  <a href="/" class="breadcrumb-link">Workspace</a>
+  <span class="sep">/</span>
+  <span class="proj-name-label" id="proj-label">加载中…</span>
+  <nav style="margin-left:auto;display:flex;gap:20px;">
+    <a href="/" style="color:#64748b;text-decoration:none;font-size:13px;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">Workspace</a>
+    <a id="nav-ontology-link" href="/ontology" style="color:#64748b;text-decoration:none;font-size:13px;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">Ontology</a>
+  </nav>
+</div>
+
+<!-- Tab bar -->
+<div class="tabbar">
+  <div class="step active" onclick="switchTab('ingest')" id="tab-btn-ingest">
+    <span class="step-num">1</span> 数据接入
+  </div>
+  <a id="tab-ontology-link" href="/ontology" style="display:flex;align-items:center;gap:6px;padding:0 16px;color:#64748b;text-decoration:none;font-size:13px;border-bottom:2px solid transparent;transition:color .15s;"
+     onmouseover="this.style.color='#a78bfa';this.style.borderBottomColor='#6366f1'" onmouseout="this.style.color='#64748b';this.style.borderBottomColor='transparent'">
+    Ontology →
+  </a>
+  <div class="step" style="margin-left:auto;" onclick="switchTab('settings')" id="tab-btn-settings">
+    ⚙ 设置
+  </div>
+</div>
+
+<!-- Content -->
+<div class="content">
+
+  <!-- ══════════════════════════════════════════
+       Tab 1: 数据接入
+  ══════════════════════════════════════════ -->
+  <div class="tab-panel active" id="panel-ingest" style="flex-direction:row;">
+
+    <!-- Source sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        数据源
+        <button class="btn-primary btn-sm" onclick="showAddSource()">+ 新建</button>
+      </div>
+      <div class="sidebar-body" id="source-list"></div>
+    </div>
+
+    <!-- Source detail -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;">
+
+      <!-- Empty state -->
+      <div id="src-empty" style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#475569;">
+        <div style="font-size:40px;opacity:.3;">🔌</div>
+        <p style="font-size:14px;">选择一个数据源，或新建连接</p>
+      </div>
+
+      <!-- Add / Edit form — two-column layout -->
+      <div id="src-form" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+        <!-- Form header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid #1e293b;flex-shrink:0;">
+          <h3 id="src-form-title" style="font-size:14px;font-weight:600;color:#e2e8f0;"></h3>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-ghost btn-sm" onclick="cancelSourceForm()">取消</button>
+            <button class="btn-primary btn-sm" onclick="submitSourceForm()">保存</button>
+          </div>
+        </div>
+        <!-- Two-column body -->
+        <div style="display:flex;flex:1;height:calc(100% - 49px);overflow:hidden;">
+          <!-- Left: connection config -->
+          <div style="width:400px;flex-shrink:0;overflow-y:auto;padding:20px 24px;border-right:1px solid #1e293b;display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">名称</label>
+              <input id="sf-name" placeholder="数据源名称" style="width:100%;"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">类型</label>
+              <select id="sf-type" style="width:100%;" onchange="renderSourceFields()">
+                <option value="s3">S3 / RustFS</option>
+                <option value="csv">CSV 文件</option>
+                <option value="db">数据库</option>
+                <option value="rest">REST API</option>
+              </select>
+            </div>
+            <div id="sf-fields"></div>
+            <p id="sf-err" style="display:none;font-size:12px;color:#f87171;"></p>
+          </div>
+          <!-- Right: test & file discovery -->
+          <div style="flex:1;min-width:0;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:12px;">
+            <p style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">连接测试 & 文件发现</p>
+            <button type="button" class="btn-ghost" onclick="sfTestConnection()" style="align-self:flex-start;display:flex;align-items:center;gap:8px;">
+              🔌 测试连接 &amp; 发现文件
+            </button>
+            <div id="sf-test-result"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail panel -->
+      <div id="src-detail" style="display:none;flex:1;min-height:0;flex-direction:column;">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #1e293b;flex-shrink:0;">
+          <div>
+            <h2 id="sd-name" style="font-size:16px;font-weight:600;color:#fff;"></h2>
+            <p id="sd-meta" style="font-size:12px;color:#64748b;margin-top:2px;"></p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="sd-sync-btn" class="btn-green btn-sm" onclick="syncSource()">▶ Sync Now</button>
+            <button class="btn-ghost btn-sm" onclick="editCurrentSource()">编辑</button>
+            <button class="btn-danger btn-sm" onclick="deleteCurrentSource()">删除</button>
+          </div>
+        </div>
+        <div style="padding:8px 24px;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:12px;font-size:12px;color:#64748b;flex-shrink:0;">
+          <span id="sd-last-sync"></span>
+        </div>
+        <!-- Datasets + Sync history -->
+        <div style="flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px;">
+          <!-- Ontology hint (shown after sync) -->
+          <div id="ontology-hint" style="display:none;align-items:center;gap:12px;padding:10px 16px;border-radius:8px;background:rgba(99,102,241,.12);border:1px solid #4f46e5;">
+            <span style="font-size:13px;color:#a5b4fc;">✓ 同步完成 — 已配置映射的数据集将自动 Promote 到 Ontology</span>
+            <a href="/ontology" style="margin-left:auto;font-size:12px;color:#818cf8;text-decoration:none;white-space:nowrap;border:1px solid #4f46e5;padding:4px 12px;border-radius:6px;"
+               onmouseover="this.style.background='#312e81'" onmouseout="this.style.background=''">
+              前往 Ontology →
+            </a>
+          </div>
+          <div style="display:grid;grid-template-columns:3fr 2fr;gap:20px;align-content:start;">
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Datasets</p>
+              <div id="sd-datasets" style="display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Sync 历史</p>
+              <div id="sd-jobs" style="display:flex;flex-direction:column;gap:4px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       Tab 2: 设置
+  ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-settings" style="flex-direction:column;overflow-y:auto;padding:32px;max-width:480px;">
+    <h3 style="font-size:15px;font-weight:600;color:#e2e8f0;margin-bottom:20px;">项目设置</h3>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px;">项目名称</label>
+        <input id="settings-name" style="width:100%;" placeholder="项目名称"/>
+      </div>
+      <div>
+        <button class="btn-primary btn-sm" onclick="saveSettings()">保存</button>
+        <span id="settings-msg" style="font-size:12px;color:#10b981;margin-left:10px;display:none;">已保存</span>
+      </div>
+    </div>
+    <div style="margin-top:40px;padding-top:24px;border-top:1px solid #1e293b;">
+      <p style="font-size:13px;font-weight:600;color:#f87171;margin-bottom:8px;">危险区域</p>
+      <p style="font-size:12px;color:#64748b;margin-bottom:12px;">删除项目后无法恢复。</p>
+      <button class="btn-danger" onclick="deleteProject()">删除此项目</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Create ET Modal -->
+<div id="modal-create-et" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);align-items:center;justify-content:center;z-index:50;">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;width:360px;">
+    <h3 style="font-size:14px;font-weight:600;color:#fff;margin-bottom:16px;">新建 Entity Type</h3>
+    <input id="et-new-name" placeholder="如：Flight、Customer…" style="width:100%;margin-bottom:12px;"/>
+    <p id="et-create-err" style="display:none;font-size:12px;color:#f87171;margin-bottom:8px;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeCreateET()" class="btn-ghost">取消</button>
+      <button onclick="doCreateET()" class="btn-primary">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const projectId  = location.pathname.split('/').pop();
+let sources      = [];
+let currentSrc   = null;
+let editingId    = null;
+let dsMapping    = {};
+let sfSelectedFiles = new Set();
+let sfTestData      = null;
+let entityTypes  = [];
+let selectedET   = null;
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadProject();
+  await loadSources();
+});
+
+async function loadProject() {
+  try {
+    const r = await fetch(`/api/projects/${projectId}`);
+    if (!r.ok) return;
+    const p = await r.json();
+    document.getElementById('proj-label').textContent = p.name || p.id;
+    document.getElementById('settings-name').value = p.name || '';
+    document.title = `${p.name} — Palantir`;
+    // Inject project context into Ontology links so Ontology can navigate back here
+    const ontologyHref = `/ontology?from=${projectId}`;
+    document.getElementById('nav-ontology-link').href = ontologyHref;
+    document.getElementById('tab-ontology-link').href = ontologyHref;
+  } catch(e) {}
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  ['ingest','settings'].forEach(t => {
+    document.getElementById('panel-' + t).classList.remove('active');
+    const btn = document.getElementById('tab-btn-' + t);
+    if (btn) btn.classList.remove('active');
+  });
+  document.getElementById('panel-' + name).classList.add('active');
+  const btn = document.getElementById('tab-btn-' + name);
+  if (btn) btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TAB 1 — 数据接入
+// ══════════════════════════════════════════════════════════════════════════
+async function loadSources() {
+  const r = await fetch('/api/sources');
+  const d = await r.json();
+  sources = d.sources || [];
+  renderSourceList();
+  // Auto-select first source if none selected
+  if (!currentSrc && sources.length) selectSource(sources[0]);
+}
+
+function renderSourceList() {
+  const el = document.getElementById('source-list');
+  if (!sources.length) {
+    el.innerHTML = '<p style="font-size:12px;color:#475569;text-align:center;padding:20px 0;">暂无数据源</p>';
+    return;
+  }
+  el.innerHTML = '';
+  sources.forEach(s => {
+    const dotCls = {idle:'dot-idle',syncing:'dot-syncing',synced:'dot-synced',error:'dot-error'}[s.status]||'dot-idle';
+    const icon   = {csv:'📄',json:'📋',db:'🗄',rest:'🌐',s3:'🪣'}[s.source_type]||'📦';
+    const btn = document.createElement('button');
+    btn.className = 'sidebar-item' + (currentSrc?.id === s.id ? ' active' : '');
+    btn.innerHTML = `<span>${icon}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name)}</span><span class="dot ${dotCls}"></span>`;
+    btn.onclick = () => selectSource(s);
+    el.appendChild(btn);
+  });
+}
+
+async function selectSource(s) {
+  currentSrc = s; editingId = null;
+  renderSourceList();
+  document.getElementById('src-empty').style.display  = 'none';
+  document.getElementById('src-form').style.display   = 'none';
+  document.getElementById('src-detail').style.display = 'flex';
+
+  document.getElementById('sd-name').textContent = s.name;
+  document.getElementById('sd-meta').textContent = `${s.source_type} · ${s.id.slice(0,8)}…`;
+  document.getElementById('sd-last-sync').textContent = s.last_sync_at ? '上次同步：' + fmtDate(s.last_sync_at) : '从未同步';
+
+  await Promise.all([loadDatasets(s.id), loadSyncHistory(s.id)]);
+}
+
+async function loadDatasets(srcId) {
+  const el = document.getElementById('sd-datasets');
+  el.innerHTML = '<p style="font-size:12px;color:#475569;">加载中…</p>';
+  try {
+    const r = await fetch(`/api/sources/${srcId}/datasets`);
+    const d = await r.json();
+    const datasets = d.datasets || [];
+    // fetch mappings + entity types in parallel
+    const [mappingResps, etResp] = await Promise.all([
+      Promise.all(datasets.map(ds =>
+        fetch(`/api/datasets/${ds.id}/mapping`).then(r => r.ok ? r.json() : null).catch(() => null)
+      )),
+      fetch('/api/ontology/schema').then(r => r.ok ? r.json() : {entity_types:[]}).catch(() => ({entity_types:[]})),
+    ]);
+    const etMap = Object.fromEntries((etResp.entity_types || []).map(e => [e.id, e.display_name || e.name]));
+    datasets.forEach((ds, i) => { dsMapping[ds.id] = mappingResps[i]; });
+
+    if (!datasets.length) { el.innerHTML = '<p style="font-size:12px;color:#475569;">暂无 dataset</p>'; return; }
+    el.innerHTML = '';
+    datasets.forEach((ds, i) => {
+      const m       = mappingResps[i];
+      const mapping = m?.mapping;                          // nested object
+      const etId    = mapping?.entity_type_id;
+      const etName  = etId ? (etMap[etId] || etId.slice(0,8)+'…') : null;
+      const isMapped = !!etId;
+      const hasData  = (ds.record_count ?? 0) > 0;
+
+      // Badge: mapped / schema-ready / unmapped
+      let badge, btnLabel, btnStyle;
+      if (isMapped) {
+        badge    = `<span class="status-badge badge-mapped" style="font-size:10px;">🔗 ${esc(etName)}</span>`;
+        btnLabel = '修改映射';
+        btnStyle = 'background:#1e293b;border:1px solid #334155;color:#818cf8;';
+      } else if (hasData) {
+        badge    = `<span class="status-badge" style="font-size:10px;background:rgba(99,102,241,.1);color:#818cf8;">📋 Schema 可推导</span>`;
+        btnLabel = '配置映射 →';
+        btnStyle = 'background:#312e81;border:1px solid #4338ca;color:#a5b4fc;font-weight:600;';
+      } else {
+        badge    = `<span class="status-badge badge-unmapped" style="font-size:10px;">⚠ 暂无数据</span>`;
+        btnLabel = '配置映射';
+        btnStyle = 'background:#1e293b;border:1px solid #334155;color:#64748b;';
+      }
+
+      const syncMode = mapping?.sync_mode || 'snapshot';
+      const syncOpts = [
+        ['snapshot', 'Snapshot（全量替换）'],
+        ['append',   'Append（追加）'],
+        ['upsert',   'Upsert（按主键合并）'],
+      ].map(([v,t]) => `<option value="${v}" ${v===syncMode?'selected':''}>${t}</option>`).join('');
+
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;background:#0f172a;border:1px solid ${isMapped ? '#1e3a5f' : hasData ? '#2d1d69' : '#1e293b'};`;
+      row.innerHTML = `
+        <div style="flex:1;min-width:0;">
+          <p style="font-size:13px;font-weight:500;color:#e2e8f0;">${esc(ds.name||ds.id)}</p>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+            ${badge}
+            <span style="font-size:11px;color:#475569;">${ds.record_count??0} 条</span>
+          </div>
+        </div>
+        ${isMapped ? `<select onchange="updateDatasetSyncMode('${ds.id}', this.value)"
+            title="同步模式"
+            style="background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;padding:2px 6px;font-size:11px;cursor:pointer;">
+            ${syncOpts}
+          </select>` : ''}
+        <button onclick="location.href='/ontology?from=${projectId}&dataset=${ds.id}'"
+                style="${btnStyle}font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;">
+          ${btnLabel}
+        </button>`;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<p style="font-size:12px;color:#f87171;">加载失败</p>`;
+  }
+}
+
+async function loadSyncHistory(srcId) {
+  const el = document.getElementById('sd-jobs');
+  el.innerHTML = '';
+  try {
+    const r = await fetch(`/api/sources/${srcId}/sync-runs`);
+    const d = await r.json();
+    const runs = d.runs || d.sync_runs || [];
+    if (!runs.length) { el.innerHTML = '<p style="font-size:12px;color:#475569;">暂无记录</p>'; return; }
+    runs.slice(0,10).forEach(run => {
+      const cls = run.status === 'completed' ? '#10b981' : run.status === 'failed' ? '#f87171' : '#f59e0b';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:4px;border:1px solid #1e293b;';
+      row.innerHTML = `<span style="font-size:11px;color:${cls};">${run.status}</span><span style="font-size:11px;color:#475569;">${run.record_count!=null?run.record_count+' 条':''}</span>`;
+      el.appendChild(row);
+    });
+  } catch(e) {}
+}
+
+async function syncSource() {
+  if (!currentSrc) return;
+  const btn = document.getElementById('sd-sync-btn');
+  btn.disabled = true; btn.textContent = '同步中…';
+  try {
+    const r = await fetch(`/api/sources/${currentSrc.id}/sync`, {method:'POST'});
+    if (r.ok) {
+      setTimeout(() => { loadSources(); selectSource(currentSrc); showOntologyHint(); }, 1500);
+    }
+  } finally {
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Sync Now'; }, 2000);
+  }
+}
+
+function showOntologyHint() {
+  const el = document.getElementById('ontology-hint');
+  if (!el) return;
+  el.style.display = 'flex';
+  setTimeout(() => { el.style.display = 'none'; }, 8000);
+}
+
+async function updateDatasetSyncMode(dsId, mode) {
+  await fetch(`/api/datasets/${dsId}/sync-mode`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ sync_mode: mode })
+  });
+}
+
+// ── Add/Edit source form ───────────────────────────────────────────────────
+function showAddSource() {
+  currentSrc = null; editingId = null;
+  sfSelectedFiles.clear(); sfTestData = null;
+  renderSourceList();
+  document.getElementById('src-empty').style.display  = 'none';
+  document.getElementById('src-detail').style.display = 'none';
+  document.getElementById('src-form').style.display   = 'flex';
+  document.getElementById('src-form-title').textContent = '新建数据源';
+  document.getElementById('sf-name').value = '';
+  document.getElementById('sf-type').value = 's3';
+  document.getElementById('sf-err').style.display = 'none';
+  renderSourceFields();
+}
+
+function editCurrentSource() {
+  if (!currentSrc) return;
+  editingId = currentSrc.id;
+  sfSelectedFiles.clear(); sfTestData = null;
+  (currentSrc.config?.selected_files || []).forEach(f => sfSelectedFiles.add(f));
+  document.getElementById('src-empty').style.display  = 'none';
+  document.getElementById('src-detail').style.display = 'none';
+  document.getElementById('src-form').style.display   = 'flex';
+  document.getElementById('src-form-title').textContent = '编辑数据源';
+  document.getElementById('sf-name').value = currentSrc.name;
+  document.getElementById('sf-type').value = currentSrc.source_type || 's3';
+  document.getElementById('sf-err').style.display = 'none';
+  renderSourceFields();
+}
+
+function renderSourceFields() {
+  const type = document.getElementById('sf-type').value;
+  const cfg  = editingId ? (currentSrc?.config || {}) : {};
+  const renders = { s3: renderS3FormFields, csv: renderCsvFormFields, db: renderDbFormFields, rest: renderRestFormFields };
+  document.getElementById('sf-fields').innerHTML = (renders[type] || (() => ''))(cfg);
+}
+
+function fld(label, id, inputHtml, hint) {
+  return `<div style="margin-bottom:10px;"><label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">${label}</label>
+    ${inputHtml}${hint ? `<p style="font-size:11px;color:#475569;margin-top:3px;">${hint}</p>` : ''}</div>`;
+}
+
+function renderS3FormFields(cfg) {
+  const provider = cfg.provider || 'rustfs';
+  const endpoint = cfg.endpoint || (provider === 'rustfs' ? 'http://localhost:9000' : '');
+  const bucket   = cfg.bucket   || 'mybucket1';
+  const selFiles = [...sfSelectedFiles];
+  return `
+    ${fld('云服务商', 'sf-provider',
+      `<select id="sf-provider" onchange="sfUpdateEndpoint(this.value)" style="width:100%;">
+        <option value="aws"     ${provider==='aws'    ?'selected':''}>AWS S3</option>
+        <option value="aliyun"  ${provider==='aliyun' ?'selected':''}>阿里云 OSS</option>
+        <option value="tencent" ${provider==='tencent'?'selected':''}>腾讯云 COS</option>
+        <option value="huawei"  ${provider==='huawei' ?'selected':''}>华为云 OBS</option>
+        <option value="minio"   ${provider==='minio'  ?'selected':''}>MinIO（自定义）</option>
+        <option value="rustfs"  ${provider==='rustfs' ?'selected':''}>RustFS（自定义）</option>
+      </select>`)}
+    ${fld('Endpoint（MinIO / RustFS / 私有化）', 'sf-endpoint',
+      `<input id="sf-endpoint" value="${esc(endpoint)}" placeholder="http://localhost:9000" style="width:100%;"/>`,
+      'RustFS 默认：http://host:9000；支持 http:// 和 https://')}
+    ${fld('Bucket *', 'sf-bucket',
+      `<input id="sf-bucket" value="${esc(bucket)}" placeholder="mybucket1" style="width:100%;"/>`)}
+    ${fld('路径前缀（可选）', 'sf-prefix',
+      `<input id="sf-prefix" value="${esc(cfg.prefix||'')}" placeholder="data/hr/" style="width:100%;"/>`)}
+    ${fld('Access Key *', 'sf-access_key',
+      `<input id="sf-access_key" value="${esc(cfg.access_key||'')}" placeholder="AKIAIOSFODNN7EXAMPLE" style="width:100%;"/>`)}
+    ${fld('Secret Key *', 'sf-secret_key',
+      `<input id="sf-secret_key" type="password" value="${esc(cfg.secret_key||'')}" placeholder="••••••••" style="width:100%;"/>`)}
+    ${fld('SSL/PEM 证书（可选）', 'sf-pem_cert',
+      `<textarea id="sf-pem_cert" placeholder="-----BEGIN CERTIFICATE-----&#10;..." style="width:100%;height:72px;resize:vertical;">${esc(cfg.pem_cert||'')}</textarea>`,
+      '用于自签名证书场景')}
+    ${selFiles.length ? `<div style="margin-bottom:6px;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,.08);border:1px solid #312e81;font-size:11px;color:#818cf8;">
+      已选 ${selFiles.length} 个文件：${selFiles.map(f => esc(f.split('/').pop())).join('、')}
+    </div>` : ''}`;
+}
+
+function renderCsvFormFields(cfg) {
+  return fld('文件路径或 URL', 'sf-file_path',
+    `<input id="sf-file_path" value="${esc(cfg.file_path||'')}" placeholder="/data/employees.csv 或 http://…" style="width:100%;"/>`);
+}
+
+function renderDbFormFields(cfg) {
+  return fld('连接字符串 (DSN)', 'sf-dsn',
+    `<input id="sf-dsn" value="${esc(cfg.dsn||cfg.connection_string||'')}" placeholder="postgres://user:pass@host/db" style="width:100%;"/>`);
+}
+
+function renderRestFormFields(cfg) {
+  return fld('API URL', 'sf-url',
+    `<input id="sf-url" value="${esc(cfg.url||'')}" placeholder="https://api.example.com/data" style="width:100%;"/>`) +
+    fld('HTTP Method', 'sf-method',
+    `<select id="sf-method" style="width:100%;">
+      <option value="GET"  ${(cfg.method||'GET')==='GET' ?'selected':''}>GET</option>
+      <option value="POST" ${cfg.method==='POST'?'selected':''}>POST</option>
+    </select>`);
+}
+
+function sfUpdateEndpoint(provider) {
+  const defaults = { aws:'', aliyun:'', tencent:'', huawei:'', minio:'https://play.min.io', rustfs:'http://localhost:9000' };
+  const el = document.getElementById('sf-endpoint');
+  if (el && defaults[provider] !== undefined) el.value = defaults[provider];
+}
+
+async function sfTestConnection() {
+  const type = document.getElementById('sf-type').value;
+  const cfg  = readFormConfig();
+  const resultEl = document.getElementById('sf-test-result');
+  if (!resultEl) return;
+  resultEl.innerHTML = '<span style="font-size:12px;color:#f59e0b;">测试中…</span>';
+  try {
+    const r = await fetch('/api/sources/quick-test', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ source_type: type, config: cfg })
+    });
+    const d = await r.json();
+    if (!r.ok || d.status === 'error') {
+      resultEl.innerHTML = `<p style="font-size:12px;color:#f87171;">✗ ${esc(d.error || '连接失败')}</p>`;
+      return;
+    }
+    sfTestData = d;
+    let html = `<p style="font-size:12px;color:#10b981;margin-bottom:8px;">✓ 连接成功</p>`;
+    if (d.files?.length) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <p style="font-size:11px;color:#64748b;">发现 ${d.files.length} 个文件（已选 <span id="sf-sel-count">${sfSelectedFiles.size}</span> 个）</p>
+          <div style="display:flex;gap:6px;">
+            <button type="button" onclick="sfSelectAll()" style="font-size:11px;padding:2px 8px;border-radius:4px;background:transparent;border:1px solid #334155;color:#94a3b8;cursor:pointer;">全选</button>
+            <button type="button" onclick="sfDeselectAll()" style="font-size:11px;padding:2px 8px;border-radius:4px;background:transparent;border:1px solid #334155;color:#94a3b8;cursor:pointer;">取消</button>
+          </div>
+        </div>
+        <div id="sf-file-list" style="border:1px solid #1e293b;border-radius:6px;max-height:200px;overflow-y:auto;"></div>`;
+    }
+    resultEl.innerHTML = html;
+    if (d.files?.length) sfRenderFileList();
+  } catch(e) {
+    resultEl.innerHTML = `<p style="font-size:12px;color:#f87171;">✗ 请求失败: ${esc(e.message)}</p>`;
+  }
+}
+
+function sfRenderFileList() {
+  const container = document.getElementById('sf-file-list');
+  if (!container || !sfTestData?.files?.length) return;
+  const countEl = document.getElementById('sf-sel-count');
+  if (countEl) countEl.textContent = sfSelectedFiles.size;
+  container.innerHTML = sfTestData.files.map(f => {
+    const sel = sfSelectedFiles.has(f);
+    const fname = f.split('/').pop();
+    const fdir  = f.includes('/') ? f.substring(0, f.lastIndexOf('/') + 1) : '';
+    return `<label style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;border-bottom:1px solid #0f172a;
+        ${sel ? 'background:rgba(99,102,241,.12);' : ''}transition:background .1s;"
+        onmouseover="this.style.background='${sel?'rgba(99,102,241,.18)':'rgba(255,255,255,.03)'}'"
+        onmouseout="this.style.background='${sel?'rgba(99,102,241,.12)':'transparent'}'">
+      <input type="checkbox" ${sel?'checked':''} onchange="sfToggleFile('${f.replace(/'/g,"\\'")}')"
+        style="width:14px;height:14px;accent-color:#6366f1;cursor:pointer;flex-shrink:0;"/>
+      <span style="font-family:monospace;font-size:11px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+        <span style="color:#475569;">${esc(fdir)}</span><span style="color:${sel?'#a5b4fc':'#c9d1d9'};">${esc(fname)}</span>
+      </span>
+    </label>`;
+  }).join('');
+}
+
+function sfToggleFile(path) {
+  if (sfSelectedFiles.has(path)) sfSelectedFiles.delete(path);
+  else sfSelectedFiles.add(path);
+  sfRenderFileList();
+}
+
+function sfSelectAll() {
+  (sfTestData?.files || []).forEach(f => sfSelectedFiles.add(f));
+  sfRenderFileList();
+}
+
+function sfDeselectAll() {
+  sfSelectedFiles.clear();
+  sfRenderFileList();
+}
+
+function readFormConfig() {
+  const type = document.getElementById('sf-type').value;
+  const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  if (type === 's3') {
+    return { provider: v('sf-provider'), endpoint: v('sf-endpoint'), bucket: v('sf-bucket'),
+             prefix: v('sf-prefix'), access_key: v('sf-access_key'), secret_key: v('sf-secret_key'),
+             pem_cert: v('sf-pem_cert'), selected_files: [...sfSelectedFiles] };
+  }
+  if (type === 'csv')  return { file_path: v('sf-file_path') };
+  if (type === 'db')   return { dsn: v('sf-dsn') };
+  if (type === 'rest') return { url: v('sf-url'), method: v('sf-method') || 'GET' };
+  return {};
+}
+
+function cancelSourceForm() {
+  document.getElementById('src-form').style.display = 'none';
+  if (currentSrc) selectSource(currentSrc);
+  else { document.getElementById('src-empty').style.display = 'flex'; }
+}
+
+async function submitSourceForm() {
+  const name = document.getElementById('sf-name').value.trim();
+  const type = document.getElementById('sf-type').value;
+  if (!name) { showSfErr('名称不能为空'); return; }
+  const cfg  = readFormConfig();
+  const body = {name, source_type: type, config: cfg};
+  const method = editingId ? 'PUT' : 'POST';
+  const url    = editingId ? `/api/sources/${editingId}` : '/api/sources';
+  const r = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json();
+  if (!r.ok) { showSfErr(d.error || '保存失败'); return; }
+  editingId = null;
+  await loadSources();
+  const fresh = sources.find(s => s.id === (d.id || d.source?.id));
+  if (fresh) selectSource(fresh);
+  else { document.getElementById('src-form').style.display = 'none'; document.getElementById('src-empty').style.display = 'flex'; }
+}
+
+function showSfErr(msg) {
+  const el = document.getElementById('sf-err'); el.textContent = msg; el.style.display = 'block';
+}
+
+async function deleteCurrentSource() {
+  if (!currentSrc || !confirm(`确认删除「${currentSrc.name}」？`)) return;
+  await fetch(`/api/sources/${currentSrc.id}`, {method:'DELETE'});
+  currentSrc = null;
+  await loadSources();
+  document.getElementById('src-detail').style.display = 'none';
+  document.getElementById('src-empty').style.display  = 'flex';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TAB 2 — 数据模型
+// ══════════════════════════════════════════════════════════════════════════
+function switchModelTab(name) {
+  ['schema','browse','graph'].forEach(t => {
+    const el = document.getElementById('mtab-' + t);
+    const btn = document.getElementById('mtab-btn-' + t);
+    el.style.display = 'none';
+    btn.style.borderBottomColor = 'transparent';
+    btn.style.color = '#64748b';
+  });
+  document.getElementById('mtab-' + name).style.display = name === 'graph' ? 'flex' : (name === 'browse' ? 'flex' : 'flex');
+  const btn = document.getElementById('mtab-btn-' + name);
+  btn.style.borderBottomColor = '#6366f1'; btn.style.color = '#818cf8';
+
+  if (name === 'browse') { fillBrowseETs(); loadObjects(); }
+  if (name === 'graph')  { renderGraph(); }
+}
+
+async function loadEntityTypes() {
+  const r = await fetch('/api/ontology/schema');
+  const d = await r.json();
+  entityTypes = d.entity_types || [];
+  renderETList();
+}
+
+function renderETList() {
+  const el = document.getElementById('et-list');
+  el.innerHTML = '';
+  entityTypes.forEach(et => {
+    const btn = document.createElement('button');
+    btn.className = 'sidebar-item' + (selectedET?.id === et.id ? ' active' : '');
+    btn.textContent = et.name;
+    btn.onclick = () => { selectedET = et; renderETList(); renderETDetail(et); };
+    el.appendChild(btn);
+  });
+}
+
+async function renderETDetail(et) {
+  const el = document.getElementById('et-detail');
+  const r  = await fetch(`/api/ontology/schema`);
+  const d  = await r.json();
+  const full = (d.entity_types||[]).find(e => e.id === et.id) || et;
+  const fields = full.fields || full.properties || [];
+
+  el.innerHTML = `
+    <div style="max-width:560px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <h2 style="font-size:16px;font-weight:600;color:#e2e8f0;">${esc(full.name)}</h2>
+        <button onclick="deleteET('${et.id}')" class="btn-danger btn-sm" style="margin-left:auto;">删除</button>
+      </div>
+      ${full.description ? `<p style="font-size:13px;color:#64748b;margin-bottom:16px;">${esc(full.description)}</p>` : ''}
+      <p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Properties</p>
+      ${fields.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="border-bottom:1px solid #1e293b;">
+          <th style="text-align:left;padding:6px 8px;color:#64748b;">名称</th>
+          <th style="text-align:left;padding:6px 8px;color:#64748b;">类型</th>
+          <th style="text-align:center;padding:6px 8px;color:#64748b;">必填</th>
+          <th style="padding:6px 8px;"></th>
+        </tr></thead>
+        <tbody>${fields.map(f => `<tr style="border-bottom:1px solid #1e293b;">
+          <td style="padding:6px 8px;color:#e2e8f0;">${esc(f.name)}</td>
+          <td style="padding:6px 8px;color:#818cf8;">${esc(f.field_type||f.type||'')}</td>
+          <td style="padding:6px 8px;text-align:center;color:#64748b;">${f.is_required?'✓':'—'}</td>
+          <td style="padding:6px 8px;text-align:right;">
+            <button onclick="deleteField('${f.id}')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:11px;">✕</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table>` : '<p style="font-size:12px;color:#475569;">暂无 Properties</p>'}
+      <div style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+        <input id="new-field-name" placeholder="字段名" style="width:120px;"/>
+        <select id="new-field-type" style="width:100px;">
+          <option>string</option><option>number</option><option>boolean</option><option>date</option>
+        </select>
+        <button onclick="addField('${et.id}')" class="btn-primary btn-sm">+ 添加字段</button>
+      </div>
+    </div>`;
+}
+
+function openCreateET() {
+  document.getElementById('et-new-name').value = '';
+  document.getElementById('et-create-err').style.display = 'none';
+  document.getElementById('modal-create-et').style.display = 'flex';
+}
+function closeCreateET() { document.getElementById('modal-create-et').style.display = 'none'; }
+
+async function doCreateET() {
+  const name = document.getElementById('et-new-name').value.trim();
+  if (!name) { showETErr('名称不能为空'); return; }
+  const r = await fetch('/api/ontology/schema', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, display_name: name})});
+  const d = await r.json();
+  if (!r.ok) { showETErr(d.error || '创建失败'); return; }
+  closeCreateET();
+  await loadEntityTypes();
+  fillBrowseETs();
+}
+
+function showETErr(msg) { const el = document.getElementById('et-create-err'); el.textContent = msg; el.style.display = 'block'; }
+
+async function addField(etId) {
+  const name = document.getElementById('new-field-name').value.trim();
+  const type = document.getElementById('new-field-type').value;
+  if (!name) return;
+  await fetch(`/api/ontology/schema/${etId}/fields`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, field_type: type, is_required: false})
+  });
+  await loadEntityTypes();
+  const fresh = entityTypes.find(e => e.id === etId);
+  if (fresh) { selectedET = fresh; renderETDetail(fresh); }
+}
+
+async function deleteField(fid) {
+  if (!confirm('删除此字段？')) return;
+  await fetch(`/api/ontology/fields/${fid}`, {method:'DELETE'});
+  if (selectedET) { await loadEntityTypes(); const f = entityTypes.find(e=>e.id===selectedET.id); if(f){selectedET=f;renderETDetail(f);} }
+}
+
+async function deleteET(etId) {
+  if (!confirm('删除此 Entity Type？')) return;
+  await fetch(`/api/ontology/schema/${etId}`, {method:'DELETE'});
+  selectedET = null;
+  document.getElementById('et-detail').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#475569;font-size:13px;">选择左侧 Entity Type 查看详情</div>';
+  await loadEntityTypes();
+}
+
+// ── Browse ─────────────────────────────────────────────────────────────────
+function fillBrowseETs() {
+  const sel = document.getElementById('browse-et-sel');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— 选择 Entity Type —</option>' +
+    entityTypes.map(et => `<option value="${et.id}"${et.id===cur?' selected':''}>${esc(et.name)}</option>`).join('');
+}
+
+async function loadObjects() {
+  const etId = document.getElementById('browse-et-sel').value;
+  const el   = document.getElementById('browse-body');
+  const cnt  = document.getElementById('browse-count');
+  if (!etId) { el.innerHTML = ''; cnt.textContent = ''; return; }
+  el.innerHTML = '<p style="font-size:12px;color:#475569;">加载中…</p>';
+  const r = await fetch(`/api/ontology/objects?entity_type_id=${etId}&limit=50`);
+  const d = await r.json();
+  const objs = d.objects || d.items || [];
+  cnt.textContent = `${objs.length} 条`;
+  if (!objs.length) { el.innerHTML = '<p style="font-size:12px;color:#475569;">暂无数据</p>'; return; }
+  const et = entityTypes.find(e => e.id === etId);
+  const fields = et?.fields || et?.properties || [];
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="border-bottom:1px solid #1e293b;">
+      <th style="text-align:left;padding:6px 10px;color:#64748b;">ID</th>
+      <th style="text-align:left;padding:6px 10px;color:#64748b;">Label</th>
+      ${fields.slice(0,4).map(f=>`<th style="text-align:left;padding:6px 10px;color:#64748b;">${esc(f.name)}</th>`).join('')}
+    </tr></thead>
+    <tbody>${objs.map(o=>{
+      const props = o.properties||{};
+      return `<tr style="border-bottom:1px solid #0f172a;">
+        <td style="padding:6px 10px;color:#475569;font-size:11px;">${o.id?.slice(0,8)||'—'}…</td>
+        <td style="padding:6px 10px;color:#e2e8f0;">${esc(o.label||'')}</td>
+        ${fields.slice(0,4).map(f=>`<td style="padding:6px 10px;color:#94a3b8;">${esc(String(props[f.name]??''))}</td>`).join('')}
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+// ── Explore ────────────────────────────────────────────────────────────────
+let exploreCurrentET = null;
+let exploreAllObjects = [];
+
+async function loadExploreETs() {
+  if (!entityTypes.length) await loadEntityTypes();
+  const list = document.getElementById('explore-et-list');
+  if (!entityTypes.length) {
+    list.innerHTML = '<p style="font-size:12px;color:#475569;padding:8px 16px;">暂无实体类型</p>';
+    return;
+  }
+  // Fetch counts for all ETs in parallel
+  const counts = await Promise.all(entityTypes.map(async et => {
+    try {
+      const r = await fetch(`/api/ontology/objects?entity_type_id=${et.id}&limit=1`);
+      const d = await r.json();
+      return d.total ?? (d.objects || d.items || []).length;
+    } catch { return 0; }
+  }));
+  list.innerHTML = entityTypes.map((et, i) => `
+    <div class="explore-et-item" id="explore-et-${et.id}"
+         onclick="selectExploreET('${et.id}')"
+         style="padding:8px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#94a3b8;border-left:3px solid transparent;">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(et.name)}</span>
+      <span style="font-size:11px;color:#475569;flex-shrink:0;margin-left:6px;">${counts[i]}</span>
+    </div>`).join('');
+  // Auto-select first if none selected
+  if (!exploreCurrentET && entityTypes.length) selectExploreET(entityTypes[0].id);
+}
+
+async function selectExploreET(etId) {
+  exploreCurrentET = etId;
+  document.querySelectorAll('.explore-et-item').forEach(el => {
+    el.style.borderLeftColor = 'transparent';
+    el.style.color = '#94a3b8';
+    el.style.background = '';
+  });
+  const active = document.getElementById('explore-et-' + etId);
+  if (active) { active.style.borderLeftColor = '#6366f1'; active.style.color = '#e2e8f0'; active.style.background = '#1e1b4b33'; }
+
+  const et = entityTypes.find(e => e.id === etId);
+  document.getElementById('explore-et-title').textContent = et?.name || etId;
+  document.getElementById('explore-search').value = '';
+  const body = document.getElementById('explore-body');
+  body.innerHTML = '<p style="font-size:12px;color:#475569;">加载中…</p>';
+
+  try {
+    const r = await fetch(`/api/ontology/objects?entity_type_id=${etId}&limit=200`);
+    const d = await r.json();
+    exploreAllObjects = d.objects || d.items || [];
+    renderExploreTable(et, exploreAllObjects);
+  } catch(e) {
+    body.innerHTML = `<p style="font-size:12px;color:#ef4444;">加载失败: ${esc(String(e))}</p>`;
+  }
+}
+
+function filterExploreObjects() {
+  const q = document.getElementById('explore-search').value.trim().toLowerCase();
+  const et = entityTypes.find(e => e.id === exploreCurrentET);
+  const filtered = q
+    ? exploreAllObjects.filter(o => {
+        const label = (o.label || '').toLowerCase();
+        const fields = JSON.stringify(o.fields || o.properties || {}).toLowerCase();
+        return label.includes(q) || fields.includes(q);
+      })
+    : exploreAllObjects;
+  renderExploreTable(et, filtered);
+}
+
+function renderExploreTable(et, objs) {
+  const body = document.getElementById('explore-body');
+  const cnt  = document.getElementById('explore-count');
+  cnt.textContent = `${objs.length} 条`;
+  if (!objs.length) {
+    body.innerHTML = '<p style="font-size:12px;color:#475569;padding:8px 0;">暂无数据 — 请先同步数据源并完成 Promote</p>';
+    return;
+  }
+  // Determine columns from first object's fields
+  const sample = objs[0].fields || objs[0].properties || {};
+  const cols = Object.keys(sample).slice(0, 8);
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="border-bottom:1px solid #1e293b;position:sticky;top:0;background:#0f172a;">
+      <th style="text-align:left;padding:6px 10px;color:#64748b;width:90px;">ID</th>
+      <th style="text-align:left;padding:6px 10px;color:#64748b;">Label</th>
+      ${cols.map(c=>`<th style="text-align:left;padding:6px 10px;color:#64748b;">${esc(c)}</th>`).join('')}
+    </tr></thead>
+    <tbody>${objs.map(o => {
+      const props = o.fields || o.properties || {};
+      return `<tr style="border-bottom:1px solid #0f172a;" onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background=''">
+        <td style="padding:6px 10px;color:#475569;font-size:11px;white-space:nowrap;">${esc((o.id||'').slice(0,8))}…</td>
+        <td style="padding:6px 10px;color:#e2e8f0;white-space:nowrap;">${esc(o.label||'')}</td>
+        ${cols.map(c=>`<td style="padding:6px 10px;color:#94a3b8;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(props[c]??''))}</td>`).join('')}
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+// ── Graph ──────────────────────────────────────────────────────────────────
+async function loadModelGraph() {
+  if (document.getElementById('mtab-graph').style.display !== 'none') renderGraph();
+}
+
+async function renderGraph() {
+  const svg = document.getElementById('graph-svg');
+  svg.innerHTML = '';
+  try {
+    const r = await fetch('/api/ontology/graph');
+    const d = await r.json();
+    const nodes = d.nodes || [];
+    const edges = d.edges || d.links || [];
+    if (!nodes.length) {
+      svg.innerHTML = '<text x="50%" y="50%" fill="#475569" font-size="13" text-anchor="middle" dominant-baseline="middle">暂无 Ontology 图数据</text>';
+      return;
+    }
+    const W = svg.clientWidth || 800, H = svg.clientHeight || 500;
+    const cx = W / 2, cy = H / 2, r2 = Math.min(W, H) * 0.35;
+    const pos = {};
+    nodes.forEach((n, i) => {
+      const a = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+      pos[n.id] = { x: cx + r2 * Math.cos(a), y: cy + r2 * Math.sin(a), label: n.name || n.id };
+    });
+    let out = '';
+    edges.forEach(e => {
+      const s = pos[e.source || e.from_id], t = pos[e.target || e.to_id];
+      if (s && t) out += `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>`;
+    });
+    out = `<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#334155"/></marker></defs>` + out;
+    nodes.forEach(n => {
+      const p = pos[n.id];
+      out += `<circle cx="${p.x}" cy="${p.y}" r="28" fill="#1e293b" stroke="#6366f1" stroke-width="1.5"/>
+              <text x="${p.x}" y="${p.y}" fill="#e2e8f0" font-size="11" text-anchor="middle" dominant-baseline="middle">${esc(p.label)}</text>`;
+    });
+    svg.innerHTML = out;
+  } catch(e) {
+    svg.innerHTML = '<text x="50%" y="50%" fill="#475569" font-size="13" text-anchor="middle" dominant-baseline="middle">图加载失败</text>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TAB 4 — 设置
+// ══════════════════════════════════════════════════════════════════════════
+async function saveSettings() {
+  const name = document.getElementById('settings-name').value.trim();
+  if (!name) return;
+  const r = await fetch(`/api/projects/${projectId}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  });
+  if (r.ok) {
+    document.getElementById('proj-label').textContent = name;
+    document.title = `${name} — Palantir`;
+    const msg = document.getElementById('settings-msg');
+    msg.style.display = 'inline'; setTimeout(() => msg.style.display = 'none', 2000);
+  }
+}
+
+async function deleteProject() {
+  const name = document.getElementById('settings-name').value || projectId;
+  if (!confirm(`确认删除项目「${name}」？此操作不可恢复。`)) return;
+  await fetch(`/api/projects/${projectId}`, {method:'DELETE'});
+  location.href = '/';
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(parseInt(iso)*1000||iso).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+</script>
+</body>
+</html>

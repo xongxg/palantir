@@ -581,3 +581,250 @@ qdrant-client = "1"    # Qdrant 向量数据库客户端
 3. **租户隔离从第一天开始** — 后期迁移隔离策略代价极高
 4. **冷热分离减成本** — 90% 的查询命中 10% 的热数据，缓存层收益显著
 5. **向量 + 图双引擎** — 语义粗筛（Qdrant）+ 关系精筛（图遍历），AI 查询标配架构
+
+---
+
+## Palantir Foundry 实现参考
+
+### 公开文档来源
+
+| 资源 | 内容 | 用途 |
+|------|------|------|
+| `developer.palantir.com` | Foundry 官方开发者文档，完整覆盖 Object Type / Link Type / Action / Function / Pipeline Builder / Ontology SDK | 对标设计最权威参考 |
+| Palantir AIP 文档 | AI Platform，在 Ontology 上的 AI 能力层，对数据模型讲解透彻 | AI Agent 集成参考 |
+| OpenMetadata（开源） | 类 Palantir 元数据+Ontology 平台，代码完全开源 | Schema 设计、API 设计参考 |
+| Apache Atlas（开源） | Hadoop 生态数据治理，Ontology 建模思路类似 | 血缘、分类标注参考 |
+| DataHub（LinkedIn 开源）| Entity-Relationship 数据目录，架构公开 | 多租户元数据管理参考 |
+
+---
+
+### Palantir Foundry 四层架构与本平台精确对位
+
+```
+Palantir Foundry                   本平台对应
+─────────────────────────────────────────────────────────────
+Layer 4: Ontology                  EntityType / OntologyObject / Link ✅
+  Object Type / Link Type          EntityType + RelationshipType
+  Action / Function                待建（Iter-5+）
+
+Layer 3: Semantic / Logical        未规划（等 Layer 2 成熟后决定）
+  Join / Enrich 视图
+
+Layer 2: Transform / Pipeline      待建（Iter-5，Phase 3a）
+  Code Repos / PySpark DAG         Transform Pipeline 雏形
+
+Layer 1: Raw / Integration         DatasetVersion + S3 files ✅
+  Compass FS（HDFS），Parquet      CSV → 未来 Parquet（Iter-7）
+```
+
+当前刻意跳过 Layer 2/3，直接 Layer 1 → Layer 4。理由：Layer 2 是复杂度中枢，无真实 Transform 需求时引入是过度设计。
+
+---
+
+### 核心概念对照表
+
+| Palantir 概念 | 本平台对应 | 实现状态 |
+|---------------|-----------|---------|
+| Object Type | EntityType（schema 定义） | ✅ |
+| Object Instance | OntologyObject（数据实例） | ✅ |
+| Link Type | RelationshipType | ✅（schema 层） |
+| Link Instance | OntologyLink | ✅ |
+| Dataset | DatasetVersion + S3 manifest | ✅ |
+| Pipeline Builder | Transform DAG | Iter-5 |
+| Action | Write-back 操作 + RBAC + 审计 | ADR-26 设计，待建 |
+| Function | TypeScript/Python 只读计算 | 待建 |
+| Ontology SDK | API + 前端查询层 | 部分 ✅ |
+| AIP | Agent + Ontology 上下文集成 | 规划中 |
+
+---
+
+### Palantir Object 模型 vs 我们当前实现
+
+**Palantir 终态**：Object = Dataset 的实时视图，不复制数据
+```
+Dataset（Parquet，不可变）
+  ↓ ObjectType 绑定（mapping 元数据，不复制）
+Object（查询时从 Dataset 实时计算）
+```
+
+**我们当前（promote-copy 模式）**：
+```
+DataSource → sync → S3(CSV parts) → promote → ontology_objects（SQLite copy）
+                          ↑
+                  object_type_mappings（一次配置，后续 sync 自动触发）
+```
+
+**演进路径**：
+- 当前（P0）：copy 模式 + `auto_promote_if_mapped` 自动触发
+- P1：增量 upsert（diff by external_id，不全量重写）
+- P2：拆表（`dataset_raw_records` vs `ontology_objects`）
+- P3：Object = manifest 实时读取视图（DataFusion 驱动，对标 Palantir 终态）
+
+---
+
+### 关系发现：我们 vs Palantir
+
+**Palantir**：Link Type 需要显式定义（`from_dataset.col → to_dataset.col`），无自动推断，由 Data Engineer 手动配置。
+
+**本平台**：在显式定义基础上，增加了 `_id`/`_fk` 列名后缀自动推断，匹配已有 EntityType 名称，预填充关联关系供用户确认。比官方更激进，降低 Data Engineer 配置成本。
+
+**判断依据**：FK 命名约定（`user_id`、`order_fk`）是行业惯例，误判率低；用户仍可手动修改或忽略推断结果。更复杂的推断（值域相似度匹配、ML）留待真实需求驱动。
+
+---
+
+## Ontology 建模原则：领域优先，数据其次（ADR-37）
+
+### 核心原则
+
+**Object Type 的定义以业务领域语义为准，Dataset 列结构仅作辅助参考，不驱动 ET 设计。**
+
+### 典型误区
+
+当两个 Dataset 列结构高度相似时（如 aircraft 和 airline），容易产生"是否复用/继承 Schema"的冲动。这是错误的出发点：
+
+```
+❌ 数据驱动：看到列相似 → 怎么复用 schema？
+✅ 领域驱动：这个业务实体是什么？→ 再决定 ET → 最后才是列怎么映射
+```
+
+### 判断标准
+
+列相似 ≠ 实体相同。`aircraft.manufacturer` 和 `airline.manufacturer` 字面相同，语义不同——一个是"这架飞机的制造商"，一个是"这家公司运营的机型制造商"。**字段重叠是行业属性的巧合，不是建模相似的理由。**
+
+### 正确处理方式
+
+不同业务实体 → 独立 ET + Link Type 连接，接受字段重叠：
+
+```
+Airline ──[OPERATES]──▶ Aircraft
+两个独立 ET，字段可以重叠，这是正常的
+```
+
+Dataset 的列只决定"能有什么属性"，不决定"应该有什么属性"。业务上不需要的列在 mapping 里忽略即可。
+
+### Interface（P1，按需引入）
+
+当 ≥3 个 ET 存在**语义相同**（不只是列名相似）的字段集，且跨类型查询是真实需求时，引入 Interface：
+
+```
+Interface: AviationEntity { manufacturer, capacity }
+Aircraft implements AviationEntity + 飞机特有字段
+Airline  implements AviationEntity + 公司特有字段
+```
+
+触发条件驱动，不提前抽象。详见 ADR-37。
+
+---
+
+## 技术储备：关联关系自动发现
+
+> 背景：Dataset 导入时，某些列可能是对另一个 Entity Type 的外键引用。如何自动或半自动发现这些关联，是 Schema-first 导入流程的关键环节。
+
+### 方案一：列名约定匹配（P0，已实现）
+
+**原理**：列名以 `_id` / `_fk` 结尾 → 去掉后缀 → 与已有 EntityType 名称大小写不敏感匹配。
+
+```
+airport_id  →  airport  →  匹配 EntityType "Airport"
+airline_fk  →  airline  →  匹配 EntityType "Airline"
+```
+
+**优点**：零成本，即时可用，FK 命名约定是行业惯例，误判率低。
+**缺点**：依赖命名规范，无法发现非标准命名的关联（如 `carrier` → Airline）。
+**适用**：标准规范的数据库导出，工程团队数据。
+
+---
+
+### 方案二：值域重叠匹配（P1）
+
+**原理**：列 A 的值集合与另一个 ET 的主键值集合做 Jaccard 相似度，超过阈值则推断关联。
+
+```
+aircraft.carrier_code 样本值:  [AA, UA, DL, WN, ...]
+Airline.code 已有主键值集合:   [AA, UA, DL, WN, ...]   → Jaccard > 0.3 → 推断关联
+```
+
+**实现思路**：
+- promote 时，将各 ET 主键值写入 Bloom Filter 或 HashSet，存 DB
+- 新 Dataset schema 发现时，对每列取 top 1000 样本值
+- 与所有已有 ET 主键集合做相似度比对，置信度排序后呈现
+
+**相关 Rust crate**：
+```toml
+bloomfilter = "1"        # Bloom Filter，主键集合近似存储
+ahash        = "0.8"     # 快速 HashSet，精确匹配
+```
+
+**优点**：不依赖命名，可发现任意列名的关联。
+**缺点**：需预处理已有 ET 数据；低基数列（status=0/1）易误判。
+**适用**：非标准命名的历史系统数据、多部门数据合并。
+
+---
+
+### 方案三：语义名称匹配（P1/P2）
+
+**原理**：列名与 EntityType 名称语义相近，但字面不同。
+
+```
+"carrier"   ≈ "Airline"   （同义词）
+"vendor_id" ≈ "Supplier"  （同义词）
+```
+
+**实现梯度**：
+
+| 梯度 | 方式 | 成本 | 精度 |
+|------|------|------|------|
+| 轻量 | 预置同义词词典（维护 JSON 文件） | 极低 | 中 |
+| 中等 | 编辑距离 / n-gram 字符串相似度 | 低 | 中低 |
+| 重量 | 列名 + ET 名称做 embedding 相似度 | 高（需模型） | 高 |
+
+**轻量实现**：
+```rust
+// 同义词词典示例
+{
+  "carrier":  ["airline", "air_carrier"],
+  "vendor":   ["supplier", "provider"],
+  "customer": ["client", "buyer"]
+}
+```
+
+**embedding 方案**（P2，与 embedding-svc 协同）：
+```
+col_name embedding + ET_name embedding → cosine similarity > 0.8 → 推断关联
+```
+
+**相关 Rust crate**：
+```toml
+strsim = "0.11"     # 编辑距离、Jaro-Winkler 相似度
+```
+
+---
+
+### 方案四：用户历史映射学习（P2）
+
+**原理**：记录用户手动确认过的关联，相同模式再次出现时自动建议。
+
+```
+第一次：aircraft.csv[airline_id]  →  用户确认  →  Airline
+下一次：flight.csv[airline_id]   →  自动建议   →  Airline（置信度：高）
+```
+
+**存储**：`user_relation_hints` 表，记录 `(col_name_pattern, entity_type_id, confirm_count)`。
+**冷启动**：无历史数据时退化为方案一/二，用户确认后开始积累。
+
+---
+
+### 综合推断策略
+
+多方案并行推断，结果合并后按置信度排序，呈现给用户确认，不强制自动应用：
+
+```
+列名约定  ──▶
+值域重叠  ──▶  置信度合并  ──▶  排序展示  ──▶  用户确认  ──▶  保存关联
+语义匹配  ──▶
+历史学习  ──▶
+```
+
+用户确认 = 反馈信号，持续提升推断准确率（方案四的数据来源）。
+
+**实施优先级**：方案一 P0 ✅ → 方案二 P1 → 方案三（词典版）P1 → 方案三（embedding）P2 → 方案四 P2
