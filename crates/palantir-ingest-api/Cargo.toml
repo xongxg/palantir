@@ -8,9 +8,9 @@ axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-palantir_ontology_manager = { path = "../palantir-ontology-manager" }
-palantir_persistence      = { path = "../palantir-persistence" }
-palantir_storage          = { path = "../palantir-storage" }
+palantir_source_adapter   = { path = "../palantir-source-adapter" }
+palantir-sqlite      = { path = "../store/palantir-sqlite" }
+palantir-dataset          = { path = "../palantir-dataset" }
 csv = "1"
 futures-util = "0.3"
 time = { version = "0.3", features = ["serde-human-readable", "parsing"] }
