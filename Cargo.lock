@@ -1287,12 +1287,54 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
+name = "palantir-dataset"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "csv",
+ "futures-util",
+ "hex",
+ "object_store",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
+name = "palantir-meta-store"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "uuid",
+]
+
+[[package]]
+name = "palantir-sqlite"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "palantir-meta-store",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "uuid",
+]
+
+[[package]]
 name = "palantir_agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "csv",
- "palantir_ontology_manager",
+ "palantir_source_adapter",
  "serde",
  "serde_json",
  "time",
@@ -1310,9 +1352,9 @@ dependencies = [
  "futures-util",
  "object_store",
  "once_cell",
- "palantir_ontology_manager",
- "palantir_persistence",
- "palantir_storage",
+ "palantir-dataset",
+ "palantir-sqlite",
+ "palantir_source_adapter",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -1323,7 +1365,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "palantir_ontology_manager"
+name = "palantir_source_adapter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1341,34 +1383,6 @@ dependencies = [
  "tokio",
  "toml",
  "uuid",
-]
-
-[[package]]
-name = "palantir_persistence"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "sqlx",
- "uuid",
-]
-
-[[package]]
-name = "palantir_storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "csv",
- "futures-util",
- "hex",
- "object_store",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
 ]
 
 [[package]]

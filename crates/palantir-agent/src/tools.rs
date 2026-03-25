@@ -1,4 +1,4 @@
-use palantir_ontology_manager::{
+use palantir_source_adapter::{
     mapping::Mapping,
     mapping_toml::TomlMapping,
     model::{CanonicalRecord, OntologySchema},

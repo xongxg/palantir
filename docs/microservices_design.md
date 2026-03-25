@@ -20,25 +20,32 @@
 
 ```
 palantir/
-├── Cargo.toml                    # workspace root
+├── Cargo.toml                         # workspace root
 │
-├── crates/                       # 库 crate（无 main.rs，可单元测试）
-│   ├── palantir-ontology-manager/  # 现有：adapter/mapping/manager/model
-│   ├── palantir-domain/            # 现有：领域模型（finance/flight/order...）
-│   ├── palantir-persistence/       # 现有：SQLite 持久化
-│   ├── palantir-pipeline/          # 现有：saga/transform 原语
-│   ├── palantir-agent/             # 现有 → 重构为 AI Agent 核心库
-│   ├── palantir-event-bus/         # NEW：Event Bus trait + NATS/内存实现
-│   ├── palantir-function-core/     # NEW：Function/Logic trait + 注册表
-│   └── palantir-auth-core/         # NEW：Policy 类型 + 评估器 trait
+├── crates/                            # 库 crate（无 main.rs，可单元测试）
+│   │
+│   ├── store/                         # ── 元数据存储层（集中管理）──────────
+│   │   ├── palantir-meta-store/       # MetadataStore trait + Row types（Port）
+│   │   ├── palantir-sqlite/           # SQLite 实现（✅ 当前唯一完整实现）
+│   │   ├── palantir-postgres/         # PostgreSQL（stub，待实现）
+│   │   └── palantir-mysql/            # MySQL（stub，待实现）
+│   │
+│   ├── palantir-source-adapter/       # 数据源适配器（CSV/REST/DB/S3/Kafka）
+│   ├── palantir-dataset/              # Dataset 存储层（ObjectStore/Stream/DB/API）
+│   ├── palantir-agent/                # AI Agent 核心库
+│   ├── palantir-event-bus/            # NEW：Event Bus trait + NATS/内存实现
+│   ├── palantir-function-core/        # NEW：Function/Logic trait + 注册表
+│   └── palantir-auth-core/            # NEW：Policy 类型 + 评估器 trait
 │
-└── services/                     # 可部署服务（有 main.rs，薄封装）
-    ├── ontology-svc/               # Ontology CRUD + 事件流
-    ├── ingest-svc/                 # 数据摄入（重构自 palantir-ingest-api）
-    ├── function-svc/               # Function/Logic 注册与执行
-    ├── agent-svc/                  # AI Agent 推理入口
-    ├── workflow-svc/               # Workflow 编排 + Saga
-    └── auth-svc/                   # RBAC + ABAC + ReBAC 权限服务
+├── crates/palantir-ingest-api/        # 当前单体 API（过渡阶段保留）
+│
+└── services/                          # 可部署服务（有 main.rs，薄封装）
+    ├── ontology-svc/                  # Ontology CRUD + 事件流
+    ├── ingest-svc/                    # 数据摄入（重构自 palantir-ingest-api）
+    ├── function-svc/                  # Function/Logic 注册与执行
+    ├── agent-svc/                     # AI Agent 推理入口
+    ├── workflow-svc/                  # Workflow 编排 + Saga
+    └── auth-svc/                      # RBAC + ABAC + ReBAC 权限服务
 ```
 
 ---
@@ -141,7 +148,7 @@ services/ontology-svc/src/
 
 ```toml
 [dependencies]
-palantir-ontology-manager = { path = "../../crates/palantir-ontology-manager" }
+palantir-source-adapter = { path = "../../crates/palantir-source-adapter" }
 palantir-persistence      = { path = "../../crates/palantir-persistence" }
 palantir-event-bus        = { path = "../../crates/palantir-event-bus" }
 axum                      = "0.8"
@@ -207,7 +214,7 @@ services/ingest-svc/src/
 
 ```toml
 [dependencies]
-palantir-ontology-manager = { path = "../../crates/palantir-ontology-manager" }
+palantir-source-adapter = { path = "../../crates/palantir-source-adapter" }
 palantir-event-bus        = { path = "../../crates/palantir-event-bus" }
 reqwest                   = { version = "0.12", features = ["json"] }
 tokio-cron-scheduler      = "0.13"   # 定时触发

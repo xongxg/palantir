@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-palantir_ontology_manager = { path = "../palantir-ontology-manager" }
+palantir_source_adapter = { path = "../palantir-source-adapter" }
 time = { version = "0.3", features = ["serde-human-readable", "parsing"] }
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"

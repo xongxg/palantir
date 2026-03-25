@@ -1,10 +1,14 @@
 [workspace]
 members = [
-    "crates/palantir-ontology-manager",
-    "crates/palantir-agent",
+    # ── Metadata store layer ──────────────────────────────────────────
+    "crates/store/palantir-meta-store",
+    "crates/store/palantir-sqlite",
+    # ── Data ingestion & dataset ──────────────────────────────────────
+    "crates/palantir-source-adapter",
+    "crates/palantir-dataset",
+    # ── Application ───────────────────────────────────────────────────
     "crates/palantir-ingest-api",
-    "crates/palantir-persistence",
-    "crates/palantir-storage",
+    "crates/palantir-agent",
 ]
 default-members = [
     "crates/palantir-ingest-api",

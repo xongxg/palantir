@@ -8,12 +8,12 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose};
 use object_store::{ObjectStore, aws::AmazonS3Builder, path::Path as OsPath};
 use bytes::Bytes as OsBytes;
-use palantir_storage::{DatasetStore, LocalFsBackend, S3Backend};
+use palantir_dataset::{DatasetStore, LocalFsBackend, S3Backend};
 use std::sync::Arc as StdArc;
 use futures_util::TryStreamExt;
 use futures_util::StreamExt;
 use once_cell::sync::Lazy;
-use palantir_ontology_manager::{
+use palantir_source_adapter::{
     adapters::SourceAdapter,
     adapters_csv::CsvAdapter,
     adapters_json::JsonAdapter,
@@ -23,7 +23,7 @@ use palantir_ontology_manager::{
     mapping_toml::TomlMapping,
     model::{OntologyEvent, OntologySchema, Value},
 };
-use palantir_persistence::{BuildRow, ConnectorRow, Db, EntityRow, LinkTypeMappingInput, RelRow};
+use palantir_sqlite::{BuildRow, ConnectorRow, Db, EntityRow, LinkTypeMappingInput, RelRow};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
@@ -1163,6 +1163,7 @@ async fn list_entity_types_handler() -> impl IntoResponse {
                 result.push(json!({
                     "id": et.id, "name": et.name, "display_name": et.display_name,
                     "color": et.color, "icon": et.icon, "created_at": et.created_at,
+                    "fold_id": et.fold_id, "namespace": et.namespace, "ddd_role": et.ddd_role,
                     "fields": fields,
                 }));
             }
@@ -1179,8 +1180,23 @@ async fn list_entity_types_handler() -> impl IntoResponse {
 async fn create_entity_type_handler(
     Json(req): Json<CreateEntityTypeReqClean>,
 ) -> impl IntoResponse {
+    // Auto-derive namespace from fold name when fold_id is provided.
+    // Stored name = "{namespace}.{short_name}" to satisfy UNIQUE constraint across folds.
+    let (stored_name, namespace) = match req.fold_id.as_deref() {
+        Some(fid) if !fid.is_empty() => {
+            match db().get_fold(fid).await {
+                Ok(Some(fold)) => {
+                    let ns = fold.name.to_lowercase().replace(' ', "_");
+                    let full = format!("{}.{}", ns, req.name);
+                    (full, Some(ns))
+                }
+                _ => (req.name.clone(), None),
+            }
+        }
+        _ => (req.name.clone(), None),
+    };
     match db()
-        .create_entity_type(&req.name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref(), &req.ddd_role)
+        .create_entity_type(&stored_name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref(), &req.ddd_role, namespace.as_deref())
         .await
     {
         Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
@@ -1689,6 +1705,65 @@ async fn get_fold_handler(Path(fold_id): Path<String>) -> impl IntoResponse {
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
+}
+
+/// POST /api/folds/:id/infer-mapping
+/// Given a list of source columns, suggest which existing ET in this fold each column maps to.
+/// Response: { "entity_types": [...], "suggestions": { "col_name": { "et_id", "field_name", "confidence" } } }
+#[derive(Deserialize)]
+struct InferMappingReq {
+    columns: Vec<InferColumn>,
+}
+#[derive(Deserialize)]
+struct InferColumn {
+    name: String,
+    #[serde(default)]
+    data_type: String,
+}
+async fn infer_mapping_handler(Path(fold_id): Path<String>, Json(req): Json<InferMappingReq>) -> impl IntoResponse {
+    let ets = match db().list_entity_types_for_fold(&fold_id).await {
+        Ok(v) => v,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    };
+    if ets.is_empty() {
+        return (StatusCode::OK, Json(json!({ "entity_types": [], "suggestions": {} }))).into_response();
+    }
+    // Build field index: (et_id, field_name) with normalized key
+    let mut field_index: Vec<(String, String, String)> = Vec::new(); // (et_id, field_name, normalized)
+    let mut et_list = Vec::new();
+    for et in &ets {
+        let fields = db().list_entity_fields(&et.id).await.unwrap_or_default();
+        for f in &fields {
+            let norm = f.name.to_lowercase().replace(['-', ' ', '_'], "");
+            field_index.push((et.id.clone(), f.name.clone(), norm));
+        }
+        et_list.push(json!({
+            "id": et.id, "name": et.name, "display_name": et.display_name,
+            "namespace": et.namespace, "ddd_role": et.ddd_role, "color": et.color,
+        }));
+    }
+    // For each incoming column, find best match
+    let mut suggestions = serde_json::Map::new();
+    for col in &req.columns {
+        let col_norm = col.name.to_lowercase().replace(['-', ' ', '_'], "");
+        // 1. Exact normalized match
+        let best = field_index.iter().find(|(_, _, norm)| *norm == col_norm)
+            .map(|(et_id, field_name, _)| (et_id.clone(), field_name.clone(), 1.0_f32))
+            // 2. Prefix match (col is prefix of field or field is prefix of col)
+            .or_else(|| {
+                field_index.iter().find(|(_, _, norm)| {
+                    norm.starts_with(&col_norm) || col_norm.starts_with(norm.as_str())
+                }).map(|(et_id, field_name, _)| (et_id.clone(), field_name.clone(), 0.7_f32))
+            });
+        if let Some((et_id, field_name, confidence)) = best {
+            suggestions.insert(col.name.clone(), json!({
+                "et_id": et_id,
+                "field_name": field_name,
+                "confidence": confidence,
+            }));
+        }
+    }
+    (StatusCode::OK, Json(json!({ "entity_types": et_list, "suggestions": suggestions }))).into_response()
 }
 
 async fn delete_fold_handler(Path(fold_id): Path<String>) -> impl IntoResponse {
@@ -2494,13 +2569,13 @@ async fn write_records_to_storage(
     dv_id: &str,
     project_id: &str,
 ) -> String {
-    use palantir_storage::DatasetSchema;
+    use palantir_dataset::DatasetSchema;
     if records.is_empty() {
         return json!({"fields":[]}).to_string();
     }
     let (backend, _is_s3) = build_platform_backend().await;
     let prefix = format!("platform_datasets/{}", project_id);
-    let store = palantir_storage::DatasetStore::new(backend, &prefix);
+    let store = palantir_dataset::DatasetStore::new(backend, &prefix);
     let schema = DatasetSchema::infer_from_records(&records);
     let schema_json = serde_json::to_string(&schema).unwrap_or_else(|_| json!({"fields":[]}).to_string());
     let mut writer = store.begin_write(dataset_id, version, run_id);
@@ -2540,7 +2615,7 @@ async fn merge_records_for_mode(
         Ok(Some(dv)) if dv.manifest_path.is_some() => {
             let (backend, _) = build_platform_backend().await;
             let mp = dv.manifest_path.unwrap();
-            palantir_storage::read_records_from_manifest_path(&backend, &mp)
+            palantir_dataset::read_records_from_manifest_path(&backend, &mp)
                 .await
                 .unwrap_or_default()
         }
@@ -2930,7 +3005,7 @@ async fn list_dataset_records_handler(
 
     if let Some(manifest_path) = &dv.manifest_path {
         let (backend, _) = build_platform_backend().await;
-        match palantir_storage::read_records_from_manifest_path(&backend, manifest_path).await {
+        match palantir_dataset::read_records_from_manifest_path(&backend, manifest_path).await {
             Ok(all_records) => {
                 let total = all_records.len();
                 let page: Vec<serde_json::Value> = all_records.into_iter().skip(offset).take(limit).collect();
@@ -3008,7 +3083,7 @@ async fn promote_dataset_handler(
         }
     } else if !req.new_type_name.is_empty() {
         let name = req.new_type_name.trim().to_lowercase().replace(' ', "_");
-        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube", req.fold_id.as_deref(), "entity").await {
+        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube", req.fold_id.as_deref(), "entity", None).await {
             Ok(t) => (t.id, t.display_name),
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
@@ -3043,7 +3118,7 @@ async fn promote_dataset_handler(
         let from_s3 = if let Some(dv) = &dv {
             if let Some(mp) = &dv.manifest_path {
                 let (backend, _) = build_platform_backend().await;
-                palantir_storage::read_records_from_manifest_path(&backend, mp).await.ok()
+                palantir_dataset::read_records_from_manifest_path(&backend, mp).await.ok()
             } else { None }
         } else { None };
 
@@ -3101,6 +3176,9 @@ async fn promote_dataset_handler(
     // ── Resolve FK links → ontology_links ────────────────────────────────────
     let links_resolved = db().resolve_links_for_dataset(&dataset_id).await.unwrap_or(0);
 
+    // ── Mark dataset as promoted ──────────────────────────────────────────────
+    let _ = db().update_dataset_entity_type(&dataset_id, &et_id).await;
+
     (StatusCode::OK, Json(json!({
         "ok": true,
         "promoted": promoted,
@@ -3133,7 +3211,7 @@ async fn auto_promote_if_mapped(dataset_id: &str) {
             let dv = db().get_current_dataset_version(dataset_id).await.ok().flatten()?;
             let mp = dv.manifest_path?;
             let (backend, _) = build_platform_backend().await;
-            palantir_storage::read_records_from_manifest_path(&backend, &mp).await.ok()
+            palantir_dataset::read_records_from_manifest_path(&backend, &mp).await.ok()
         }.await;
         if let Some(r) = from_manifest {
             r
@@ -3186,6 +3264,8 @@ async fn auto_promote_if_mapped(dataset_id: &str) {
         count += 1;
     }
     eprintln!("[auto-promote] [{}] ✓ {} objects → \"{}\" (dataset {})", sync_mode, count, et.display_name, dataset_id);
+    // Mark dataset as promoted
+    let _ = db().update_dataset_entity_type(dataset_id, &et_id).await;
     // Resolve FK links after promoting
     let links = db().resolve_links_for_dataset(dataset_id).await.unwrap_or(0);
     if links > 0 { eprintln!("[auto-promote] {} links resolved for dataset {}", links, dataset_id); }
@@ -3548,7 +3628,7 @@ async fn load_platform_storage_config() -> (String, String, String, String, Stri
     (endpoint, bucket, ak, sk, region)
 }
 
-async fn build_platform_backend() -> (StdArc<dyn palantir_storage::StorageBackend>, bool) {
+async fn build_platform_backend() -> (StdArc<dyn palantir_dataset::StorageBackend>, bool) {
     let (endpoint, bucket, ak, sk, region) = load_platform_storage_config().await;
 
     eprintln!("[storage] platform backend: endpoint={:?} bucket={:?} ak_set={}",
@@ -3594,7 +3674,7 @@ async fn write_to_platform_storage(
 }
 
 async fn do_write_storage(
-    backend: StdArc<dyn palantir_storage::StorageBackend>,
+    backend: StdArc<dyn palantir_dataset::StorageBackend>,
     root_prefix: &str,
     dataset_id: &str,
     version: i64,
@@ -3629,7 +3709,7 @@ async fn do_write_storage(
         serde_json::from_str(&r.fields).unwrap_or(serde_json::Value::Object(Default::default()))
     }).collect();
 
-    let schema = palantir_storage::DatasetSchema::infer_from_records(&records);
+    let schema = palantir_dataset::DatasetSchema::infer_from_records(&records);
     let schema_json = serde_json::to_string(&schema).unwrap_or_else(|_| json!({"fields":[]}).to_string());
 
     let mut writer = store.begin_write(dataset_id, version, run_id);
@@ -3718,7 +3798,7 @@ async fn rematerialize_from_manifest(
     // Read manifest
     let manifest_bytes = backend.get(manifest_path).await
         .map_err(|e| format!("read manifest: {e}"))?;
-    let manifest: palantir_storage::DatasetManifest =
+    let manifest: palantir_dataset::DatasetManifest =
         serde_json::from_slice(&manifest_bytes).map_err(|e| format!("parse manifest: {e}"))?;
 
     // Delete existing objects for this dataset
@@ -3855,7 +3935,7 @@ async fn test_storage_config_handler() -> impl IntoResponse {
     match S3Backend::new(&endpoint, &bucket, &ak, &sk, &region) {
         Err(e) => (StatusCode::OK, Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
         Ok(b) => {
-            let backend: StdArc<dyn palantir_storage::StorageBackend> = StdArc::new(b);
+            let backend: StdArc<dyn palantir_dataset::StorageBackend> = StdArc::new(b);
             match backend.list("").await {
                 Ok(files) => (StatusCode::OK, Json(json!({
                     "ok": true,
@@ -3956,6 +4036,7 @@ async fn main() -> anyhow::Result<()> {
         // ── Ingest workflow ──────────────────────────────────────────────────
         .route("/api/projects/:id/folds",   get(list_folds).post(create_fold))
         .route("/api/folds/:id",            get(get_fold_handler).delete(delete_fold_handler))
+        .route("/api/folds/:id/infer-mapping", post(infer_mapping_handler))
         .route("/api/folds/:id/sources",    get(list_sources).post(create_source))
         .route("/api/sources/:id",            get(get_source_handler).put(update_source_handler).delete(delete_source_handler))
         .route("/api/sources/:id/test",       post(test_source_handler))

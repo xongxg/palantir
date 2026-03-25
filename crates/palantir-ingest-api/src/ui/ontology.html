@@ -182,12 +182,6 @@
             <button onclick="saveSchemaAsET()" class="btn-ghost btn-sm" style="flex-shrink:0;white-space:nowrap;">保存为 Entity Type</button>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-            <span style="font-size:11px;color:#64748b;flex-shrink:0;">归属 BC：</span>
-            <select id="promote-fold-id" style="width:auto;flex:1;">
-              <option value="">公共 / Shared（不绑定子业务）</option>
-            </select>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
             <span style="font-size:11px;color:#64748b;flex-shrink:0;">同步模式：</span>
             <select id="promote-sync-mode" onchange="renderSyncModeTip(this.value)" style="width:auto;flex:1;">
               <option value="snapshot">Snapshot — 全量替换（每次清空重写）</option>
@@ -196,6 +190,7 @@
             </select>
           </div>
           <p id="sync-mode-tip" style="font-size:11px;color:#64748b;margin-top:5px;padding:6px 10px;border-radius:6px;background:#0f172a;border-left:2px solid #334155;"></p>
+          <div id="duplicate-source-warning" style="display:none;margin-top:6px;padding:8px 10px;border-radius:6px;background:#451a03;border-left:3px solid #f59e0b;font-size:11px;color:#fcd34d;line-height:1.6;"></div>
           <p id="et-save-result" style="display:none;font-size:11px;margin-top:6px;"></p>
         </div>
       </div>
@@ -511,6 +506,7 @@ let selectedET       = null;
 let selectedObj      = null;
 let filterET         = null;
 let promoteDatasetId = null;
+let currentFoldId    = null;   // fold_id of the currently selected dataset (auto-derived from source)
 let currentTab       = 'import';
 const fromProjectId  = new URLSearchParams(location.search).get('from') || '';
 
@@ -542,11 +538,6 @@ async function loadFolds() {
   const res = await fetch(`/api/projects/${fromProjectId}/folds`);
   const data = await res.json();
   folds = data.folds || [];
-  const sel = document.getElementById('promote-fold-id');
-  if (sel) {
-    sel.innerHTML = '<option value="">公共 / Shared（不绑定子业务）</option>' +
-      folds.map(f => `<option value="${f.id}">${escHtml(f.name)}</option>`).join('');
-  }
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -584,6 +575,9 @@ async function loadDatasets() {
   if (!promoteDatasetId && datasets.length) selectDataset(datasets[0]);
 }
 
+// Track which multi-source ET groups are expanded
+const expandedETGroups = new Set();
+
 function renderImportList() {
   const el = document.getElementById('import-ds-list');
   if (!datasets.length) {
@@ -595,26 +589,118 @@ function renderImportList() {
     return;
   }
   el.innerHTML = '';
-  datasets.forEach(ds => {
-    const isPromoted = ds.entity_type_id != null;
-    const hasRecords = (ds.record_count || 0) > 0;
-    const statusClass = isPromoted ? 'status-promoted' : (hasRecords ? 'status-raw' : 'status-empty');
-    const statusText  = isPromoted ? 'Promoted' : (hasRecords ? 'Raw data' : 'Empty');
 
-    const btn = document.createElement('button');
-    btn.className = 'w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-700/40 transition-colors ' +
-      (promoteDatasetId === ds.id ? 'bg-indigo-900/30 border border-indigo-700/50' : '');
-    btn.innerHTML = `
-      <div class="flex items-center gap-2.5">
-        <span class="status-dot ${statusClass} flex-shrink-0 mt-0.5"></span>
-        <div class="min-w-0 flex-1">
-          <p class="text-sm text-slate-200 truncate font-medium">${escHtml(ds.name || ds.id)}</p>
-          <p class="text-xs text-slate-500 mt-0.5">${ds.record_count ?? 0} records · ${statusText}</p>
-        </div>
-      </div>`;
-    btn.onclick = () => selectDataset(ds);
-    el.appendChild(btn);
+  // Group datasets: multi-source ETs get collapsed into one group header
+  const etGroups = {};   // etId → [ds, ...]
+  const ordered  = [];   // [{type:'single'|'group', ds?, etId?, items?}]
+  const seen     = new Set();
+
+  datasets.forEach(ds => {
+    if (!ds.entity_type_id) {
+      ordered.push({ type: 'single', ds });
+      return;
+    }
+    if (!etGroups[ds.entity_type_id]) etGroups[ds.entity_type_id] = [];
+    etGroups[ds.entity_type_id].push(ds);
   });
+
+  // Insert groups in order of first appearance
+  datasets.forEach(ds => {
+    if (!ds.entity_type_id) return;
+    if (seen.has(ds.entity_type_id)) return;
+    seen.add(ds.entity_type_id);
+    const items = etGroups[ds.entity_type_id];
+    if (items.length === 1) {
+      ordered.push({ type: 'single', ds: items[0] });
+    } else {
+      ordered.push({ type: 'group', etId: ds.entity_type_id, items });
+    }
+  });
+
+  ordered.forEach(entry => {
+    if (entry.type === 'single') {
+      el.appendChild(makeDsButton(entry.ds, false));
+    } else {
+      // Group header
+      const { etId, items } = entry;
+      const et = entityTypes.find(e => e.id === etId);
+      const etName = et?.display_name || et?.name || etId;
+      const totalRecords = items.reduce((s, d) => s + (d.record_count || 0), 0);
+      const isExpanded = expandedETGroups.has(etId);
+      const isActiveGroup = items.some(d => d.id === promoteDatasetId);
+
+      const header = document.createElement('div');
+      header.style.cssText = 'border-radius:8px;overflow:hidden;margin-bottom:2px;' +
+        (isActiveGroup ? 'background:#1e1b4b;border:1px solid #4338ca44;' : '');
+
+      const hBtn = document.createElement('button');
+      hBtn.className = 'w-full text-left px-3 py-2.5 hover:bg-slate-700/40 transition-colors';
+      hBtn.innerHTML = `
+        <div class="flex items-center gap-2.5">
+          <span class="status-dot status-promoted flex-shrink-0 mt-0.5"></span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <p class="text-sm text-slate-200 truncate font-medium">${escHtml(etName)}</p>
+              <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#1e3a5f;color:#60a5fa;flex-shrink:0;">${items.length} 个数据源</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">${totalRecords} records · Promoted</p>
+          </div>
+          <span style="color:#475569;font-size:11px;flex-shrink:0;">${isExpanded ? '▾' : '▸'}</span>
+        </div>`;
+
+      hBtn.onclick = () => {
+        if (expandedETGroups.has(etId)) expandedETGroups.delete(etId);
+        else expandedETGroups.add(etId);
+        renderImportList();
+      };
+      header.appendChild(hBtn);
+
+      // Sub-items when expanded
+      if (isExpanded) {
+        const sub = document.createElement('div');
+        sub.style.cssText = 'padding:0 0 4px 0;background:#0f172a;border-top:1px solid #1e293b;';
+        items.forEach(ds => sub.appendChild(makeDsButton(ds, true)));
+        header.appendChild(sub);
+      }
+
+      el.appendChild(header);
+    }
+  });
+}
+
+function makeDsButton(ds, indented) {
+  const isPromoted  = ds.entity_type_id != null;
+  const hasRecords  = (ds.record_count || 0) > 0;
+  const statusClass = isPromoted ? 'status-promoted' : (hasRecords ? 'status-raw' : 'status-empty');
+  const statusText  = isPromoted ? 'Promoted' : (hasRecords ? 'Raw data' : 'Empty');
+
+  // Tooltip: source name + fold name
+  const sourceParts = [];
+  if (ds.fold_name)   sourceParts.push(`Fold: ${ds.fold_name}`);
+  if (ds.source_name) sourceParts.push(`数据源: ${ds.source_name}`);
+  const tooltipText = sourceParts.join('  ·  ');
+  const sourceHint = tooltipText
+    ? `<p class="text-xs mt-0.5 truncate" style="color:#475569;">${escHtml(tooltipText)}</p>`
+    : '';
+
+  const btn = document.createElement('button');
+  btn.className = 'w-full text-left hover:bg-slate-700/40 transition-colors ' +
+    (promoteDatasetId === ds.id ? 'bg-indigo-900/30' : '');
+  btn.style.cssText = indented
+    ? 'padding:6px 12px 6px 28px;border-radius:0;'
+    : 'padding:10px 12px;border-radius:8px;margin-bottom:2px;';
+  if (tooltipText) btn.title = tooltipText;
+  btn.innerHTML = `
+    <div class="flex items-center gap-2.5">
+      <span class="status-dot ${statusClass} flex-shrink-0"></span>
+      <div class="min-w-0 flex-1">
+        <p class="${indented ? 'text-xs' : 'text-sm'} text-slate-200 truncate font-medium">${escHtml(ds.name || ds.id)}</p>
+        <p class="text-xs text-slate-500 mt-0.5">${ds.record_count ?? 0} records · ${statusText}</p>
+        ${sourceHint}
+      </div>
+    </div>`;
+  btn.onclick = () => selectDataset(ds);
+  return btn;
 }
 
 // ── Mapping state ────────────────────────────────────────────────────────────
@@ -624,6 +710,7 @@ let currentSavedMap  = {};   // {csv_col: entity_field}
 
 async function selectDataset(ds) {
   promoteDatasetId = ds.id;
+  currentFoldId    = ds.fold_id || null;
   renderImportList();
 
   document.getElementById('import-empty').style.display = 'none';
@@ -649,9 +736,10 @@ async function selectDataset(ds) {
   const selEl = document.getElementById('promote-et-id');
   selEl.innerHTML =
     '<option value="">— select existing —</option>' +
-    entityTypes.map(e =>
-      `<option value="${e.id}" ${e.id === ds.entity_type_id ? 'selected' : ''}>${escHtml(e.display_name || e.name)}</option>`
-    ).join('');
+    entityTypes.map(e => {
+      const ns = e.namespace ? `[${e.namespace}] ` : '';
+      return `<option value="${e.id}" ${e.id === ds.entity_type_id ? 'selected' : ''}>${ns}${escHtml(e.display_name || e.name)}</option>`;
+    }).join('');
   document.getElementById('promote-new-type').value = '';
   document.getElementById('promote-links-container').innerHTML = '';
   document.getElementById('promote-result').classList.add('hidden');
@@ -677,9 +765,7 @@ async function selectDataset(ds) {
       // Restore sync_mode
       const smEl = document.getElementById('promote-sync-mode');
       if (smEl && m.sync_mode) { smEl.value = m.sync_mode; renderSyncModeTip(m.sync_mode); }
-      // Restore fold_id from saved ET's fold
-      const foldSel = document.getElementById('promote-fold-id');
-      if (foldSel && savedET?.fold_id) { foldSel.value = savedET.fold_id; }
+
       currentSavedPk  = m.primary_key_col || '';
       currentSavedMap = m.field_mapping ? JSON.parse(m.field_mapping) : {};
     }
@@ -742,6 +828,72 @@ async function selectDataset(ds) {
 
   renderMappingTable();
   autoInferRelationships();
+  checkDuplicateETSource();
+}
+
+// Show warning if selected ET already has other promoted datasets.
+// Also compares field sets to classify the relationship and auto-switch sync mode.
+let _checkDupLock = false;
+function checkDuplicateETSource() {
+  if (_checkDupLock) return;
+  const warn = document.getElementById('duplicate-source-warning');
+  if (!warn) return;
+  const etId = document.getElementById('promote-et-id')?.value;
+  if (!etId || !promoteDatasetId) { warn.style.display = 'none'; return; }
+
+  const others = datasets.filter(d => d.entity_type_id === etId && d.id !== promoteDatasetId);
+  if (!others.length) { warn.style.display = 'none'; return; }
+
+  const et = entityTypes.find(e => e.id === etId);
+  const etName  = et?.display_name || et?.name || etId;
+  const etFields = new Set((et?.fields || []).map(f => f.name));
+  const currFields = currentColumns.filter(c => !c.ignored).map(c => c.editedName || c.name);
+  const currSet    = new Set(currFields);
+
+  const overlapCount = currFields.filter(f => etFields.has(f)).length;
+  const newFields    = currFields.filter(f => !etFields.has(f));
+
+  // Classify relationship
+  let icon, relLabel, hint, suggestMode;
+  if (etFields.size === 0 || currFields.length === 0) {
+    // No schema info yet — generic warning
+    icon = '⚠️'; relLabel = '';
+    hint = `建议使用 <b>Upsert</b> 按主键合并，避免覆盖已有数据。`;
+    suggestMode = 'upsert';
+  } else if (newFields.length === 0) {
+    // All current fields already exist in ET → likely duplicate source
+    icon = '⚠️'; relLabel = '重复源';
+    hint = `当前数据集字段与 ET 完全重合（可能是主备/迁移场景）。<b>Upsert</b> 按主键合并可安全共存，不会产生重复行。`;
+    suggestMode = 'upsert';
+  } else if (overlapCount > 0) {
+    // Partial overlap → enrichment source
+    const newList = newFields.slice(0, 3).map(f => `<code>${escHtml(f)}</code>`).join('、')
+                    + (newFields.length > 3 ? ` 等 ${newFields.length} 个` : '');
+    icon = 'ℹ️'; relLabel = '增强源';
+    hint = `检测到 ${newFields.length} 个新字段（${newList}），当前数据集将为 ET 补充新字段。<b>Upsert</b> 模式按主键合并，新字段会写入已有对象。`;
+    suggestMode = 'upsert';
+  } else {
+    // Disjoint fields → complementary source
+    icon = 'ℹ️'; relLabel = '互补源';
+    hint = `当前数据集字段与已有源完全不重叠，是互补数据。<b>Upsert</b> 模式可安全合并，两份数据在同一 ET 下共存。`;
+    suggestMode = 'upsert';
+  }
+
+  // Auto-switch sync mode from snapshot → upsert (snapshot is unsafe for multi-source)
+  const smEl = document.getElementById('promote-sync-mode');
+  const curMode = smEl?.value || 'snapshot';
+  if (curMode === 'snapshot' && smEl) {
+    _checkDupLock = true;
+    smEl.value = suggestMode;
+    const tipEl = document.getElementById('sync-mode-tip');
+    if (tipEl) tipEl.textContent = SYNC_MODE_TIPS[suggestMode] || '';
+    _checkDupLock = false;
+  }
+
+  const names = others.map(d => `「${escHtml(d.name || d.id)}」`).join('、');
+  const badge = relLabel ? ` <span style="background:#78350f;color:#fcd34d;padding:1px 6px;border-radius:4px;font-size:10px;">${relLabel}</span>` : '';
+  warn.style.display = 'block';
+  warn.innerHTML = `${icon}${badge} ET「${escHtml(etName)}」已有 ${others.length} 个数据源：${names}。${hint}`;
 }
 
 function inferType(samples) {
@@ -928,12 +1080,11 @@ async function saveSchemaAsET() {
 async function persistDatasetMapping(etId, pkCol, fieldMapping) {
   if (!promoteDatasetId || !etId) return;
   const syncMode = document.getElementById('promote-sync-mode')?.value || 'snapshot';
-  const foldId   = document.getElementById('promote-fold-id')?.value || '';
   await fetch(`/api/datasets/${promoteDatasetId}/mapping`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ entity_type_id: etId, primary_key_col: pkCol,
-      field_mapping: fieldMapping, sync_mode: syncMode, fold_id: foldId || null }),
+      field_mapping: fieldMapping, sync_mode: syncMode, fold_id: currentFoldId || null }),
   });
 }
 
@@ -945,6 +1096,7 @@ const SYNC_MODE_TIPS = {
 function renderSyncModeTip(mode) {
   const el = document.getElementById('sync-mode-tip');
   if (el) el.textContent = SYNC_MODE_TIPS[mode] || '';
+  checkDuplicateETSource();
 }
 
 function onPromoteETChange() {
@@ -952,6 +1104,7 @@ function onPromoteETChange() {
   if (val) document.getElementById('promote-new-type').value = '';
   renderMappingTable();
   autoInferRelationships();
+  checkDuplicateETSource();
 }
 
 function onPromoteNewTypeInput() {
@@ -964,9 +1117,10 @@ function makeLinkRow(fkCol, etId, relType) {
   const colNames = currentColumns.map(c => c.name);
   const colOpts  = `<option value="">— FK 列 —</option>` +
     colNames.map(c => `<option value="${escHtml(c)}" ${c === fkCol ? 'selected' : ''}>${escHtml(c)}</option>`).join('');
-  const etOpts   = entityTypes.map(e =>
-    `<option value="${e.id}" ${e.id === etId ? 'selected' : ''}>${escHtml(e.display_name || e.name)}</option>`
-  ).join('');
+  const etOpts   = entityTypes.map(e => {
+    const ns = e.namespace ? `[${e.namespace}] ` : '';
+    return `<option value="${e.id}" ${e.id === etId ? 'selected' : ''}>${ns}${escHtml(e.display_name || e.name)}</option>`;
+  }).join('');
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:6px;align-items:center;';
   row.innerHTML = `
@@ -984,6 +1138,7 @@ function addPromoteLink() {
   if (hint) hint.remove();
   container.appendChild(makeLinkRow('', entityTypes[0]?.id || '', 'HAS'));
 }
+
 
 function autoInferRelationships() {
   const container = document.getElementById('promote-links-container');
@@ -1055,7 +1210,6 @@ async function submitPromote() {
     if (fk && et) links.push({ from_fk_col: fk, to_entity_type_id: et, rel_type: rel });
   });
 
-  const foldId = document.getElementById('promote-fold-id')?.value || null;
   const syncMode = document.getElementById('promote-sync-mode')?.value || 'snapshot';
 
   const btn = document.getElementById('promote-btn');
@@ -1066,7 +1220,7 @@ async function submitPromote() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entity_type_id: etId, new_type_name: newName,
         primary_key_col: pkCol, field_mapping: fieldMapping, links,
-        sync_mode: syncMode, fold_id: foldId || null }),
+        sync_mode: syncMode, fold_id: currentFoldId || null }),
     });
     const d = await res.json();
     if (d.ok) {
@@ -1079,6 +1233,13 @@ async function submitPromote() {
       currentSavedMap = fieldMapping;
       await loadEntityTypes();
       await loadDatasets();
+      // Refresh status badge for the current dataset
+      const updatedDs = datasets.find(d => d.id === promoteDatasetId);
+      if (updatedDs) {
+        const statusEl = document.getElementById('import-ds-status');
+        statusEl.textContent = '✓ Promoted';
+        statusEl.className = 'tag bg-green-900/40 text-green-300';
+      }
     } else {
       showPromoteResult(false, d.error || 'Unknown error');
       btn.disabled = false; btn.textContent = 'Promote → Ontology';
@@ -1132,9 +1293,10 @@ function renderETList() {
       padding:8px 10px;border-radius:6px;border:none;cursor:pointer;font-size:13px;
       background:${isActive ? 'rgba(79,70,229,.3)' : 'transparent'};
       color:${isActive ? '#fff' : '#cbd5e1'};margin-bottom:2px;`;
+    const nsLabel = et.namespace ? `<span style="font-size:10px;color:#64748b;margin-right:2px;">${escHtml(et.namespace)} /</span>` : '';
     btn.innerHTML = `
       <span style="color:${et.color};flex-shrink:0;">${et.icon || '●'}</span>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(et.display_name)}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nsLabel}${escHtml(et.display_name)}</span>
       <span style="font-size:11px;color:#475569;">${et.fields?.length || 0}f</span>`;
     btn.onmouseover = () => { if (!isActive) btn.style.background = 'rgba(51,65,85,.5)'; };
     btn.onmouseout  = () => { if (!isActive) btn.style.background = 'transparent'; };
@@ -1155,7 +1317,8 @@ async function renderETDetail() {
   document.getElementById('et-icon').textContent  = selectedET.icon || '●';
   document.getElementById('et-icon').style.color  = selectedET.color;
   document.getElementById('et-display-name').textContent = selectedET.display_name;
-  document.getElementById('et-name').textContent  = selectedET.name;
+  const nsPrefix = selectedET.namespace ? `${selectedET.namespace} / ` : '';
+  document.getElementById('et-name').textContent  = nsPrefix + selectedET.name;
   renderFieldsTable();
   await renderETRelations();
 }
@@ -1500,43 +1663,135 @@ function classifyDDDRolesForETs(etNodes, validEdges, allNodes) {
   return roles;
 }
 
+// Union-Find helper
+function makeUF(ids) {
+  const p = Object.fromEntries(ids.map(id => [id, id]));
+  function find(x) { return p[x] === x ? x : (p[x] = find(p[x])); }
+  function union(x, y) { p[find(x)] = find(y); }
+  function components() {
+    const groups = {};
+    for (const id of ids) { const r = find(id); (groups[r] = groups[r] || []).push(id); }
+    return Object.values(groups);
+  }
+  return { find, union, components };
+}
+
+// Detect child-BCs within a fold using edge-density clustering.
+// Two ETs are merged only if their coupling ratio exceeds THRESHOLD.
+// coupling(A,B) = edges(A↔B) / min(degree_A, degree_B)
+// This avoids the "all connected → one BC" problem of pure Union-Find.
+function detectChildBCs(foldNodes, edges, etSummary) {
+  const nodeToET = Object.fromEntries(foldNodes.map(n => [n.id, n.et_id]));
+  const etIds = [...new Set(foldNodes.map(n => n.et_id).filter(Boolean))];
+  if (etIds.length <= 1) return null;
+
+  // Count directed edges between ET pairs + total degree per ET
+  const pairCount = {};
+  const etDegree = Object.fromEntries(etIds.map(id => [id, 0]));
+  for (const e of edges) {
+    const s = typeof e.source === 'object' ? e.source.id : e.source;
+    const t = typeof e.target === 'object' ? e.target.id : e.target;
+    const etA = nodeToET[s], etB = nodeToET[t];
+    if (etA && etB && etA !== etB) {
+      pairCount[`${etA}|||${etB}`] = (pairCount[`${etA}|||${etB}`] || 0) + 1;
+      etDegree[etA]++;
+      etDegree[etB]++;
+    }
+  }
+
+  // Union only strongly-coupled ET pairs
+  const THRESHOLD = 0.40;
+  const uf = makeUF(etIds);
+  for (const [key, count] of Object.entries(pairCount)) {
+    const [etA, etB] = key.split('|||');
+    const minDeg = Math.min(etDegree[etA] || 1, etDegree[etB] || 1);
+    if (count / minDeg >= THRESHOLD) uf.union(etA, etB);
+  }
+
+  const etComponents = uf.components();
+  if (etComponents.length <= 1) return null; // still one cluster → no split
+
+  return etComponents.map((etGroup, i) => {
+    const etSet = new Set(etGroup);
+    const nodeIds = foldNodes.filter(n => etSet.has(n.et_id)).map(n => n.id);
+    // Name the BC after the ET with the most instances
+    const etCounts = {};
+    foldNodes.filter(n => etSet.has(n.et_id)).forEach(n => {
+      etCounts[n.et_id] = (etCounts[n.et_id] || 0) + 1;
+    });
+    const topETId = Object.entries(etCounts).sort((a,b) => b[1]-a[1])[0]?.[0];
+    const et = etSummary?.find(e => e.id === topETId);
+    return { etGroup, nodeIds, name: et?.label || `BC-${i+1}` };
+  });
+}
+
 // Build BCs:
-// - If fold assigned → fold = BC
-// - Unassigned ETs → group by ET type (each ET = its own domain cluster)
-//   An Aggregate Root ET with its related Entities forms one BC via FK links
+// Two-level rendering:
+//   Level 1 (isFold=true):  fold outer hull — very transparent, just shows org boundary
+//   Level 2 (isChildBC=true): child-BC inner hulls — distinct colors, auto-detected via ET connected components
+// Unassigned ETs: each connected ET group = its own BC
 function buildBCsFromFolds(nodes, folds, etSummary, edges) {
   const foldIds = new Set(folds.map(f => f.id));
+  const result = [];
 
-  // Fold-based BCs (explicitly assigned)
-  const foldBCs = folds.map((f, i) => ({
-    id: f.id, name: f.name,
-    color: BC_PALETTE[i % BC_PALETTE.length],
-    ids: nodes.filter(n => n.fold_id === f.id).map(n => n.id),
-    isFold: true,
-  })).filter(bc => bc.ids.length > 0);
+  folds.forEach((f, fi) => {
+    const foldColor = BC_PALETTE[fi % BC_PALETTE.length];
+    const foldNodes = nodes.filter(n => n.fold_id === f.id && !n.is_default);
+    if (!foldNodes.length) return;
 
-  // For unassigned nodes: each ET becomes its own BC (shows separate boundary per entity type)
-  const unassigned = nodes.filter(n => !n.is_default && (!n.fold_id || !foldIds.has(n.fold_id)));
-  const foldOffset = foldBCs.length;
+    // Try to detect child-BCs within this fold
+    const childBCs = detectChildBCs(foldNodes, edges, etSummary);
 
-  // Group instances by ET — one BC per ET type
-  const etGroups = {};
-  unassigned.forEach(n => {
-    (etGroups[n.et_id] = etGroups[n.et_id] || []).push(n.id);
+    if (childBCs && childBCs.length > 1) {
+      // Child-BC hulls only — fold outer frame omitted when child-BCs are present
+      childBCs.forEach((cbc, ci) => {
+        result.push({
+          id: `${f.id}__cbc${ci}`, name: cbc.name,
+          color: BC_PALETTE[(fi * 4 + ci + 3) % BC_PALETTE.length],
+          ids: cbc.nodeIds,
+          isFold: false, isChildBC: true,
+        });
+      });
+    } else {
+      // No child split — show fold hull as a single BC
+      result.push({
+        id: f.id, name: f.name, color: foldColor,
+        ids: foldNodes.map(n => n.id),
+        isFold: true, isChildBC: false,
+      });
+    }
   });
 
-  const etBCs = Object.entries(etGroups).map(([etId, ids], i) => {
-    const et = etSummary?.find(e => e.id === etId);
-    const name = et?.label || etId;
-    // Use BC_PALETTE for distinct background colors (not ET color, to ensure contrast)
-    const color = BC_PALETTE[(foldOffset + i) % BC_PALETTE.length];
-    return { id: 'et-' + etId, name, color, ids, isFold: false };
-  }).filter(bc => bc.ids.length > 0);
+  // Unassigned nodes: ET connected components each become a BC
+  const unassigned = nodes.filter(n => !n.is_default && (!n.fold_id || !foldIds.has(n.fold_id)));
+  const foldOffset = result.length;
+  if (unassigned.length) {
+    const childBCs = detectChildBCs(unassigned, edges, etSummary);
+    if (childBCs) {
+      childBCs.forEach((cbc, i) => {
+        result.push({
+          id: `unassigned__cbc${i}`, name: cbc.name,
+          color: BC_PALETTE[(foldOffset + i) % BC_PALETTE.length],
+          ids: cbc.nodeIds, isFold: false, isChildBC: true,
+        });
+      });
+    } else {
+      // All unassigned in one group
+      result.push({
+        id: 'unassigned', name: 'Unassigned',
+        color: BC_PALETTE[foldOffset % BC_PALETTE.length],
+        ids: unassigned.map(n => n.id), isFold: false, isChildBC: true,
+      });
+    }
+  }
 
-  const bcs = [...foldBCs, ...etBCs];
   const nodeBC = {};
-  bcs.forEach(bc => bc.ids.forEach(id => { nodeBC[id] = bc; }));
-  return { bcs, nodeBC };
+  // For nodeBC, prefer child-BC over fold hull (so cross-BC edges are coloured correctly)
+  result.filter(bc => bc.isChildBC || !result.some(b => b.isChildBC && b.ids.some(id => bc.ids.includes(id))))
+    .forEach(bc => bc.ids.forEach(id => { if (!nodeBC[id]) nodeBC[id] = bc; }));
+  // Fill remaining (nodes only in fold hull)
+  result.forEach(bc => bc.ids.forEach(id => { if (!nodeBC[id]) nodeBC[id] = bc; }));
+  return { bcs: result, nodeBC };
 }
 
 function inferBCs(nodes, edges, folds, etSummary) {
@@ -1701,18 +1956,19 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   const hullPaths = hullLayer.selectAll('path').data(bcs).join('path')
     .attr('class','bc-hull')
     .attr('fill', bc => bc.color)
-    .attr('fill-opacity', bc => bc.isFold ? 0.13 : 0.09)
+    .attr('fill-opacity', bc => bc.isFold ? 0.04 : 0.12)   // fold=极透明外框, child-BC=明显填充
     .attr('stroke', bc => bc.color)
-    .attr('stroke-opacity', bc => bc.isFold ? 0.65 : 0.5)
-    .attr('stroke-width', bc => bc.isFold ? 2.5 : 2)
-    .attr('stroke-dasharray', bc => bc.isFold ? null : '6,3')
+    .attr('stroke-opacity', bc => bc.isFold ? 0.3 : 0.7)
+    .attr('stroke-width', bc => bc.isFold ? 1.5 : 2)
+    .attr('stroke-dasharray', bc => bc.isFold ? '8,4' : null)  // fold=虚线外框, child-BC=实线
     .attr('stroke-linejoin','round');
   const hullLabels = hullLayer.selectAll('text').data(bcs).join('text')
     .attr('fill', bc => bc.color)
-    .attr('font-size', 11).attr('font-weight', 700).attr('letter-spacing', '0.5px')
-    .attr('text-transform', 'uppercase').attr('opacity', 0.75)
+    .attr('font-size', bc => bc.isFold ? 12 : 10)
+    .attr('font-weight', 700).attr('letter-spacing', '0.5px')
+    .attr('opacity', bc => bc.isFold ? 0.5 : 0.85)
     .attr('pointer-events','none')
-    .text(bc => bc.isFold ? `⬡ ${bc.name}` : bc.name);
+    .text(bc => bc.isFold ? `⬡ ${bc.name}` : `◈ ${bc.name}`);
 
   // ── Edge layer ────────────────────────────────────────────────────────────
   function edgeIsIntra(d) {
@@ -2001,15 +2257,15 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   });
 
   // ── Hull update ───────────────────────────────────────────────────────────
-  const PAD = R + 24;
   const nodeSet = new Map(nodes.map(n => [n.id, n]));
   function updateHulls() {
     hullPaths.each(function(bc) {
       const members = bc.ids.map(id => nodeSet.get(id)).filter(n => n && n.x != null);
       if (!members.length) return;
-      // Track BC centroid for cross-link arcs
       bcCenters[bc.id] = { x: d3.mean(members, n => n.x), y: d3.mean(members, n => n.y) };
-      const r = Math.round(R * 1.45) + PAD;
+      // fold hull: larger padding (encloses all child-BCs); child-BC hull: tighter
+      const pad = bc.isFold ? R + 44 : R + 18;
+      const r = Math.round(R * 1.45) + pad;
       const pts = members.flatMap(n => [
         [n.x-r, n.y-r],[n.x+r, n.y-r],[n.x+r, n.y+r],[n.x-r, n.y+r]
       ]);
@@ -2019,9 +2275,10 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
     hullLabels.each(function(bc) {
       const members = bc.ids.map(id => nodeSet.get(id)).filter(n => n && n.x != null);
       if (!members.length) return;
+      const pad = bc.isFold ? R + 44 : R + 18;
       d3.select(this)
         .attr('x', d3.mean(members, n => n.x))
-        .attr('y', d3.min(members,  n => n.y) - PAD - 10)
+        .attr('y', d3.min(members,  n => n.y) - pad - 8)
         .attr('text-anchor','middle');
     });
   }

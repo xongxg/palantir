@@ -874,14 +874,434 @@ Step 2: 角色判定
 
 ### Bounded Context（BC）边界
 
-每个 ET 自动成为独立 BC，用 BC_PALETTE 中的独立颜色渲染背景区域：
-- Fold-based BC（已分配 fold）：实线边框，fill-opacity 0.13
-- ET-based BC（自动分组）：虚线边框，fill-opacity 0.09
-- 跨 BC 关联：橙色弧线 + 数量标注
+**架构决策（2026-03-25）：fold ≠ BC，fold 内可以有多个 child-BC。**
+
+详见 `docs/bounded_context_design.md`。核心结论：
+
+```
+层次关系：
+  Fold（组织/业务线边界）
+    └── Bounded Context（语义凝聚边界）← 独立 bounded_contexts 表
+          └── Entity Type（bc_id 字段）
+```
+
+- **bounded_contexts 表**：`id, fold_id, name, color, auto_detected`
+- **entity_types.bc_id**：可空，指向 child-BC；NULL = 回退到 fold 级 BC
+- **bc_relationships 表**：跨 BC 关系，5 种类型（shared_kernel / customer_supplier / conformist / acl / open_host）
+- **link_type_mappings.bc_relationship_id**：跨 BC 的 link type 指向对应的治理规则，形成闭环
+- **自动检测**：fold 内 ET 按 FK 连通分量聚类 → child-BC 建议；跨 BC link 反向推断 bc_relationships
+- **图可视化**：两级 Hull（fold 外层 + child-BC 内层）；Context Map 视图（BC 为节点）
+
+**Link Type 与 BC 完全闭环**：一条跨 BC 的 FK 定义 = 一条 bc_relationship 的物理来源。
+TBox（link_type_mappings）/ ABox（ontology_links）/ 治理层（bc_relationships）三层对应同一件事。
+
+当前图中实现的是简化版（fold = 一个 BC hull）；child-BC hull 为 P1 待实现。
 
 ### 后续深化方向（P1/P2）
 
-1. **手动覆盖**：Schema 界面支持用户在自动识别基础上手动调整 DDD 角色
-2. **BC 合并**：将语义相近的 ET（如 Department + Division）通过 fold 分配合并为一个 BC
-3. **关联强度**：边的粗细反映 ET 间关联数量，量化 BC 之间的耦合程度
-4. **时序分析**：Aggregate Root 的生命周期事件追踪（created/updated/deleted 时间分布）
+1. **child-BC 两级 Hull**：图中 fold 外层 + child-BC 内层双重渲染
+2. **BC 推断确认 UI**：Promote 后弹出 child-BC 建议，支持接受/拆分/合并/移动
+3. **跨 BC link 检测**：link_type_mappings 检测到跨 fold → 自动建议 bc_relationship，用户确认
+4. **Context Map 视图**：BC 为节点，跨 BC link types 聚合为边，与 Graph tab 互相导航
+5. **Cross-BC 治理约束**：ACL 类型时提示不应直接建立 link，应通过翻译 ET 中转
+6. **关联强度**：边的粗细反映 ET 间关联数量，量化耦合程度
+7. **Embedding 辅助聚类**：字段名语义向量 + FK 拓扑联合推断，提升 BC 置信度
+
+---
+
+## Fold（BC）语义契约模型（2026-03-25）
+
+> **核心结论**：BC 边界即语义契约边界。同一 Fold 内的所有参与者——无论是人还是数据源——对实体的理解是一致的。
+
+### Fold 的组织类比
+
+| 概念 | 类比 | 含义 |
+|------|------|------|
+| Workspace | 子公司 | 独立业务主体，数据隔离 |
+| Project | 部门 | 业务职能单元 |
+| Fold（BC） | 小组 / 语义域 | 共享概念定义的最小语义单元 |
+
+### 同一 Fold 内的多源处理规则
+
+```
+BC 边界即语义契约
+  Fold（BC）= 语义边界
+    ↓
+  同一个 Fold 内的所有人对 "Employee" 的理解是一致的
+    ↓
+  新数据源加入同一个 Fold = 加入同一个语义契约
+    ↓
+  直接映射到已有 ET，无需语义校验
+```
+
+| 情况 | 处理方式 |
+|------|----------|
+| Source B 的字段 ET 已有 | 直接映射，UPSERT 合并数据（`json_patch`） |
+| Source B 有 ET 没有的新字段 | 丰富 ET（添加新字段），不是冲突 |
+| Source B 的字段类型与 ET 不符 | 数据质量问题，不是语义冲突，记录 warning |
+
+### 跨 Fold 的冲突处理
+
+跨 Fold 的同名 ET（如两个 Fold 都有 `Employee`）代表不同语义域对同一概念的不同理解，**不能自动合并**，需要：
+1. **ET Namespace**：通过 Fold 名作为命名空间前缀避免名称冲突（实现：存储名 = `{fold_name}.{short_name}`）
+2. **显式关联**：通过 `ontology_links` 建立跨 BC 的语义映射关系
+3. **数据治理决策**：由业务方决定是否合并、哪个版本权威
+
+### ET Namespace 实现细节
+
+```
+存储层：entity_types.name = "{fold_name}.{short_name}"（满足 UNIQUE 约束）
+显示层：entity_types.namespace = "{fold_name}"（单独列，用于 UI 展示）
+         entity_types.display_name = "{short_name}"（用户可读名）
+UI 显示："{namespace} / {display_name}"（如 "hr / Employee"）
+```
+
+### Auto-infer Mapping（同 Fold 新数据源）
+
+当新数据源加入已有 Fold 时，系统自动推断列→字段映射：
+
+```
+POST /api/folds/:fold_id/infer-mapping
+Body: { "columns": [{ "name": "emp_id", "data_type": "string" }, ...] }
+Response: {
+  "entity_types": [...ETs in this fold...],
+  "suggestions": {
+    "emp_id": { "et_id": "...", "field_name": "emp_id", "confidence": 1.0 }
+  }
+}
+```
+
+匹配策略（优先级递减）：
+1. **精确匹配**（normalized）：`emp_id` == `emp_id`，confidence = 1.0
+2. **前缀匹配**：`emp` 匹配 `emp_id`，confidence = 0.7
+3. **无匹配**：返回空 suggestion，用户手动配置
+
+### 与 Entity Resolution 的关系
+
+- **Entity Resolution**（实体去重）：解决同一 Fold 内多源数据指向同一真实实体的问题，通过 `(entity_type_id, external_id)` UPSERT + `json_patch` 字段合并 + `source_ids` 溯源数组实现
+- **Namespace**（命名隔离）：解决跨 Fold 同名 ET 的冲突问题，通过 Fold 名前缀区分
+
+---
+
+## Ontology Manager — 管理层设计
+
+### Palantir Ontology Manager 参考
+
+Palantir Foundry 有独立的 Ontology Manager 界面，核心三层结构：
+
+| Palantir 概念 | 我们的对应实现 | 状态 |
+|--------------|--------------|------|
+| Object Type  | Entity Type（Schema tab） | ✅ 已有 |
+| Link Type    | Relationship（Import 配置 FK） | ✅ 已有 |
+| Action Type  | 对象的写操作（创建/编辑/删除） | ❌ 尚无 |
+
+Palantir 在管理层重点解决的问题：
+
+| 问题 | Palantir 方案 |
+|------|--------------|
+| Schema 治理 | 角色分级，控制谁能 create/modify/delete Object Type |
+| 版本演进 | Object Type 有 draft → published 状态，字段变更走审批 |
+| 数据血缘 | 自动记录哪些 Pipeline/Dataset 在喂这个 Object Type |
+| 接口抽象 | Interface Type（类似抽象基类），多个 Object Type 共享字段集合 |
+| 发现性 | 全局搜索、按 BC/Domain 分类浏览 |
+| Action 治理 | 对 Ontology 对象定义写操作，配合权限控制与审计链 |
+
+### 我们系统的差距分析
+
+**已有：**
+- Entity Type 定义（Schema tab）
+- Relationship 定义（Import 配置 FK）
+- 按 fold/project 组织（BC 边界）
+- fold_id 从数据源自动推导，promote 时隐式带入（2026-03-25 实现）
+
+**缺失但高价值：**
+
+**P0 — 现在不做会踩坑：**
+- **Schema 变更保护**：字段类型改变/删除时要给警告，当前静默忽略。已有 Ontology 对象的字段若被删或改类型，历史数据与新 schema 不一致。
+
+**P1 — 有了 Ontology 就值得做：**
+- **数据血缘视图**：在 Schema tab 的 ET 详情里，显示"喂入此类型的 Datasets"。技术上 `dataset_mappings` 表已有 `entity_type_id`，只需查询并展示。
+- **ET 状态标记**：`draft` / `active` / `deprecated`。防止未完成的 schema 被数据写入，也支持安全下线旧类型。
+
+**P2 — 规模大了再说：**
+- Shared Kernel + System Interface 双层抽象（见下节）
+- Action Type（写操作治理，配合权限）
+- 多人协作审批流
+
+### 系统特色：Shared Kernel + System Interface 双层抽象
+
+Palantir 用 Java Interface 思维解决共享字段问题——结构契约，技术复用。我们用 DDD 语义思维，分两层处理不同性质的共享需求，这是本系统的核心差异化设计。
+
+#### Layer 1 — Shared Kernel（业务语义层）
+
+本质是一个特殊的 fold（`fold_type = 'shared_kernel'`）：
+
+- **普通 BC fold**：只在所属 project 内可见
+- **Shared Kernel fold**：全局可见，所有 BC 都可引用其中的 ET
+- **治理约束**：Shared Kernel ET 变更时 UI 警告"此变更影响 N 个 BC，需协商确认"
+- **适合放入**：跨 BC 核心业务实体，如 `Customer`、`Product`、`Contract`、`Employee`
+
+实现方案：`folds` 表加 `fold_type: 'bc'(default) | 'shared_kernel'`，改动最小，价值最直接。
+
+#### Layer 2 — System Interface（技术约定层）
+
+独立于 fold 体系的技术层约定，ET 可"实现"多个 Interface：
+
+| Interface | 字段 | 含义 |
+|-----------|------|------|
+| `Auditable` | `created_at`, `updated_at`, `updated_by` | 审计追踪 |
+| `Identifiable` | `id`, `name`, `external_id` | 统一标识 |
+| `Versioned` | `version`, `valid_from`, `valid_to` | 时态版本 |
+
+新增表：`interfaces`（接口定义）、`interface_fields`（接口字段）、`entity_type_interfaces`（ET 与接口的多对多关系）。
+
+ET 实现 Interface 后：自动校验字段存在性、Promote 时有额外类型保证、Schema tab 显示"实现了哪些 Interface"。
+
+#### 两层关系
+
+```
+System Interface（技术层）              Shared Kernel fold（业务层）
+       │                                         │
+       │ ET 实现 Interface                       │ ET 归属 Shared Kernel
+       ▼                                         ▼
+    Customer  ←──── 同一个 ET ────►  implements Identifiable + Auditable
+（跨 BC 共享的业务概念）                  （技术字段的结构保证）
+```
+
+#### 与 Palantir Interface 的对比
+
+| 维度 | Palantir Interface | 我们的 Shared Kernel |
+|------|-------------------|---------------------|
+| 思维来源 | Java/OOP 结构契约 | DDD 领域边界协议 |
+| 关注点 | 字段复用（技术） | 语义共识（业务） |
+| 变更治理 | 自动同步 | 需 BC 间协商确认 |
+| 表达能力 | "这些 ET 结构相似" | "这些 BC 共同拥有这个概念" |
+
+#### 实现顺序
+
+1. **Shared Kernel fold**（P2 第一步）：加 `fold_type` 字段 + UI 特殊标记
+2. **System Interface**（P2 第二步）：新表设计，逻辑独立，可后续独立迭代
+
+### BC 归属自动推导决策（2026-03-25）
+
+删除了导入页面的"归属 BC"手动下拉框。原因：
+
+- 用户已处于 project（fold）上下文中
+- 数据集通过 `data_sources.fold_id` 天然归属于某个 BC
+- `list_all_datasets` 通过 JOIN `data_sources` 带出 `fold_id`，promote/mapping 时隐式传入
+- BC 归属由 DDD 边界决定，不应由导入操作重复选择
+- 两者互补：Entity Resolution 处理 ABox（实例层），Namespace 处理 TBox（类型层）
+
+---
+
+## Ontology Manager — 完整设计方案（DDD 融合版）
+
+> 参考：Palantir Foundry Ontology Manager 官方方案，融合 DDD Shared Kernel 概念，形成我们的差异化设计。
+
+### 核心概念对照
+
+| 我们的概念 | Palantir 对应 | 差异说明 |
+|-----------|--------------|---------|
+| Entity Type | Object Type | 相同 |
+| Relationship | Link Type | 相同 |
+| Action | Action Type | 相同 |
+| **Shared Kernel fold** | Interface Type（部分） | DDD 业务语义层，跨 BC 治理，Palantir 没有此概念 |
+| **System Interface** | Interface Type（部分） | 技术字段契约，Mixin 风格 |
+| Fold / BC | Bounded Context | DDD 显式建模 |
+| Schema Branch | Ontology Branch | 相同 |
+
+Palantir 用一个 Interface Type 混合了两种性质不同的需求（业务共识 + 技术复用），我们分两层处理，语义更清晰。
+
+---
+
+### 四层核心概念
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Layer 4: Action Type（写操作治理）                          │
+│  定义对 ET 的结构化写操作，附带参数/校验/审计/Webhook        │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 3: Shared Kernel（业务语义层）                        │
+│  特殊 fold，跨 BC 共享核心业务概念，变更需多 BC 协商         │
+│  + Context Map：BC 间关系（Customer/Supplier、Conformist）   │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 2: System Interface（技术约定层）                     │
+│  Auditable / Identifiable / Versioned 等技术字段契约         │
+│  ET 实现 Interface → 自动字段校验                           │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 1: Entity Type + Relationship（本体核心）             │
+│  Schema 定义、字段类型、关联关系、fold 归属                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### P0 — Schema 安全（立即需要）
+
+**问题**：字段类型改变或删除时，已有 Ontology 对象与新 schema 不一致，当前静默忽略。
+
+**参考 Palantir**：自动检测 breaking change，阻止保存直到用户定义迁移策略。
+
+**我们的实现**：
+
+Breaking change 判定规则（对齐 Palantir）：
+- 字段类型变更（`string → int` 等）
+- 字段删除（当已有 Ontology 对象时）
+- 主键列变更
+- 字段 ID 修改（当已有对象时）
+
+迁移策略选项：
+- **Drop**：丢弃所有已有对象的该字段值
+- **Cast**：类型兼容转换（`string ↔ integer`、`double ↔ long`）
+- **Rename**：将旧字段值迁移到新字段名
+
+UI 行为：检测到 breaking change → 弹出迁移策略确认框 → 确认后才允许保存。
+
+---
+
+### P1 — 治理与可见性
+
+#### ET 状态生命周期（参考 Palantir Branch 机制，简化为线性状态）
+
+```
+draft ──► active ──► deprecated
+  │                      │
+  └── 可随时修改 ──────── └── 禁止新数据写入，历史数据保留
+```
+
+- **draft**：Schema 设计阶段，不允许 Promote 写入数据
+- **active**：正式可用，数据可写入
+- **deprecated**：下线中，不再接受新数据，已有数据保留，警告引用方
+
+数据库：`entity_types` 表加 `status TEXT DEFAULT 'active'`。
+
+#### 数据血缘视图
+
+Schema tab 的 ET 详情里新增"数据来源"面板：
+
+```
+Customer（Entity Type）
+  └── 数据来源：
+       ├── customers_2024.csv  [source: CRM系统]  ← Dataset → Mapping 关系
+       ├── customer_export.xlsx [source: ERP系统]
+       └── api_customers       [source: REST API]
+```
+
+技术实现：`dataset_mappings.entity_type_id` 已有，JOIN `datasets → data_sources → folds` 即可展示。
+
+---
+
+### P2 — Shared Kernel（DDD 业务语义层）
+
+#### 数据模型
+
+```sql
+-- folds 表加字段
+ALTER TABLE folds ADD COLUMN fold_type TEXT DEFAULT 'bc';
+-- fold_type: 'bc' | 'shared_kernel'
+
+-- Shared Kernel ET 跨 BC 引用关系（可选，用于 Context Map）
+CREATE TABLE bc_shared_kernel_refs (
+    bc_fold_id       TEXT REFERENCES folds(id),
+    sk_entity_type_id TEXT REFERENCES entity_types(id),
+    relationship_type TEXT DEFAULT 'conformist',  -- conformist | customer_supplier
+    PRIMARY KEY (bc_fold_id, sk_entity_type_id)
+);
+```
+
+#### 行为规则
+
+- Shared Kernel fold 的 ET 在所有 BC 的 ET 选择器中可见
+- 修改 Shared Kernel ET 的字段时，UI 显示："此变更影响 N 个 BC（列表），请确认已协商"
+- Shared Kernel ET 不能从普通项目的 Import 页面直接创建，只能由平台管理员在专用入口创建
+
+#### Context Map（DDD 上下文映射）
+
+显示 BC 间的依赖关系：
+```
+Sales BC ──[conformist]──► Shared Kernel (Customer)
+Finance BC ──[conformist]──► Shared Kernel (Customer)
+Sales BC ──[customer/supplier]──► Inventory BC
+```
+
+---
+
+### P2 — System Interface（技术约定层）
+
+#### 数据模型
+
+```sql
+CREATE TABLE interfaces (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,  -- 'Auditable', 'Identifiable', 'Versioned'
+    description TEXT,
+    created_at  TEXT
+);
+
+CREATE TABLE interface_fields (
+    interface_id TEXT REFERENCES interfaces(id) ON DELETE CASCADE,
+    field_name   TEXT NOT NULL,
+    field_type   TEXT NOT NULL,
+    required     INTEGER DEFAULT 1,
+    PRIMARY KEY (interface_id, field_name)
+);
+
+CREATE TABLE entity_type_interfaces (
+    et_id        TEXT REFERENCES entity_types(id) ON DELETE CASCADE,
+    interface_id TEXT REFERENCES interfaces(id) ON DELETE CASCADE,
+    PRIMARY KEY (et_id, interface_id)
+);
+```
+
+#### 内置 Interface
+
+| Interface | 字段 | 说明 |
+|-----------|------|------|
+| `Auditable` | `created_at`, `updated_at`, `updated_by` | 审计追踪 |
+| `Identifiable` | `id`, `name`, `external_id` | 统一标识 |
+| `Versioned` | `version`, `valid_from`, `valid_to` | 时态版本 |
+| `Locatable` | `latitude`, `longitude`, `address` | 地理位置 |
+
+#### ET 实现 Interface 的效果
+
+- Promote 时校验：实现了 `Auditable` 但数据中没有 `created_at` → 警告
+- Schema tab 显示：ET 详情里展示"实现了哪些 Interface"
+- 字段补全：选择实现某 Interface 后，自动预填对应字段到 schema
+
+---
+
+### P2 — Action Type（写操作治理）
+
+参考 Palantir 设计，写操作必须经过定义好的 Action，不允许直接修改 Ontology 对象：
+
+```
+Action Type 结构：
+  Parameters   → 用户输入参数（支持默认值、下拉过滤、校验）
+  Rules        → 根据参数决定哪些字段被修改
+  Criteria     → 提交前的校验条件
+  Side Effects → Webhook / 通知 / 触发 Pipeline
+  Audit Log    → 所有执行记录，存为 object type 供分析
+```
+
+---
+
+### 实现路线图
+
+```
+P0  Schema 变更保护 ────────────────────► 立即
+P1  ET 状态（draft/active/deprecated） ──► 近期
+P1  数据血缘视图 ─────────────────────────► 近期
+P2a Shared Kernel fold ──────────────────► 中期
+P2b Context Map 可视化 ──────────────────► 中期
+P2c System Interface ────────────────────► 中期
+P2d Action Type ─────────────────────────► 长期
+```
+
+### 与 Palantir 的核心差异总结
+
+| 维度 | Palantir | 我们 |
+|------|---------|------|
+| 共享抽象 | Interface Type（Java OOP） | Shared Kernel（DDD）+ System Interface（技术） |
+| BC 边界 | 无显式建模 | fold_type + Context Map |
+| 变更治理 | Branch → Main PR 流程 | ET 状态 + breaking change 检测 + 协商确认 |
+| 语义基础 | 结构契约（字段复用） | 领域共识（业务语义）+ 结构契约（技术复用）|

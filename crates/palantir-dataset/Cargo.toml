@@ -1,5 +1,5 @@
 [package]
-name = "palantir_storage"
+name = "palantir-dataset"
 version = "0.1.0"
 edition = "2024"
 

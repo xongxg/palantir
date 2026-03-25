@@ -1,176 +1,11 @@
 use anyhow::Result;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
-
-// ── Row types ─────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ProjectRow {
-    pub id: String,
-    pub name: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConnectorRow {
-    pub id: String,
-    pub project_id: String,
-    pub path: String,
-    pub ns: String,
-    pub schema_name: String,
-    pub headers: Option<String>,        // JSON array of column names
-    pub samples: Option<String>,        // JSON array of sample rows (first 5)
-    pub mapping_config: Option<String>, // JSON: {entity_type, id_field, columns:[...]}
-}
-
-#[derive(Debug, Clone)]
-pub struct EntityRow {
-    pub id: String,
-    pub project_id: String,
-    pub entity_type: String,
-    pub ddd_concept: String,
-    pub label: String,
-    pub properties: String, // JSON
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BuildRow {
-    pub id: String,
-    pub project_id: String,
-    pub created_at: String,
-    pub entities: i64,
-    pub relationships: i64,
-    pub bounded_contexts: i64,
-    pub applied_events: i64,
-}
-
-pub struct RelRow {
-    pub project_id: String,
-    pub from_id: String,
-    pub to_id: String,
-    pub kind: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EntityTypeRow {
-    pub id: String,
-    pub name: String,
-    pub display_name: String,
-    pub color: String,
-    pub icon: String,
-    pub fold_id: Option<String>,
-    /// DDD role: 'aggregate_root' | 'entity' | 'value_object'
-    pub ddd_role: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EntityFieldRow {
-    pub id: String,
-    pub entity_type_id: String,
-    pub name: String,
-    pub data_type: String,
-    pub is_required: bool,
-    pub classification: String,
-    pub sort_order: i64,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct OntologyObjectRow {
-    pub id: String,
-    pub entity_type_id: String,
-    pub entity_type_name: String,
-    pub label: String,
-    pub fields: String, // JSON
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct OntologyLinkRow {
-    pub id: String,
-    pub from_id: String,
-    pub to_id: String,
-    pub rel_type: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LinkTypeMappingInput {
-    pub from_fk_col: String,
-    pub to_entity_type_id: String,
-    pub rel_type: String,
-}
-
-// ── Ingest row types ──────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FoldRow {
-    pub id: String,
-    pub project_id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DataSourceRow {
-    pub id: String,
-    pub fold_id: String,
-    pub name: String,
-    pub source_type: String,
-    pub config: String,      // JSON
-    pub status: String,
-    pub write_lock: Option<String>,
-    pub last_sync_at: Option<String>,
-    pub record_count: Option<i64>,
-    pub created_at: String,
-    pub deprecated: bool,
-    pub deleted_at: Option<String>,
-    pub group_id: Option<String>,
-    /// snapshot | append | upsert
-    pub sync_mode: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SyncRunRow {
-    pub id: String,
-    pub source_id: String,
-    pub status: String,
-    pub total_records: Option<i64>,
-    pub processed: i64,
-    pub current_item: Option<String>,
-    pub error_message: Option<String>,
-    pub error_type: Option<String>,
-    pub started_at: String,
-    pub finished_at: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DatasetRow {
-    pub id: String,
-    pub source_id: String,
-    pub name: String,
-    pub entity_type_id: Option<String>,
-    pub current_version: i64,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DatasetVersionRow {
-    pub id: String,
-    pub dataset_id: String,
-    pub version: i64,
-    pub sync_run_id: String,
-    pub status: String,
-    pub schema_json: String,
-    pub schema_change: Option<String>,
-    pub total_rows: i64,
-    pub is_current: bool,
-    pub created_at: String,
-    pub manifest_path: Option<String>,
-}
+use palantir_meta_store::{
+    ProjectRow, ConnectorRow, EntityRow, BuildRow, RelRow,
+    EntityTypeRow, EntityFieldRow, OntologyObjectRow, OntologyLinkRow,
+    LinkTypeMappingInput, FoldRow, DataSourceRow, SyncRunRow, DatasetRow, DatasetVersionRow,
+};
 
 // ── Db ────────────────────────────────────────────────────────────────────────
 
@@ -421,6 +256,10 @@ impl Db {
         let _ = sqlx::query("ALTER TABLE ontology_objects ADD COLUMN sync_run_id TEXT")
             .execute(&self.pool)
             .await;
+        // Multi-source provenance: JSON array of all dataset_ids that contributed to this object
+        let _ = sqlx::query("ALTER TABLE ontology_objects ADD COLUMN source_ids TEXT NOT NULL DEFAULT '[]'")
+            .execute(&self.pool)
+            .await;
 
         // Upsert index: dedup by (entity_type_id, external_id).
         // NULL external_id rows are never deduplicated (SQLite NULL != NULL).
@@ -491,6 +330,50 @@ impl Db {
             .execute(&self.pool).await;
         // DDD role (idempotent)
         let _ = sqlx::query("ALTER TABLE entity_types ADD COLUMN ddd_role TEXT NOT NULL DEFAULT 'entity'")
+            .execute(&self.pool).await;
+        // ET namespace = fold name prefix, stored for display (idempotent)
+        let _ = sqlx::query("ALTER TABLE entity_types ADD COLUMN namespace TEXT")
+            .execute(&self.pool).await;
+
+        // ── Bounded Context tables (P0) ────────────────────────────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS bounded_contexts (
+                id            TEXT PRIMARY KEY,
+                fold_id       TEXT NOT NULL REFERENCES folds(id) ON DELETE CASCADE,
+                name          TEXT NOT NULL,
+                color         TEXT NOT NULL DEFAULT '#6366f1',
+                auto_detected INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL,
+                UNIQUE(fold_id, name)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS bc_relationships (
+                id                TEXT PRIMARY KEY,
+                from_bc_id        TEXT NOT NULL REFERENCES bounded_contexts(id) ON DELETE CASCADE,
+                to_bc_id          TEXT NOT NULL REFERENCES bounded_contexts(id) ON DELETE CASCADE,
+                relationship_type TEXT NOT NULL DEFAULT 'shared_kernel',
+                notes             TEXT,
+                created_at        TEXT NOT NULL,
+                UNIQUE(from_bc_id, to_bc_id, relationship_type)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // ET → BC assignment (idempotent)
+        let _ = sqlx::query("ALTER TABLE entity_types ADD COLUMN bc_id TEXT REFERENCES bounded_contexts(id)")
+            .execute(&self.pool).await;
+
+        // Fold type: 'normal' | 'shared_kernel' (idempotent)
+        let _ = sqlx::query("ALTER TABLE folds ADD COLUMN fold_type TEXT NOT NULL DEFAULT 'normal'")
+            .execute(&self.pool).await;
+
+        // Link type → BC relationship governance binding (idempotent)
+        let _ = sqlx::query("ALTER TABLE link_type_mappings ADD COLUMN bc_relationship_id TEXT REFERENCES bc_relationships(id)")
             .execute(&self.pool).await;
 
         // Platform config table: stores platform-wide settings (e.g. storage backend)
@@ -850,12 +733,13 @@ impl Db {
         icon: &str,
         fold_id: Option<&str>,
         ddd_role: &str,
+        namespace: Option<&str>,
     ) -> Result<EntityTypeRow> {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
         sqlx::query(
-            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, ddd_role, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, ddd_role, namespace, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(name)
@@ -864,6 +748,7 @@ impl Db {
         .bind(icon)
         .bind(fold_id)
         .bind(ddd_role)
+        .bind(namespace)
         .bind(&now)
         .execute(&self.pool)
         .await?;
@@ -874,6 +759,7 @@ impl Db {
             color: color.to_string(),
             icon: icon.to_string(),
             fold_id: fold_id.map(|s| s.to_string()),
+            namespace: namespace.map(|s| s.to_string()),
             ddd_role: ddd_role.to_string(),
             created_at: now,
         })
@@ -881,7 +767,7 @@ impl Db {
 
     pub async fn list_entity_types(&self) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, fold_id,
+            "SELECT id, name, display_name, color, icon, fold_id, namespace,
                     COALESCE(ddd_role, 'entity') as ddd_role, created_at
              FROM entity_types ORDER BY created_at ASC",
         )
@@ -896,6 +782,33 @@ impl Db {
                 color: r.get("color"),
                 icon: r.get("icon"),
                 fold_id: r.get("fold_id"),
+                namespace: r.get("namespace"),
+                ddd_role: r.get("ddd_role"),
+                created_at: r.get("created_at"),
+            })
+            .collect())
+    }
+
+    /// List entity types belonging to a specific fold.
+    pub async fn list_entity_types_for_fold(&self, fold_id: &str) -> Result<Vec<EntityTypeRow>> {
+        let rows = sqlx::query(
+            "SELECT id, name, display_name, color, icon, fold_id, namespace,
+                    COALESCE(ddd_role, 'entity') as ddd_role, created_at
+             FROM entity_types WHERE fold_id = ? ORDER BY created_at ASC",
+        )
+        .bind(fold_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| EntityTypeRow {
+                id: r.get("id"),
+                name: r.get("name"),
+                display_name: r.get("display_name"),
+                color: r.get("color"),
+                icon: r.get("icon"),
+                fold_id: r.get("fold_id"),
+                namespace: r.get("namespace"),
                 ddd_role: r.get("ddd_role"),
                 created_at: r.get("created_at"),
             })
@@ -1564,23 +1477,31 @@ impl Db {
     pub async fn list_all_datasets(&self) -> Result<Vec<serde_json::Value>> {
         let rows = sqlx::query(
             "SELECT d.id, d.source_id, d.name, d.entity_type_id, d.current_version, d.created_at,
+                    s.fold_id, s.name AS source_name,
+                    f.name AS fold_name,
                     COALESCE(
                         (SELECT dv.total_rows FROM dataset_versions dv
                          WHERE dv.dataset_id = d.id AND dv.is_current = 1 LIMIT 1),
                         0
                     ) AS record_count
-             FROM datasets d ORDER BY d.created_at DESC",
+             FROM datasets d
+             LEFT JOIN data_sources s ON s.id = d.source_id
+             LEFT JOIN folds f ON f.id = s.fold_id
+             ORDER BY d.created_at DESC",
         )
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(|r| serde_json::json!({
             "id":              r.get::<String, _>("id"),
             "source_id":       r.get::<String, _>("source_id"),
+            "source_name":     r.get::<Option<String>, _>("source_name"),
             "name":            r.get::<String, _>("name"),
             "entity_type_id":  r.get::<Option<String>, _>("entity_type_id"),
             "current_version": r.get::<i64, _>("current_version"),
             "created_at":      r.get::<String, _>("created_at"),
             "record_count":    r.get::<i64, _>("record_count"),
+            "fold_id":         r.get::<Option<String>, _>("fold_id"),
+            "fold_name":       r.get::<Option<String>, _>("fold_name"),
         })).collect())
     }
 
@@ -1922,14 +1843,23 @@ impl Db {
     ) -> Result<()> {
         let now = Self::now_str();
         let id = Uuid::new_v4().to_string();
+        // ON CONFLICT (entity_type_id, external_id):
+        //   - fields: json_patch merges new fields over existing (new values win, null removes)
+        //   - source_ids: append dataset_id if not already present (provenance tracking)
+        //   - label: update from latest source
         sqlx::query(
             "INSERT INTO ontology_objects
                 (id, entity_type_id, entity_type_name, external_id, label, fields,
-                 dataset_id, sync_run_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 dataset_id, sync_run_id, source_ids, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, json_array(?), ?, ?)
              ON CONFLICT(entity_type_id, external_id) DO UPDATE SET
                 label      = excluded.label,
-                fields     = excluded.fields,
+                fields     = json_patch(fields, excluded.fields),
+                source_ids = CASE
+                    WHEN instr(source_ids, ?) > 0 THEN source_ids
+                    ELSE json_insert(source_ids, '$[#]', ?)
+                END,
+                dataset_id = excluded.dataset_id,
                 updated_at = excluded.updated_at",
         )
         .bind(&id)
@@ -1940,8 +1870,11 @@ impl Db {
         .bind(fields)
         .bind(dataset_id)
         .bind(run_id)
+        .bind(dataset_id)   // initial source_ids = [dataset_id]
         .bind(&now)
         .bind(&now)
+        .bind(dataset_id)   // CASE WHEN instr check
+        .bind(dataset_id)   // json_insert append
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -1980,6 +1913,15 @@ impl Db {
         .bind(&now)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    pub async fn update_dataset_entity_type(&self, dataset_id: &str, entity_type_id: &str) -> Result<()> {
+        sqlx::query("UPDATE datasets SET entity_type_id = ? WHERE id = ?")
+            .bind(entity_type_id)
+            .bind(dataset_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -2026,10 +1968,38 @@ impl Db {
     }
 
     pub async fn delete_ontology_objects_by_dataset(&self, dataset_id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM ontology_objects WHERE dataset_id = ?")
-            .bind(dataset_id)
-            .execute(&self.pool)
-            .await?;
+        // Only fully delete objects that have no other contributing sources.
+        // Objects shared across multiple sources just lose this dataset from source_ids.
+        sqlx::query(
+            "DELETE FROM ontology_objects
+             WHERE dataset_id = ?
+               AND (source_ids IS NULL
+                    OR source_ids = '[]'
+                    OR source_ids = json_array(?))",
+        )
+        .bind(dataset_id)
+        .bind(dataset_id)
+        .execute(&self.pool)
+        .await?;
+
+        // For multi-source objects: remove this dataset_id from source_ids array
+        // SQLite doesn't have json_remove by value, so we re-build the array
+        sqlx::query(
+            "UPDATE ontology_objects
+             SET source_ids = (
+                SELECT json_group_array(value)
+                FROM json_each(source_ids)
+                WHERE value != ?
+             ),
+             updated_at = ?
+             WHERE instr(source_ids, ?) > 0",
+        )
+        .bind(dataset_id)
+        .bind(Self::now_str())
+        .bind(dataset_id)
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
@@ -2158,6 +2128,169 @@ impl Db {
             }
         }
         Ok(total)
+    }
+
+    // ── Bounded Contexts ──────────────────────────────────────────────────────
+
+    pub async fn create_bounded_context(
+        &self, fold_id: &str, name: &str, color: &str, auto_detected: bool,
+    ) -> Result<serde_json::Value> {
+        let id = Uuid::new_v4().to_string();
+        let now = Self::now_str();
+        sqlx::query(
+            "INSERT INTO bounded_contexts (id, fold_id, name, color, auto_detected, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(fold_id)
+        .bind(name)
+        .bind(color)
+        .bind(auto_detected as i64)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(serde_json::json!({
+            "id": id, "fold_id": fold_id, "name": name,
+            "color": color, "auto_detected": auto_detected, "created_at": now,
+        }))
+    }
+
+    pub async fn list_bounded_contexts(&self, fold_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT id, fold_id, name, color, auto_detected, created_at
+             FROM bounded_contexts WHERE fold_id = ? ORDER BY created_at",
+        )
+        .bind(fold_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "id":            r.get::<String, _>("id"),
+            "fold_id":       r.get::<String, _>("fold_id"),
+            "name":          r.get::<String, _>("name"),
+            "color":         r.get::<String, _>("color"),
+            "auto_detected": r.get::<i64, _>("auto_detected") != 0,
+            "created_at":    r.get::<String, _>("created_at"),
+        })).collect())
+    }
+
+    pub async fn update_bounded_context(
+        &self, bc_id: &str, name: Option<&str>, color: Option<&str>,
+    ) -> Result<()> {
+        if let Some(n) = name {
+            sqlx::query("UPDATE bounded_contexts SET name = ? WHERE id = ?")
+                .bind(n).bind(bc_id).execute(&self.pool).await?;
+        }
+        if let Some(c) = color {
+            sqlx::query("UPDATE bounded_contexts SET color = ? WHERE id = ?")
+                .bind(c).bind(bc_id).execute(&self.pool).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn delete_bounded_context(&self, bc_id: &str) -> Result<()> {
+        // Detach all ETs that belong to this BC before deleting
+        sqlx::query("UPDATE entity_types SET bc_id = NULL WHERE bc_id = ?")
+            .bind(bc_id).execute(&self.pool).await?;
+        sqlx::query("DELETE FROM bounded_contexts WHERE id = ?")
+            .bind(bc_id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Assign or unassign an ET to a BC (NULL = revert to fold-level)
+    pub async fn set_entity_type_bc(&self, et_id: &str, bc_id: Option<&str>) -> Result<()> {
+        sqlx::query("UPDATE entity_types SET bc_id = ? WHERE id = ?")
+            .bind(bc_id)
+            .bind(et_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Bulk-upsert child-BC inference result for a fold.
+    /// Clears auto-detected BCs for the fold and inserts the new set.
+    pub async fn upsert_inferred_bcs(
+        &self,
+        fold_id: &str,
+        bcs: &[(String, String, Vec<String>)], // (name, color, et_ids)
+    ) -> Result<Vec<serde_json::Value>> {
+        // Remove stale auto-detected BCs (user-confirmed ones are preserved)
+        sqlx::query("DELETE FROM bounded_contexts WHERE fold_id = ? AND auto_detected = 1")
+            .bind(fold_id).execute(&self.pool).await?;
+
+        let now = Self::now_str();
+        let mut created = Vec::new();
+        for (name, color, et_ids) in bcs {
+            let bc_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT OR IGNORE INTO bounded_contexts (id, fold_id, name, color, auto_detected, created_at)
+                 VALUES (?, ?, ?, ?, 1, ?)",
+            )
+            .bind(&bc_id).bind(fold_id).bind(name).bind(color).bind(&now)
+            .execute(&self.pool).await?;
+
+            for et_id in et_ids {
+                let _ = sqlx::query("UPDATE entity_types SET bc_id = ? WHERE id = ?")
+                    .bind(&bc_id).bind(et_id).execute(&self.pool).await;
+            }
+            created.push(serde_json::json!({
+                "id": bc_id, "fold_id": fold_id, "name": name,
+                "color": color, "auto_detected": true, "et_ids": et_ids,
+            }));
+        }
+        Ok(created)
+    }
+
+    // ── BC Relationships ───────────────────────────────────────────────────────
+
+    pub async fn create_bc_relationship(
+        &self,
+        from_bc_id: &str, to_bc_id: &str,
+        relationship_type: &str, notes: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let id = Uuid::new_v4().to_string();
+        let now = Self::now_str();
+        sqlx::query(
+            "INSERT OR IGNORE INTO bc_relationships
+             (id, from_bc_id, to_bc_id, relationship_type, notes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id).bind(from_bc_id).bind(to_bc_id)
+        .bind(relationship_type).bind(notes).bind(&now)
+        .execute(&self.pool).await?;
+        Ok(serde_json::json!({
+            "id": id, "from_bc_id": from_bc_id, "to_bc_id": to_bc_id,
+            "relationship_type": relationship_type, "notes": notes, "created_at": now,
+        }))
+    }
+
+    pub async fn list_bc_relationships(&self, bc_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT r.id, r.from_bc_id, r.to_bc_id, r.relationship_type, r.notes, r.created_at,
+                    fb.name AS from_name, tb.name AS to_name
+             FROM bc_relationships r
+             JOIN bounded_contexts fb ON fb.id = r.from_bc_id
+             JOIN bounded_contexts tb ON tb.id = r.to_bc_id
+             WHERE r.from_bc_id = ? OR r.to_bc_id = ?
+             ORDER BY r.created_at",
+        )
+        .bind(bc_id).bind(bc_id)
+        .fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "id":                r.get::<String, _>("id"),
+            "from_bc_id":        r.get::<String, _>("from_bc_id"),
+            "from_name":         r.get::<String, _>("from_name"),
+            "to_bc_id":          r.get::<String, _>("to_bc_id"),
+            "to_name":           r.get::<String, _>("to_name"),
+            "relationship_type": r.get::<String, _>("relationship_type"),
+            "notes":             r.get::<Option<String>, _>("notes"),
+            "created_at":        r.get::<String, _>("created_at"),
+        })).collect())
+    }
+
+    pub async fn delete_bc_relationship(&self, rel_id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM bc_relationships WHERE id = ?")
+            .bind(rel_id).execute(&self.pool).await?;
+        Ok(())
     }
 
     pub async fn clear_project_graph(&self, project_id: &str) -> Result<()> {

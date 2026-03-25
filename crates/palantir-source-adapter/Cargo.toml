@@ -1,9 +1,9 @@
 [package]
-name = "palantir_ontology_manager"
+name = "palantir_source_adapter"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Pluggable ontology ingestion manager: adapters, mapping, repository traits"
+description = "Pluggable source adapters, mapping engine, and ingestion connectors"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -1,13 +1,13 @@
 //! Example 12 — OntologyManager ingest from CSV via TOML mapping
 //! Run: cargo run --example 12_ingest_csv_ontology
 
-use palantir_ontology_manager::adapters::SourceAdapter;
-use palantir_ontology_manager::adapters_csv::CsvAdapter;
-use palantir_ontology_manager::manager::OntologyManager;
-use palantir_ontology_manager::mapping::Mapping;
-use palantir_ontology_manager::mapping_toml::TomlMapping;
-use palantir_ontology_manager::model::OntologySchema;
-use palantir_ontology_manager::repository::InMemoryRepository;
+use palantir_source_adapter::adapters::SourceAdapter;
+use palantir_source_adapter::adapters_csv::CsvAdapter;
+use palantir_source_adapter::manager::OntologyManager;
+use palantir_source_adapter::mapping::Mapping;
+use palantir_source_adapter::mapping_toml::TomlMapping;
+use palantir_source_adapter::model::OntologySchema;
+use palantir_source_adapter::repository::InMemoryRepository;
 
 use std::collections::HashMap;
 use std::sync::Arc;
