@@ -37,18 +37,27 @@
   .row-item { display: flex; align-items: center; gap-8px; padding: 10px 12px; border-radius: 6px; cursor: pointer; }
   .row-item:hover { background: #1e293b; }
   .row-item.selected { background: #312e81; }
-  .node circle  { cursor: pointer; stroke-width: 1.5px; transition: stroke-width .15s; }
+  .node circle  { cursor: pointer; stroke-width: 1.5px; }
   .node text    { font-size: 9px; fill: #c9d1d9; pointer-events: none; text-anchor: middle; }
-  .node.highlighted .node-main { stroke-width: 3px !important; filter: drop-shadow(0 0 6px currentColor); }
-  .node.dimmed .node-main { opacity: 0.12; }
-  .node.dimmed .node-bc-ring { opacity: 0.05; }
-  .node.dimmed .node-label { opacity: 0.06 !important; }
-  .graph-link.dimmed  { opacity: 0.04; }
-  .bc-hull.dimmed     { opacity: 0.25; }
-  .bc-hull            { pointer-events: none; }
-  .node-label         { dominant-baseline: auto; transition: opacity .2s; }
-  marker path { fill-opacity: 0.7; }
+  /* hover glow ring */
+  .node-hover-ring { transition: r .15s, opacity .15s; }
+  /* smooth transitions for highlight/dim */
+  .node-main   { transition: opacity .25s, filter .25s, transform .2s; }
+  .node-bc-ring{ transition: opacity .25s, r .2s; }
+  .graph-link  { transition: opacity .25s, stroke-width .2s; }
+  .bc-hull     { transition: opacity .3s; }
+  .node.highlighted .node-main  { stroke-width: 3px !important; filter: drop-shadow(0 0 8px currentColor); }
+  .node.dimmed .node-main       { opacity: 0.08; }
+  .node.dimmed .node-bc-ring    { opacity: 0.04; }
+  .node.dimmed .node-label      { opacity: 0.05 !important; }
+  .graph-link.dimmed            { opacity: 0.03; }
+  .bc-hull.dimmed               { opacity: 0.15; }
+  .bc-hull                      { pointer-events: none; }
+  .node-label                   { dominant-baseline: auto; transition: opacity .2s; }
+  marker path { fill-opacity: 0.85; }
   .link-label  { font-size: 10px; fill: #64748b; }
+  /* drag active state */
+  .node.dragging .node-main { filter: drop-shadow(0 0 12px currentColor); stroke-width: 2.5px !important; }
   #graph-btn-freeze.active, #graph-btn-labels.active, #graph-btn-hulls.active { background: rgba(99,102,241,.2); border-color: #6366f1; color: #a78bfa; }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -82,10 +91,10 @@
   <div style="flex:1;"></div>
   <!-- Tabs -->
   <div class="flex gap-1">
-    <button class="nav-tab"        id="tab-import"  onclick="setTab('import')">Import</button>
-    <button class="nav-tab active" id="tab-schema"  onclick="setTab('schema')">Schema</button>
-    <button class="nav-tab"        id="tab-browse"  onclick="setTab('browse')">Browse</button>
-    <button class="nav-tab"        id="tab-graph"   onclick="setTab('graph')">Graph</button>
+    <button class="nav-tab"        id="tab-import"  onclick="setTab('import')">导入</button>
+    <button class="nav-tab active" id="tab-schema"  onclick="setTab('schema')">模型</button>
+    <button class="nav-tab"        id="tab-browse"  onclick="setTab('browse')">浏览</button>
+    <button class="nav-tab"        id="tab-graph"   onclick="setTab('graph')">图谱</button>
   </div>
   <div style="flex:1;"></div>
 </div>
@@ -229,8 +238,8 @@
   <!-- Left: EntityType list -->
   <div style="width:240px;flex-shrink:0;border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #334155;flex-shrink:0;">
-      <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Entity Types</p>
-      <button onclick="openCreateTypeModal()" class="btn-primary btn-sm">+ New</button>
+      <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">实体类型</p>
+      <button onclick="openCreateTypeModal()" class="btn-primary btn-sm">+ 新建</button>
     </div>
     <div id="et-list" style="flex:1;overflow-y:auto;padding:8px;" class="space-y-0.5"></div>
   </div>
@@ -239,8 +248,8 @@
   <div style="flex:1;overflow-y:auto;padding:24px;">
     <div id="et-detail-empty" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
       <div style="font-size:2.5rem;margin-bottom:12px;">🗂</div>
-      <p style="color:#94a3b8;font-size:0.875rem;">Select an Entity Type to manage its fields</p>
-      <p style="color:#475569;font-size:0.75rem;margin-top:6px;">Or create a new one with the button above</p>
+      <p style="color:#94a3b8;font-size:0.875rem;">选择实体类型管理其字段</p>
+      <p style="color:#475569;font-size:0.75rem;margin-top:6px;">或点击上方按钮新建</p>
     </div>
     <div id="et-detail" style="display:none;max-width:800px;" class="space-y-5">
       <div class="flex items-center justify-between">
@@ -252,9 +261,9 @@
           </div>
         </div>
         <div class="flex gap-2">
-          <button onclick="openAddFieldModal()" class="btn-primary btn-sm">+ Add Field</button>
-          <button onclick="goToBrowse()" class="btn-ghost btn-sm">Browse Objects →</button>
-          <button onclick="deleteCurrentEntityType()" class="btn-danger">Delete</button>
+          <button onclick="openAddFieldModal()" class="btn-primary btn-sm">+ 添加字段</button>
+          <button onclick="goToBrowse()" class="btn-ghost btn-sm">浏览对象 →</button>
+          <button onclick="deleteCurrentEntityType()" class="btn-danger">删除</button>
         </div>
       </div>
 
@@ -262,17 +271,17 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-xs text-slate-500 border-b border-slate-700/60 bg-slate-800/40">
-              <th class="text-left px-4 py-2.5">Field</th>
-              <th class="text-left px-4 py-2.5">Type</th>
-              <th class="text-left px-4 py-2.5">Classification</th>
-              <th class="text-left px-4 py-2.5">Required</th>
+              <th class="text-left px-4 py-2.5">字段名</th>
+              <th class="text-left px-4 py-2.5">类型</th>
+              <th class="text-left px-4 py-2.5">分类</th>
+              <th class="text-left px-4 py-2.5">必填</th>
               <th class="px-4 py-2.5 w-10"></th>
             </tr>
           </thead>
           <tbody id="fields-table" class="divide-y divide-slate-700/40"></tbody>
         </table>
         <div id="fields-empty" class="hidden px-4 py-8 text-center text-slate-500 text-sm">
-          No fields defined — add one above
+          暂无字段 — 在上方添加
         </div>
       </div>
 
@@ -297,24 +306,25 @@
   <!-- Col 1: Type filter -->
   <div style="width:180px;flex-shrink:0;border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden;">
     <div style="padding:10px 12px;border-bottom:1px solid #334155;flex-shrink:0;">
-      <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Filter by Type</p>
+      <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">按类型筛选</p>
     </div>
     <div style="flex:1;overflow-y:auto;padding:8px;" class="space-y-0.5">
       <button onclick="filterObjects(null)" id="filter-all"
         style="width:100%;text-align:left;padding:6px 10px;border-radius:4px;font-size:13px;color:#cbd5e1;background:transparent;border:none;">
-        All Objects
+        全部对象
       </button>
       <div id="obj-filter-list" class="space-y-0.5"></div>
     </div>
-    <div style="padding:8px;border-top:1px solid #334155;flex-shrink:0;">
-      <button onclick="openCreateObjectModal()" class="btn-ghost btn-sm" style="width:100%;">+ New Object</button>
+    <div style="padding:8px;border-top:1px solid #334155;flex-shrink:0;display:flex;flex-direction:column;gap:6px;">
+      <button onclick="openCreateObjectModal()" class="btn-ghost btn-sm" style="width:100%;">+ 新建对象</button>
+      <button id="promote-all-btn" onclick="promoteAll()" class="btn-primary btn-sm" style="width:100%;" title="将所有已配置映射的 Dataset 重新 Promote 到 Ontology">↺ 全量促进</button>
     </div>
   </div>
 
   <!-- Col 2: Object list -->
   <div style="width:280px;flex-shrink:0;border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #334155;flex-shrink:0;">
-      <p id="browse-list-title" style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">All Objects</p>
+      <p id="browse-list-title" style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">全部对象</p>
       <span id="browse-count" style="font-size:11px;color:#64748b;"></span>
     </div>
     <div id="obj-list" style="flex:1;overflow-y:auto;padding:8px;" class="space-y-0.5"></div>
@@ -324,7 +334,7 @@
   <div style="flex:1;overflow-y:auto;padding:20px;">
     <div id="obj-detail-empty" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
       <div style="font-size:2.5rem;margin-bottom:12px;">🔍</div>
-      <p style="color:#94a3b8;font-size:0.875rem;">Select an object to view its details</p>
+      <p style="color:#94a3b8;font-size:0.875rem;">选择对象查看详情</p>
     </div>
     <div id="obj-detail" style="display:none;max-width:640px;" class="space-y-4">
       <div class="flex items-start justify-between">
@@ -333,20 +343,20 @@
           <p id="obj-type-badge" class="text-xs mt-1.5"></p>
         </div>
         <div class="flex gap-2 flex-shrink-0">
-          <button onclick="openAddLinkModal()" class="btn-primary btn-sm">+ Link</button>
-          <button onclick="deleteCurrentObject()" class="btn-danger">Delete</button>
+          <button onclick="openAddLinkModal()" class="btn-primary btn-sm">+ 建立关联</button>
+          <button onclick="deleteCurrentObject()" class="btn-danger">删除</button>
         </div>
       </div>
 
       <div class="card p-4">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Fields</p>
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">字段</p>
         <div id="obj-fields" class="space-y-1.5 text-sm"></div>
       </div>
 
       <div class="card p-4">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Relationships</p>
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">关联关系</p>
         <div id="obj-links" class="space-y-1.5"></div>
-        <div id="obj-links-empty" class="text-slate-600 text-sm">No relationships</div>
+        <div id="obj-links-empty" class="text-slate-600 text-sm">暂无关联关系</div>
       </div>
     </div>
   </div>
@@ -358,11 +368,11 @@
 <div id="view-graph" style="display:none;height:calc(100vh - 56px);position:relative;">
   <!-- Controls bar -->
   <div style="position:absolute;top:10px;left:12px;display:flex;align-items:center;gap:8px;z-index:10;">
-    <button onclick="loadGraph()" class="btn-ghost btn-sm">↺ Refresh</button>
-    <button id="graph-btn-freeze" class="btn-ghost btn-sm" onclick="graphToggleFreeze()">❄ Freeze</button>
-    <button id="graph-btn-labels" class="btn-ghost btn-sm" onclick="graphToggleLabels()">Labels: On</button>
-    <button id="graph-btn-hulls"  class="btn-ghost btn-sm active" onclick="graphToggleHulls()">BC Hulls: On</button>
-    <button class="btn-ghost btn-sm" onclick="graphFullscreen()" title="Fullscreen">⛶</button>
+    <button onclick="loadGraph()" class="btn-ghost btn-sm">↺ 刷新</button>
+    <button id="graph-btn-freeze" class="btn-ghost btn-sm" onclick="graphToggleFreeze()">❄ 固定</button>
+    <button id="graph-btn-labels" class="btn-ghost btn-sm" onclick="graphToggleLabels()">标签：开</button>
+    <button id="graph-btn-hulls"  class="btn-ghost btn-sm active" onclick="graphToggleHulls()">BC 边界：开</button>
+    <button class="btn-ghost btn-sm" onclick="graphFullscreen()" title="全屏">⛶</button>
     <span id="graph-stats" style="font-size:11px;color:#475569;margin-left:4px;"></span>
   </div>
   <svg id="graph-svg" class="w-full h-full"></svg>
@@ -377,30 +387,30 @@
 <!-- Create EntityType -->
 <div id="modal-create-type" class="modal-overlay hidden">
   <div class="modal space-y-4" style="width:400px">
-    <h3 class="text-base font-semibold">New Entity Type</h3>
+    <h3 class="text-base font-semibold">新建实体类型</h3>
     <div class="space-y-3">
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Name <span class="text-slate-600">(identifier, no spaces)</span></label>
+        <label class="text-xs text-slate-400 block mb-1">标识名 <span class="text-slate-600">（英文，无空格）</span></label>
         <input id="new-et-name" placeholder="contract" />
       </div>
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Display Name</label>
-        <input id="new-et-display" placeholder="Contract" />
+        <label class="text-xs text-slate-400 block mb-1">显示名称</label>
+        <input id="new-et-display" placeholder="合同" />
       </div>
       <div class="flex gap-3">
         <div class="flex-1">
-          <label class="text-xs text-slate-400 block mb-1">Color</label>
+          <label class="text-xs text-slate-400 block mb-1">颜色</label>
           <input id="new-et-color" type="color" value="#6366f1" style="height:34px;padding:2px 4px;" />
         </div>
         <div class="flex-1">
-          <label class="text-xs text-slate-400 block mb-1">Icon</label>
+          <label class="text-xs text-slate-400 block mb-1">图标</label>
           <input id="new-et-icon" placeholder="●" />
         </div>
       </div>
     </div>
     <div class="flex gap-2 justify-end pt-1">
-      <button onclick="closeModal('modal-create-type')" class="btn-ghost">Cancel</button>
-      <button onclick="submitCreateType()" class="btn-primary">Create</button>
+      <button onclick="closeModal('modal-create-type')" class="btn-ghost">取消</button>
+      <button onclick="submitCreateType()" class="btn-primary">创建</button>
     </div>
   </div>
 </div>
@@ -408,42 +418,42 @@
 <!-- Add Field -->
 <div id="modal-add-field" class="modal-overlay hidden">
   <div class="modal space-y-4" style="width:380px">
-    <h3 class="text-base font-semibold">Add Field</h3>
+    <h3 class="text-base font-semibold">添加字段</h3>
     <div class="space-y-3">
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Field Name</label>
+        <label class="text-xs text-slate-400 block mb-1">字段名</label>
         <input id="new-field-name" placeholder="amount" />
       </div>
       <div class="flex gap-3">
         <div class="flex-1">
-          <label class="text-xs text-slate-400 block mb-1">Data Type</label>
+          <label class="text-xs text-slate-400 block mb-1">数据类型</label>
           <select id="new-field-type">
-            <option value="string">string</option>
-            <option value="number">number</option>
-            <option value="boolean">boolean</option>
-            <option value="date">date</option>
-            <option value="datetime">datetime</option>
-            <option value="reference">reference</option>
+            <option value="string">字符串</option>
+            <option value="number">数字</option>
+            <option value="boolean">布尔</option>
+            <option value="date">日期</option>
+            <option value="datetime">日期时间</option>
+            <option value="reference">引用</option>
           </select>
         </div>
         <div class="flex-1">
-          <label class="text-xs text-slate-400 block mb-1">Classification</label>
+          <label class="text-xs text-slate-400 block mb-1">数据分级</label>
           <select id="new-field-class">
-            <option value="Public">Public</option>
-            <option value="Internal" selected>Internal</option>
-            <option value="Confidential">Confidential</option>
-            <option value="Pii">PII</option>
+            <option value="Public">公开</option>
+            <option value="Internal" selected>内部</option>
+            <option value="Confidential">机密</option>
+            <option value="Pii">个人信息</option>
           </select>
         </div>
       </div>
       <div class="flex items-center gap-2">
         <input type="checkbox" id="new-field-required" class="w-auto" style="width:auto" />
-        <label for="new-field-required" class="text-sm text-slate-300">Required</label>
+        <label for="new-field-required" class="text-sm text-slate-300">必填</label>
       </div>
     </div>
     <div class="flex gap-2 justify-end pt-1">
-      <button onclick="closeModal('modal-add-field')" class="btn-ghost">Cancel</button>
-      <button onclick="submitAddField()" class="btn-primary">Add Field</button>
+      <button onclick="closeModal('modal-add-field')" class="btn-ghost">取消</button>
+      <button onclick="submitAddField()" class="btn-primary">添加</button>
     </div>
   </div>
 </div>
@@ -451,21 +461,21 @@
 <!-- Create Object -->
 <div id="modal-create-obj" class="modal-overlay hidden">
   <div class="modal space-y-4" style="min-width:420px">
-    <h3 class="text-base font-semibold">New Object</h3>
+    <h3 class="text-base font-semibold">新建对象</h3>
     <div class="space-y-3">
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Entity Type</label>
+        <label class="text-xs text-slate-400 block mb-1">实体类型</label>
         <select id="new-obj-type"></select>
       </div>
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Label</label>
+        <label class="text-xs text-slate-400 block mb-1">名称</label>
         <input id="new-obj-label" placeholder="Alice" />
       </div>
       <div id="new-obj-fields-container" class="space-y-2"></div>
     </div>
     <div class="flex gap-2 justify-end pt-1">
-      <button onclick="closeModal('modal-create-obj')" class="btn-ghost">Cancel</button>
-      <button onclick="submitCreateObject()" class="btn-primary">Create</button>
+      <button onclick="closeModal('modal-create-obj')" class="btn-ghost">取消</button>
+      <button onclick="submitCreateObject()" class="btn-primary">创建</button>
     </div>
   </div>
 </div>
@@ -473,20 +483,20 @@
 <!-- Add Link -->
 <div id="modal-add-link" class="modal-overlay hidden">
   <div class="modal space-y-4" style="width:380px">
-    <h3 class="text-base font-semibold">Add Relationship</h3>
+    <h3 class="text-base font-semibold">建立关联关系</h3>
     <div class="space-y-3">
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Relationship Type</label>
+        <label class="text-xs text-slate-400 block mb-1">关系类型</label>
         <input id="new-link-type" placeholder="BELONGS_TO" />
       </div>
       <div>
-        <label class="text-xs text-slate-400 block mb-1">Target Object</label>
+        <label class="text-xs text-slate-400 block mb-1">目标对象</label>
         <select id="new-link-target"></select>
       </div>
     </div>
     <div class="flex gap-2 justify-end pt-1">
-      <button onclick="closeModal('modal-add-link')" class="btn-ghost">Cancel</button>
-      <button onclick="submitAddLink()" class="btn-primary">Link</button>
+      <button onclick="closeModal('modal-add-link')" class="btn-ghost">取消</button>
+      <button onclick="submitAddLink()" class="btn-primary">确定</button>
     </div>
   </div>
 </div>
@@ -518,6 +528,8 @@ function setTab(t) {
   if (t === 'browse') {
     if (!filterET && entityTypes.length) filterObjects(entityTypes[0].id);
     else loadObjects();
+    // Auto-promote silently if objects are empty but mappings exist
+    autoPromoteIfEmpty();
   }
   if (t === 'schema') loadEntityTypes().then(() => {
     if (!selectedET && entityTypes.length) selectEntityType(entityTypes[0]);
@@ -1199,7 +1211,7 @@ function renderFieldsTable() {
 }
 
 async function deleteField(id) {
-  if (!confirm('Delete field?')) return;
+  if (!confirm('确认删除该字段？')) return;
   await fetch('/api/ontology/fields/' + id, { method: 'DELETE' });
   await loadEntityTypes();
   if (selectedET) selectEntityType(entityTypes.find(e => e.id === selectedET.id) || selectedET);
@@ -1207,7 +1219,7 @@ async function deleteField(id) {
 
 async function deleteCurrentEntityType() {
   if (!selectedET) return;
-  if (!confirm(`Delete "${selectedET.display_name}"? All objects of this type will be deleted.`)) return;
+  if (!confirm(`确认删除「${selectedET.display_name}」？该类型下所有对象将一并删除。`)) return;
   await fetch('/api/ontology/schema/' + selectedET.id, { method: 'DELETE' });
   selectedET = null;
   document.getElementById('et-detail').style.display = 'none';
@@ -1233,6 +1245,40 @@ async function loadObjects() {
   const data = await res.json();
   allObjects = data.objects || [];
   renderObjList();
+  // 默认选中第一个对象（若当前无选中或选中对象已不在列表中）
+  if (allObjects.length > 0) {
+    const stillSelected = selectedObj && allObjects.find(o => o.id === selectedObj.id);
+    if (!stillSelected) selectObject(allObjects[0]);
+  }
+}
+
+async function autoPromoteIfEmpty() {
+  // If there are no promoted objects but entity types exist, silently run promote-all once
+  if (allObjects.length > 0 || !entityTypes.length) return;
+  try {
+    const res = await fetch('/api/ontology/promote-all', { method: 'POST' });
+    const d = await res.json();
+    if (d.ok && d.promoted_datasets > 0) await loadObjects();
+  } catch(e) { /* silent */ }
+}
+
+async function promoteAll() {
+  const btn = document.getElementById('promote-all-btn');
+  btn.disabled = true; btn.textContent = '促进中…';
+  try {
+    const res = await fetch('/api/ontology/promote-all', { method: 'POST' });
+    const d   = await res.json();
+    if (d.ok) {
+      btn.textContent = `✓ ${d.promoted_datasets} 个 Dataset 已促进`;
+      await loadObjects();
+    } else {
+      btn.textContent = '✗ 失败';
+    }
+  } catch(e) {
+    btn.textContent = '✗ 网络错误';
+  } finally {
+    setTimeout(() => { btn.disabled = false; btn.textContent = '↺ Promote All'; }, 3000);
+  }
 }
 
 function renderObjFilterList() {
@@ -1260,7 +1306,7 @@ function filterObjects(etId) {
   if (titleEl) {
     titleEl.textContent = etId
       ? (entityTypes.find(e => e.id === etId)?.display_name || 'Objects')
-      : 'All Objects';
+      : '全部对象';
   }
   renderObjFilterList();
   loadObjects();
@@ -1273,7 +1319,7 @@ function renderObjList() {
 
   el.innerHTML = '';
   if (!allObjects.length) {
-    el.innerHTML = '<p class="text-xs text-slate-600 px-3 py-4 text-center">No objects found</p>';
+    el.innerHTML = '<p class="text-xs text-slate-600 px-3 py-4 text-center">暂无对象</p>';
     return;
   }
   const et_map = Object.fromEntries(entityTypes.map(e => [e.id, e]));
@@ -1319,7 +1365,7 @@ function renderObjDetail() {
     : Object.entries(fields);
 
   if (!entries.length) {
-    fEl.innerHTML = '<p class="text-slate-600 text-xs">No fields</p>';
+    fEl.innerHTML = '<p class="text-slate-600 text-xs">暂无字段</p>';
   } else {
     entries.forEach(([k, v]) => {
       fEl.innerHTML += `
@@ -1330,32 +1376,35 @@ function renderObjDetail() {
     });
   }
 
-  // Relationships
+  // Relationships (enriched: other_label / other_et_name / other_id come from backend)
   const links = selectedObj.links || [];
   const lEl   = document.getElementById('obj-links');
   const lEmpty = document.getElementById('obj-links-empty');
   lEl.innerHTML = '';
   lEmpty.style.display = links.length ? 'none' : '';
-  const objMap = Object.fromEntries(allObjects.map(o => [o.id, o]));
   links.forEach(l => {
-    const isFrom = l.from_id === selectedObj.id;
-    const otherId = isFrom ? l.to_id : l.from_id;
-    const other = objMap[otherId] || { label: otherId, entity_type_name: '?' };
-    lEl.innerHTML += `
-      <div class="flex items-center justify-between py-1.5 border-b border-slate-700/30 last:border-0">
-        <div class="flex items-center gap-2 text-sm min-w-0">
-          <span class="text-slate-600 flex-shrink-0">${isFrom ? '→' : '←'}</span>
-          <span class="text-indigo-400 text-xs font-mono flex-shrink-0">${escHtml(l.rel_type)}</span>
-          <span class="text-slate-200 truncate">${escHtml(other.label)}</span>
-          <span class="text-slate-600 text-xs flex-shrink-0">(${escHtml(other.entity_type_name)})</span>
-        </div>
-        <button onclick="deleteLink('${l.id}')" class="btn-danger flex-shrink-0 ml-2">×</button>
-      </div>`;
+    const isFrom  = l.from_id === selectedObj.id;
+    const otherId = l.other_id || (isFrom ? l.to_id : l.from_id);
+    const otherLabel  = l.other_label   || otherId;
+    const otherEtName = l.other_et_name || '?';
+    const otherEtId   = l.other_et_id   || '';
+    const dir = isFrom ? '→' : '←';
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between py-1.5 border-b border-slate-700/30 last:border-0';
+    row.innerHTML = `
+      <div class="flex items-center gap-2 text-sm min-w-0 flex-1">
+        <span class="text-slate-500 flex-shrink-0 font-bold">${dir}</span>
+        <span class="text-indigo-400 text-xs font-mono flex-shrink-0 px-1.5 py-0.5 rounded" style="background:#6366f122">${escHtml(l.rel_type)}</span>
+        <button class="text-slate-200 hover:text-indigo-300 truncate text-left text-sm underline-offset-2 hover:underline" onclick="navigateToObject('${otherId}','${otherEtId}')">${escHtml(otherLabel)}</button>
+        <span class="text-slate-500 text-xs flex-shrink-0 italic">${escHtml(otherEtName)}</span>
+      </div>
+      <button onclick="deleteLink('${l.id}')" class="btn-danger flex-shrink-0 ml-2 text-xs px-1.5">×</button>`;
+    lEl.appendChild(row);
   });
 }
 
 async function deleteCurrentObject() {
-  if (!confirm('Delete this object?')) return;
+  if (!confirm('确认删除此对象？')) return;
   await fetch('/api/ontology/objects/' + selectedObj.id, { method: 'DELETE' });
   selectedObj = null;
   document.getElementById('obj-detail').style.display = 'none';
@@ -1366,6 +1415,22 @@ async function deleteCurrentObject() {
 async function deleteLink(id) {
   await fetch('/api/ontology/links/' + id, { method: 'DELETE' });
   selectObject(selectedObj);
+}
+
+// Navigate to a related object: switch filter to its entity type then select it
+async function navigateToObject(objectId, etId) {
+  if (etId && etId !== filterET) {
+    filterObjects(etId);
+    await loadObjects();
+  }
+  // Find the object in allObjects (now loaded for that ET) and select it
+  let obj = allObjects.find(o => o.id === objectId);
+  if (!obj) {
+    // Fetch directly if not in current list
+    const res = await fetch('/api/ontology/objects/' + objectId);
+    if (res.ok) obj = await res.json();
+  }
+  if (obj) selectObject(obj);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1392,29 +1457,44 @@ async function loadGraph() {
 // ── DDD BC palette ────────────────────────────────────────────────────────────
 const BC_PALETTE = [
   '#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#8b5cf6','#f97316',
+  '#14b8a6','#e11d48','#84cc16','#0ea5e9','#a855f7','#fb923c','#22d3ee',
 ];
 
-// DDD roles applied at ET level (instances inherit from their ET)
-// etSummary nodes: { id, label, color, fold_id, count }
-function classifyDDDRolesForETs(etNodes, validEdges) {
-  // Count inDegree per ET (from instance-level edges, aggregated by et_id)
-  // validEdges here are instance-level, so we need etByObj lookup
-  const inDegree = Object.fromEntries(etNodes.map(n => [n.id, 0]));
-  // For ET-level role classification, use ET-to-ET edge counts
-  // (passed separately as etEdges derived from validEdges)
-  const bcGroups = {};
-  etNodes.forEach(n => {
-    const key = n.fold_id || 'shared';
-    (bcGroups[key] = bcGroups[key] || []).push(n.id);
+// DDD roles — auto-detected from ET-level directed edge analysis:
+//   Value Object  : no outbound FK refs to other ETs (pure reference/lookup data)
+//   Aggregate Root: highest inbound cross-ET references (most "central" entity)
+//   Entity        : everything else
+function classifyDDDRolesForETs(etNodes, validEdges, allNodes) {
+  const etIds = new Set(etNodes.map(n => n.id));
+
+  // Build ET-level out/in degree from instance edges (cross-ET only)
+  const nodeToET = Object.fromEntries((allNodes||[]).map(n => [n.id, n.et_id]));
+  const etOutDeg = Object.fromEntries(etNodes.map(n => [n.id, 0]));
+  const etInDeg  = Object.fromEntries(etNodes.map(n => [n.id, 0]));
+
+  validEdges.forEach(e => {
+    const s = typeof e.source==='object' ? e.source.id : e.source;
+    const t = typeof e.target==='object' ? e.target.id : e.target;
+    const sET = nodeToET[s], tET = nodeToET[t];
+    if (!sET || !tET || sET === tET) return;          // skip intra-ET edges
+    if (etIds.has(sET)) etOutDeg[sET]++;
+    if (etIds.has(tET)) etInDeg[tET]++;
   });
+
+  // Find global aggregate root: ET with highest inbound cross-ET edges
+  let maxIn = 0;
+  etNodes.forEach(n => { if (etInDeg[n.id] > maxIn) maxIn = etInDeg[n.id]; });
+
   const roles = {};
-  Object.values(bcGroups).forEach(ids => {
-    if (ids.length === 1) {
-      roles[ids[0]] = inDegree[ids[0]] > 0 ? 'aggregate-root' : 'value-object';
+  etNodes.forEach(n => {
+    if (etOutDeg[n.id] === 0 && etInDeg[n.id] > 0) {
+      // Pure sink — only referenced, never references others → Value Object
+      roles[n.id] = 'value-object';
+    } else if (maxIn > 0 && etInDeg[n.id] === maxIn) {
+      // Most referenced ET → Aggregate Root
+      roles[n.id] = 'aggregate-root';
     } else {
-      let maxIn = -1, rootId = ids[0];
-      ids.forEach(id => { if (inDegree[id] > maxIn) { maxIn = inDegree[id]; rootId = id; } });
-      ids.forEach(id => { roles[id] = id === rootId ? 'aggregate-root' : 'entity'; });
+      roles[n.id] = 'entity';
     }
   });
   return roles;
@@ -1435,47 +1515,22 @@ function buildBCsFromFolds(nodes, folds, etSummary, edges) {
     isFold: true,
   })).filter(bc => bc.ids.length > 0);
 
-  // For unassigned nodes: group by ET, then merge connected ETs via FK edges
-  // (Aggregate Root + its Entities form one BC via link relationships)
-  // Exclude default (isolated) objects from BC grouping
+  // For unassigned nodes: each ET becomes its own BC (shows separate boundary per entity type)
   const unassigned = nodes.filter(n => !n.is_default && (!n.fold_id || !foldIds.has(n.fold_id)));
   const foldOffset = foldBCs.length;
 
-  // Union-Find on ET level using edges between instances
-  const etParent = {};
-  const allEtIds = [...new Set(unassigned.map(n => n.et_id))];
-  allEtIds.forEach(id => { etParent[id] = id; });
-  function find(x) { return etParent[x] === x ? x : (etParent[x] = find(etParent[x])); }
-  function union(a, b) { const ra = find(a), rb = find(b); if (ra !== rb) etParent[ra] = rb; }
-
-  // Build node→ET lookup for fast edge traversal
-  const nodeToET = Object.fromEntries(unassigned.map(n => [n.id, n.et_id]));
-  edges.forEach(e => {
-    const s = typeof e.source === 'object' ? e.source.id : e.source;
-    const t = typeof e.target === 'object' ? e.target.id : e.target;
-    const sET = nodeToET[s], tET = nodeToET[t];
-    if (sET && tET && sET !== tET && etParent[sET] !== undefined && etParent[tET] !== undefined) {
-      union(sET, tET);
-    }
-  });
-
-  // Group ETs by BC root
+  // Group instances by ET — one BC per ET type
   const etGroups = {};
-  allEtIds.forEach(etId => {
-    const root = find(etId);
-    (etGroups[root] = etGroups[root] || []).push(etId);
+  unassigned.forEach(n => {
+    (etGroups[n.et_id] = etGroups[n.et_id] || []).push(n.id);
   });
 
-  const etBCs = Object.values(etGroups).map((etIds, i) => {
+  const etBCs = Object.entries(etGroups).map(([etId, ids], i) => {
+    const et = etSummary?.find(e => e.id === etId);
+    const name = et?.label || etId;
+    // Use BC_PALETTE for distinct background colors (not ET color, to ensure contrast)
     const color = BC_PALETTE[(foldOffset + i) % BC_PALETTE.length];
-    // Name: ET display names joined
-    const names = etIds.map(etId => {
-      const et = etSummary?.find(e => e.id === etId);
-      return et?.label || etId;
-    });
-    const name = names.length === 1 ? names[0] : names.join(' / ');
-    const ids = unassigned.filter(n => etIds.includes(n.et_id)).map(n => n.id);
-    return { id: 'et-' + etIds[0], name, color, ids, isFold: false };
+    return { id: 'et-' + etId, name, color, ids, isFold: false };
   }).filter(bc => bc.ids.length > 0);
 
   const bcs = [...foldBCs, ...etBCs];
@@ -1522,7 +1577,7 @@ function graphToggleFreeze() {
 
 function graphToggleLabels() {
   graphLabelsOn = !graphLabelsOn;
-  document.getElementById('graph-btn-labels').textContent = graphLabelsOn ? 'Labels: On' : 'Labels: Off';
+  document.getElementById('graph-btn-labels').textContent = graphLabelsOn ? '标签：开' : '标签：关';
   document.getElementById('graph-btn-labels').classList.toggle('active', graphLabelsOn);
   if (graphLabelSel) graphLabelSel.style('opacity', graphLabelsOn ? null : 0);
 }
@@ -1531,7 +1586,7 @@ let graphHullLayer = null;
 function graphToggleHulls() {
   const btn = document.getElementById('graph-btn-hulls');
   const on = btn.classList.toggle('active');
-  btn.textContent = on ? 'BC Hulls: On' : 'BC Hulls: Off';
+  btn.textContent = on ? 'BC 边界：开' : 'BC 边界：关';
   if (graphHullLayer) graphHullLayer.style('display', on ? null : 'none');
 }
 
@@ -1554,9 +1609,9 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   graphFrozen = false;
   graphLabelsOn = true;
   document.getElementById('graph-btn-freeze').classList.remove('active');
-  document.getElementById('graph-btn-labels').textContent = 'Labels: On';
+  document.getElementById('graph-btn-labels').textContent = '标签：开';
   document.getElementById('graph-btn-labels').classList.add('active');
-  document.getElementById('graph-btn-hulls').textContent = 'BC Hulls: On';
+  document.getElementById('graph-btn-hulls').textContent = 'BC 边界：开';
   document.getElementById('graph-btn-hulls').classList.add('active');
 
   const rect = svgEl.getBoundingClientRect();
@@ -1574,7 +1629,7 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
 
   // ── BC inference + DDD roles ──────────────────────────────────────────────
   const { bcs, nodeBC, validEdges } = inferBCs(nodes, edges, folds, etSummary);
-  const etRoles = classifyDDDRolesForETs(etSummary, validEdges);
+  const etRoles = classifyDDDRolesForETs(etSummary, validEdges, nodes);
 
   // node.id → bc.id
   const nodeBCId = {};
@@ -1635,9 +1690,9 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   const defs = svg.append('defs');
   [{ id:'arr-intra', color:'#388bfd' }, { id:'arr-cross', color:'#f97316' }].forEach(({ id, color }) => {
     defs.append('marker').attr('id', id)
-      .attr('viewBox','0 -4 8 8').attr('refX', R + 8).attr('refY', 0)
-      .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient','auto')
-      .append('path').attr('d','M0,-4L8,0L0,4').attr('fill', color).attr('opacity', 0.75);
+      .attr('viewBox','0 -4 8 8').attr('refX', 8).attr('refY', 0)
+      .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient','auto')
+      .append('path').attr('d','M0,-4L8,0L0,4').attr('fill', color).attr('opacity', 0.9);
   });
 
   // ── Hull layer ────────────────────────────────────────────────────────────
@@ -1646,11 +1701,11 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   const hullPaths = hullLayer.selectAll('path').data(bcs).join('path')
     .attr('class','bc-hull')
     .attr('fill', bc => bc.color)
-    .attr('fill-opacity', bc => bc.isFold ? 0.07 : 0.04)
+    .attr('fill-opacity', bc => bc.isFold ? 0.13 : 0.09)
     .attr('stroke', bc => bc.color)
-    .attr('stroke-opacity', bc => bc.isFold ? 0.45 : 0.3)
-    .attr('stroke-width', bc => bc.isFold ? 2 : 1.5)
-    .attr('stroke-dasharray', bc => bc.isFold ? null : '5,3')
+    .attr('stroke-opacity', bc => bc.isFold ? 0.65 : 0.5)
+    .attr('stroke-width', bc => bc.isFold ? 2.5 : 2)
+    .attr('stroke-dasharray', bc => bc.isFold ? null : '6,3')
     .attr('stroke-linejoin','round');
   const hullLabels = hullLayer.selectAll('text').data(bcs).join('text')
     .attr('fill', bc => bc.color)
@@ -1713,9 +1768,28 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   const nodeSel = g.append('g').selectAll('g').data(nodes).join('g')
     .attr('class','node').style('cursor','pointer')
     .call(d3.drag()
-      .on('start', (ev,d) => { if (!ev.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
-      .on('drag',  (ev,d) => { d.fx=ev.x; d.fy=ev.y; })
-      .on('end',   (ev,d) => { if (!ev.active) simulation.alphaTarget(0); if (!graphFrozen) { d.fx=null; d.fy=null; } })
+      .on('start', (ev, d) => {
+        if (!ev.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+        // drag start: scale up + add dragging class
+        d3.select(ev.sourceEvent.target.closest('.node') || ev.sourceEvent.target)
+          .classed('dragging', true);
+        d3.select(ev.sourceEvent.target.closest('.node') || ev.sourceEvent.target)
+          .select('.node-main')
+          .transition().duration(120).ease(d3.easeBackOut.overshoot(2))
+          .attr('transform', 'scale(1.25)');
+      })
+      .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end', (ev, d) => {
+        if (!ev.active) simulation.alphaTarget(0);
+        if (!graphFrozen) { d.fx = null; d.fy = null; }
+        // drag end: spring back to normal size
+        const nodeEl = ev.sourceEvent.target.closest?.('.node') || ev.sourceEvent.target;
+        d3.select(nodeEl).classed('dragging', false);
+        d3.select(nodeEl).select('.node-main')
+          .transition().duration(300).ease(d3.easeElasticOut.amplitude(1).period(0.4))
+          .attr('transform', 'scale(1)');
+      })
     );
 
   nodeSel.each(function(d) {
@@ -1733,6 +1807,12 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
     const color   = dddColor(d);
     const bc      = nodeBC[d.id];
     const bcColor = bc?.color || '#475569';
+
+    // Hover glow ring (hidden by default, shown on hover via JS)
+    sel.append('circle').attr('class','node-hover-ring')
+      .attr('r', r + 8).attr('fill','none')
+      .attr('stroke', color).attr('stroke-width', 2)
+      .attr('stroke-opacity', 0).attr('pointer-events','none');
 
     // BC outer ring (thin, semi-transparent) — v0.1 style
     sel.append('circle').attr('class','node-bc-ring')
@@ -1768,6 +1848,23 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   // Store label selection for toggle (both main label + ET sub-label)
   graphLabelSel = nodeSel.selectAll('text.node-label');
 
+  // ── Entrance animation: staggered fade + scale in ─────────────────────────
+  nodeSel.filter(d => !d.is_default)
+    .style('opacity', 0)
+    .transition()
+    .duration(400)
+    .delay((d, i) => Math.min(i * 8, 600))   // stagger up to 600ms total
+    .ease(d3.easeBackOut.overshoot(1.2))
+    .style('opacity', 1)
+    .select('.node-main')
+    .attr('transform', 'scale(1)');
+  // start from scale(0) so the back-out bounce is visible
+  nodeSel.filter(d => !d.is_default).select('.node-main')
+    .attr('transform', 'scale(0)')
+    .transition().duration(380).delay((d, i) => Math.min(i * 8, 600))
+    .ease(d3.easeBackOut.overshoot(1.3))
+    .attr('transform', 'scale(1)');
+
   // ── Tooltip ───────────────────────────────────────────────────────────────
   const tip = d3.select('body').append('div').attr('id','graph-tooltip')
     .style('position','fixed').style('pointer-events','none').style('opacity',0)
@@ -1778,52 +1875,68 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
     .style('transition','opacity .15s');
   const roleLabel = { 'aggregate-root':'◆ Aggregate Root','entity':'▸ Entity','value-object':'○ Value Object' };
 
+  // Build node id → node object map for tooltip lookups
+  const nodeById = Object.fromEntries(nodes.map(n => [n.id, n]));
+
   nodeSel
     .on('mouseenter', (ev,d) => {
       if (d.is_default) return;
+      // hover: scale up main circle + show glow ring
+      const g = d3.select(ev.currentTarget);
+      g.select('.node-main')
+        .transition().duration(150).ease(d3.easeBackOut.overshoot(1.5))
+        .attr('transform','scale(1.18)');
+      g.select('.node-hover-ring')
+        .transition().duration(200)
+        .attr('stroke-opacity', 0.45)
+        .attr('r', nodeR(d) + 10);
+
       const bc      = nodeBC[d.id];
       const role    = etRoles[d.et_id] || 'entity';
       const col     = dddColor(d);
       const bcColor = bc?.color || '#8b949e';
       const props   = d.props || {};
 
-      // Classify fields: FK refs (_id suffix, or value looks like a foreign key pattern) vs scalar VO
-      const fkEntries  = [];
-      const voEntries  = [];
-      Object.entries(props).forEach(([k, v]) => {
-        const isId = k === 'id';
-        const isFK = !isId && (k.endsWith('_id') || k.endsWith('Id'));
-        if (isId) return; // skip internal id field
-        if (isFK) fkEntries.push([k, v]);
-        else      voEntries.push([k, v]);
-      });
+      // Scalar fields (skip 'id' and FK cols — those are shown via resolved links below)
+      const scalarEntries = Object.entries(props).filter(([k]) =>
+        k !== 'id' && !k.endsWith('_id') && !k.endsWith('Id')
+      );
 
-      const voSection = voEntries.length ? (
-        `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;color:#3fb950;margin-bottom:3px">○ VALUE OBJECTS</div>` +
-        voEntries.map(([k,v]) =>
-          `<div style="margin-bottom:1px"><span style="color:#8b949e">${escHtml(k)}:</span> <span style="color:#c9d1d9">${escHtml(String(v??''))}</span></div>`
-        ).join('')
-      ) : '';
-
-      const fkSection = fkEntries.length ? (
-        `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;color:#388bfd;margin-top:6px;margin-bottom:3px">→ ENTITY REF</div>` +
-        fkEntries.map(([k,v]) =>
-          `<div style="margin-bottom:1px"><span style="color:#8b949e">${escHtml(k)}:</span> <span style="color:#93c5fd">${escHtml(String(v??''))}</span></div>`
+      const fieldSection = scalarEntries.length ? (
+        scalarEntries.map(([k,v]) =>
+          `<div style="margin-bottom:1px"><span style="color:#6e7681">${escHtml(k)}:</span> <span style="color:#c9d1d9">${escHtml(String(v??''))}</span></div>`
         ).join('')
       ) : '';
 
       tip.html(
-        `<div style="color:${bcColor};font-size:10px;font-weight:700;letter-spacing:1px;margin-bottom:3px">⬡ ${escHtml(bc?.name||'—')}</div>` +
         `<div style="font-weight:600;color:${col};font-size:13px;margin-bottom:1px">${escHtml(d.label)}</div>` +
-        `<div style="color:#8b949e;font-size:11px;margin-bottom:6px">${escHtml(d.et_name)}  ·  ${roleLabel[role]}</div>` +
-        ((voSection || fkSection) ? `<div style="font-size:11px;line-height:1.7;border-top:1px solid #30363d;padding-top:6px">${voSection}${fkSection}</div>` : '')
+        `<div style="color:#8b949e;font-size:11px;margin-bottom:${fieldSection?'6px':'0'}">${escHtml(d.et_name)} · ${roleLabel[role]}</div>` +
+        (fieldSection ? `<div style="font-size:11px;line-height:1.7;border-top:1px solid #30363d;padding-top:6px">${fieldSection}</div>` : '')
       ).style('opacity',1);
     })
     .on('mousemove', ev => tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-10)+'px'))
-    .on('mouseleave', () => tip.style('opacity',0))
+    .on('mouseleave', (ev, d) => {
+      tip.style('opacity', 0);
+      if (d.is_default) return;
+      // hover out: restore size + hide glow ring
+      const g = d3.select(ev.currentTarget);
+      g.select('.node-main')
+        .transition().duration(200).ease(d3.easeCubicOut)
+        .attr('transform','scale(1)');
+      g.select('.node-hover-ring')
+        .transition().duration(250)
+        .attr('stroke-opacity', 0)
+        .attr('r', nodeR(d) + 8);
+    })
     .on('click', function(ev, d) {
       ev.stopPropagation();
       if (d.is_default) return;
+      // click pulse: quick scale out → back
+      d3.select(this).select('.node-main')
+        .transition().duration(100).ease(d3.easeBackOut)
+        .attr('transform','scale(1.35)')
+        .transition().duration(200).ease(d3.easeElasticOut.amplitude(1).period(0.35))
+        .attr('transform','scale(1)');
       const neighbors = new Set([d.id]);
       validEdges.forEach(e => {
         const s = typeof e.source==='object'?e.source.id:e.source;
@@ -1936,7 +2049,18 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
     .force('bcY', d3.forceY(d => d.is_default ? (d.y ?? H/2) : (etCentroids[d.et_id] ?? {y:H/2}).y).strength(d => d.is_default ? 0.01 : 0.18))
     .on('tick', () => {
       edgeSel.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-             .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+             .attr('x2', d => {
+               const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+               const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+               const r = nodeR(d.target) + 4;
+               return d.target.x - (dx / dist) * r;
+             })
+             .attr('y2', d => {
+               const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+               const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+               const r = nodeR(d.target) + 4;
+               return d.target.y - (dy / dist) * r;
+             });
       nodeSel.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`);
       updateHulls();
       // Update BC cross-link arcs

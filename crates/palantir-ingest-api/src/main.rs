@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Multipart, Path, Query},
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
 };
 use base64::{Engine as _, engine::general_purpose};
@@ -93,14 +93,25 @@ async fn workspace_page() -> Html<&'static str> {
 async fn viz_page() -> Html<&'static str> {
     Html(include_str!("../../../assets/index.html"))
 }
-async fn ingest_project_page() -> Html<&'static str> {
-    Html(include_str!("ui/ingest_project.html"))
+async fn ingest_project_redirect(Path(id): Path<String>) -> Redirect {
+    Redirect::to(&format!("/project/{}", id))
 }
 async fn project_workspace_page() -> Html<&'static str> {
     Html(include_str!("ui/project_workspace.html"))
 }
-async fn ingest_fold_page() -> Html<&'static str> {
-    Html(include_str!("ui/ingest_fold.html"))
+async fn ingest_fold_redirect(Path(fold_id): Path<String>) -> Redirect {
+    let project_id = db()
+        .get_fold(&fold_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|f| f.project_id)
+        .unwrap_or_default();
+    if project_id.is_empty() {
+        Redirect::to("/ingest")
+    } else {
+        Redirect::to(&format!("/project/{}", project_id))
+    }
 }
 async fn healthz() -> &'static str {
     "ok"
@@ -1126,6 +1137,8 @@ async fn ontology_page() -> Html<&'static str> {
 fn default_color() -> String { "#6366f1".into() }
 fn default_icon() -> String { "●".into() }
 
+fn default_ddd_role() -> String { "entity".into() }
+
 #[derive(Deserialize)]
 struct CreateEntityTypeReqClean {
     name: String,
@@ -1136,6 +1149,8 @@ struct CreateEntityTypeReqClean {
     icon: String,
     #[serde(default)]
     fold_id: Option<String>,
+    #[serde(default = "default_ddd_role")]
+    ddd_role: String,
 }
 
 async fn list_entity_types_handler() -> impl IntoResponse {
@@ -1165,7 +1180,7 @@ async fn create_entity_type_handler(
     Json(req): Json<CreateEntityTypeReqClean>,
 ) -> impl IntoResponse {
     match db()
-        .create_entity_type(&req.name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref())
+        .create_entity_type(&req.name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref(), &req.ddd_role)
         .await
     {
         Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
@@ -1282,7 +1297,7 @@ async fn create_object_handler(Json(req): Json<CreateObjectReq>) -> impl IntoRes
 async fn get_object_handler(Path(id): Path<String>) -> impl IntoResponse {
     match db().get_ontology_object(&id).await {
         Ok(Some(row)) => {
-            let links = db().list_links_for_object(&id).await.unwrap_or_default();
+            let links = db().list_links_for_object_enriched(&id).await.unwrap_or_default();
             let fields: serde_json::Value = serde_json::from_str(&row.fields).unwrap_or_default();
             (StatusCode::OK, Json(json!({
                 "id": row.id, "entity_type_id": row.entity_type_id,
@@ -2267,10 +2282,13 @@ async fn sync_source_handler(
             }
         };
 
-        // Only enter per-file mode when there are multiple files.
-        // A single file falls through to the single-file mode below.
-        if selected_files.len() <= 1 {
-            // nothing — fall through
+        // S3 sources always use per-file mode.
+        // If no files resolved, abort early to avoid creating a stray source-named dataset.
+        if selected_files.is_empty() {
+            let _ = db().release_write_lock(&source_id, "error", None).await;
+            let _ = db().finish_sync_run(&run.id, "failed", Some("no files selected or discovered"), Some("no_files")).await;
+            return (StatusCode::BAD_REQUEST,
+                Json(json!({"error": "no files selected or discovered in S3 bucket"}))).into_response();
         } else {
         let project_id = db().get_fold(&src.fold_id).await
             .ok().flatten()
@@ -2990,7 +3008,7 @@ async fn promote_dataset_handler(
         }
     } else if !req.new_type_name.is_empty() {
         let name = req.new_type_name.trim().to_lowercase().replace(' ', "_");
-        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube", req.fold_id.as_deref()).await {
+        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube", req.fold_id.as_deref(), "entity").await {
             Ok(t) => (t.id, t.display_name),
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
@@ -3109,18 +3127,27 @@ async fn auto_promote_if_mapped(dataset_id: &str) {
         Some(t) => t,
         None => { eprintln!("[auto-promote] entity type {} not found", et_id); return; }
     };
-    let dv = match db().get_current_dataset_version(dataset_id).await.ok().flatten() {
-        Some(dv) => dv,
-        None => return,
-    };
-    let manifest_path = match dv.manifest_path {
-        Some(mp) => mp,
-        None => return,
-    };
-    let (backend, _) = build_platform_backend().await;
-    let records = match palantir_storage::read_records_from_manifest_path(&backend, &manifest_path).await {
-        Ok(r) => r,
-        Err(e) => { eprintln!("[auto-promote] read records error: {e}"); return; }
+    // Read records: try manifest (S3/RustFS) first, fallback to SQLite
+    let records: Vec<serde_json::Value> = {
+        let from_manifest = async {
+            let dv = db().get_current_dataset_version(dataset_id).await.ok().flatten()?;
+            let mp = dv.manifest_path?;
+            let (backend, _) = build_platform_backend().await;
+            palantir_storage::read_records_from_manifest_path(&backend, &mp).await.ok()
+        }.await;
+        if let Some(r) = from_manifest {
+            r
+        } else {
+            // Fallback: read from SQLite dataset_records table
+            let total = db().count_dataset_records(dataset_id).await.unwrap_or(0);
+            if total == 0 { return; }
+            match db().list_dataset_records(dataset_id, total.max(1), 0).await {
+                Ok(rows) => rows.into_iter()
+                    .map(|r| serde_json::from_str(&r.fields).unwrap_or(json!({})))
+                    .collect(),
+                Err(e) => { eprintln!("[auto-promote] sqlite fallback error: {e}"); return; }
+            }
+        }
     };
     let field_mapping: serde_json::Value = mapping["field_mapping"].as_str()
         .and_then(|s| serde_json::from_str(s).ok())
@@ -3159,6 +3186,29 @@ async fn auto_promote_if_mapped(dataset_id: &str) {
         count += 1;
     }
     eprintln!("[auto-promote] [{}] ✓ {} objects → \"{}\" (dataset {})", sync_mode, count, et.display_name, dataset_id);
+    // Resolve FK links after promoting
+    let links = db().resolve_links_for_dataset(dataset_id).await.unwrap_or(0);
+    if links > 0 { eprintln!("[auto-promote] {} links resolved for dataset {}", links, dataset_id); }
+}
+
+/// POST /api/ontology/promote-all — re-promote all datasets that have a saved mapping
+async fn promote_all_handler() -> impl IntoResponse {
+    let dataset_ids = match db().list_mapped_dataset_ids().await {
+        Ok(ids) => ids,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    };
+    let total = dataset_ids.len();
+    // Pass 1: promote all datasets (objects must exist before links can be resolved)
+    for dataset_id in &dataset_ids {
+        auto_promote_if_mapped(dataset_id).await;
+    }
+    // Pass 2: resolve FK links after all objects are in place
+    let mut total_links = 0usize;
+    for dataset_id in &dataset_ids {
+        total_links += db().resolve_links_for_dataset(dataset_id).await.unwrap_or(0);
+    }
+    eprintln!("[promote-all] {} datasets promoted, {} links resolved", total, total_links);
+    (StatusCode::OK, Json(json!({"ok": true, "promoted_datasets": total, "links_resolved": total_links}))).into_response()
 }
 
 #[derive(serde::Deserialize)]
@@ -3842,9 +3892,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/sources", get(sources_page))
         .route("/connect", get(connect_page))
         .route("/ingest", get(projects_page))
-        .route("/ingest/project/:id", get(ingest_project_page))
+        .route("/ingest/project/:id", get(ingest_project_redirect))
         .route("/project/:id",        get(project_workspace_page))
-        .route("/ingest/fold/:id", get(ingest_fold_page))
+        .route("/ingest/fold/:id", get(ingest_fold_redirect))
         .route("/static/d3.v7.min.js", get(|| async {
             ([(axum::http::header::CONTENT_TYPE, "application/javascript")],
              include_str!("ui/d3.v7.min.js"))
@@ -3870,6 +3920,7 @@ async fn main() -> anyhow::Result<()> {
         // Graph view
         .route("/api/ontology/graph", get(get_ontology_graph_handler))
         .route("/api/ontology/schema-links", get(list_schema_links_handler))
+        .route("/api/ontology/promote-all", axum::routing::post(promote_all_handler))
         // Project management
         .route("/api/projects", get(list_projects).post(create_project))
         .route(

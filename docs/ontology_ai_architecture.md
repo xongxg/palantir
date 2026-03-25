@@ -828,3 +828,60 @@ strsim = "0.11"     # 编辑距离、Jaro-Winkler 相似度
 用户确认 = 反馈信号，持续提升推断准确率（方案四的数据来源）。
 
 **实施优先级**：方案一 P0 ✅ → 方案二 P1 → 方案三（词典版）P1 → 方案三（embedding）P2 → 方案四 P2
+
+---
+
+## DDD 角色自动识别（Graph 拓扑分析）
+
+> 2026-03-24 — 基于实际实现讨论
+
+### 核心思想
+
+将 Ontology Entity Type 与 DDD 概念对应：
+
+| DDD 概念 | Ontology 对应 | 视觉样式 |
+|----------|--------------|----------|
+| **Aggregate Root** | 被最多其他 ET 跨类型引用的核心实体 | 红色大圆，实线边框 |
+| **Entity** | 有双向引用关系的中间实体 | 蓝色圆，实线边框 |
+| **Value Object** | 只被引用、自身无出向 FK 关联的描述性数据 | 绿色小圆，虚线边框 |
+
+### 自动识别算法（基于 ET 级有向边拓扑）
+
+```
+输入：instance-level edges（ontology_links），节点 ET 归属
+
+Step 1: 统计每个 ET 的跨 ET 出入度
+  for each edge (source → target) where source.et_id ≠ target.et_id:
+    etOutDegree[source.et_id]++
+    etInDegree[target.et_id]++
+
+Step 2: 角色判定
+  if etOutDegree[et] == 0 AND etInDegree[et] > 0:
+    → Value Object（纯查找/描述数据，如 Region、Division）
+
+  elif etInDegree[et] == max(all etInDegree):
+    → Aggregate Root（被引用最多，如 Employee、Project）
+
+  else:
+    → Entity
+```
+
+### 典型案例（HR/项目数据集）
+
+- **Value Object**：Region（仅被 Office/Vendor 引用，无出向 FK）、Division
+- **Aggregate Root**：Employee（被 Assignment、Expense、Department 等大量引用）
+- **Entity**：Department、Office、Contract、Assignment、Expense
+
+### Bounded Context（BC）边界
+
+每个 ET 自动成为独立 BC，用 BC_PALETTE 中的独立颜色渲染背景区域：
+- Fold-based BC（已分配 fold）：实线边框，fill-opacity 0.13
+- ET-based BC（自动分组）：虚线边框，fill-opacity 0.09
+- 跨 BC 关联：橙色弧线 + 数量标注
+
+### 后续深化方向（P1/P2）
+
+1. **手动覆盖**：Schema 界面支持用户在自动识别基础上手动调整 DDD 角色
+2. **BC 合并**：将语义相近的 ET（如 Department + Division）通过 fold 分配合并为一个 BC
+3. **关联强度**：边的粗细反映 ET 间关联数量，量化 BC 之间的耦合程度
+4. **时序分析**：Aggregate Root 的生命周期事件追踪（created/updated/deleted 时间分布）

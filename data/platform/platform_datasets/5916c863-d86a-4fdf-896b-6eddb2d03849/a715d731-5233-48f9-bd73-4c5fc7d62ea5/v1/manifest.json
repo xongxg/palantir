@@ -1,0 +1,56 @@
+{
+  "dataset_id": "a715d731-5233-48f9-bd73-4c5fc7d62ea5",
+  "version": 1,
+  "sync_run_id": "c322c44b-b14e-4f4a-a057-73fda1a7a728",
+  "created_at": 1774397285,
+  "schema": {
+    "fields": [
+      {
+        "name": "department_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "level",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "manager_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "office_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "salary",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "2b5a9f9194999972041392354ea8efd75c3ed3f5067330ab4031058f5599705b",
+      "rows": 12,
+      "bytes": 482
+    }
+  ],
+  "total_rows": 12,
+  "total_bytes": 482,
+  "content_hash": "d687d0d1b571345d20173ff173d375a5421054c151e77aa3da627b7c4443a75a"
+}

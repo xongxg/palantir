@@ -1,0 +1,56 @@
+{
+  "dataset_id": "3a5e924b-7004-4027-9eef-74800069fd9c",
+  "version": 1,
+  "sync_run_id": "dabbde52-5505-4ec8-a563-677f981d220b",
+  "created_at": 1774397285,
+  "schema": {
+    "fields": [
+      {
+        "name": "amount",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "approver_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "category",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "employee_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "project_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "64609aa5e2f3c1a770a6abc0abbee4b36618369c6f5d8693b018052df1bb6e8a",
+      "rows": 15,
+      "bytes": 593
+    }
+  ],
+  "total_rows": 15,
+  "total_bytes": 593,
+  "content_hash": "8b5b0c2ee9fa0ec21c251659ad5118d115f45bef9bab4014e14a1ef3c32344ec"
+}

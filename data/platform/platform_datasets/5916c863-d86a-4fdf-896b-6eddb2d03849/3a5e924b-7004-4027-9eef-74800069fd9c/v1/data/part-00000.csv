@@ -1,0 +1,16 @@
+amount,approver_id,category,employee_id,id,project_id,status
+1200,e1,Software,e2,x1,p1,Approved
+800,e1,Hardware,e2,x2,p7,Approved
+2500,e1,Consulting,e3,x3,p2,Approved
+350,e3,Travel,e11,x4,p2,Approved
+600,e5,Travel,e4,x5,p3,Approved
+3100,e5,Marketing,e5,x6,p3,Approved
+950,e7,Design,e6,x7,p4,Pending
+450,e7,Travel,e7,x8,p4,Approved
+700,e9,Equipment,e8,x9,p5,Approved
+1800,e9,Software,e9,x10,p5,Approved
+550,e2,Training,e12,x11,p7,Approved
+320,e9,Software,e10,x12,p6,Pending
+480,e5,Office Supplies,e4,x13,p3,Approved
+200,e7,Office Supplies,e6,x14,p4,Approved
+430,e9,Logistics,e8,x15,p5,Approved

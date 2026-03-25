@@ -56,6 +56,22 @@ button:hover{opacity:.85;}button:disabled{opacity:.4;cursor:not-allowed;}
 .btn-green{background:#16a34a;color:#fff;border:none;padding:8px 20px;}
 .card{background:#1e293b;border:1px solid #334155;border-radius:8px;}
 
+/* ── Source panel tabs ── */
+.sp-tab{background:transparent;border:none;border-bottom:2px solid transparent;color:#64748b;
+        font-size:12px;padding:10px 14px;cursor:pointer;transition:color .15s;}
+.sp-tab:hover{color:#94a3b8;}
+.sp-tab.active{color:#a78bfa;border-bottom-color:#a78bfa;}
+
+/* ── Source form grid ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fg.full{grid-column:1/-1;}
+.fg label{font-size:12px;color:#94a3b8;font-weight:500;}
+.fg .hint{font-size:11px;color:#475569;margin-top:2px;}
+.section-head{grid-column:1/-1;font-size:11px;font-weight:600;color:#64748b;
+              text-transform:uppercase;letter-spacing:.06em;
+              padding-top:14px;margin-top:2px;border-top:1px solid #1e293b;}
+
 /* ── Sidebar ── */
 .sidebar{width:220px;flex-shrink:0;border-right:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden;}
 .sidebar-header{padding:12px 14px;font-size:11px;font-weight:600;color:#64748b;
@@ -133,82 +149,71 @@ button:hover{opacity:.85;}button:disabled{opacity:.4;cursor:not-allowed;}
         <p style="font-size:14px;">选择一个数据源，或新建连接</p>
       </div>
 
-      <!-- Add / Edit form — two-column layout -->
-      <div id="src-form" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
-        <!-- Form header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid #1e293b;flex-shrink:0;">
-          <h3 id="src-form-title" style="font-size:14px;font-weight:600;color:#e2e8f0;"></h3>
-          <div style="display:flex;gap:8px;">
-            <button class="btn-ghost btn-sm" onclick="cancelSourceForm()">取消</button>
-            <button class="btn-primary btn-sm" onclick="submitSourceForm()">保存</button>
-          </div>
+      <!-- Unified source panel (form + tabs) -->
+      <div id="src-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+        <!-- Header: title + last sync -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #1e293b;flex-shrink:0;">
+          <h3 id="sp-title" style="font-size:14px;font-weight:600;color:#e2e8f0;"></h3>
+          <span id="sp-last-sync" style="font-size:11px;color:#64748b;"></span>
         </div>
-        <!-- Two-column body -->
-        <div style="display:flex;flex:1;height:calc(100% - 49px);overflow:hidden;">
-          <!-- Left: connection config -->
-          <div style="width:400px;flex-shrink:0;overflow-y:auto;padding:20px 24px;border-right:1px solid #1e293b;display:flex;flex-direction:column;gap:12px;">
-            <div>
-              <label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">名称</label>
-              <input id="sf-name" placeholder="数据源名称" style="width:100%;"/>
+        <!-- Body -->
+        <div style="display:flex;flex:1;overflow:hidden;">
+          <!-- Left: form + action bar -->
+          <div style="flex:1.4;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #1e293b;">
+            <div style="flex:1;overflow-y:auto;padding:20px 28px;">
+              <div class="form-grid">
+                <div class="fg">
+                  <label>数据源名称 *</label>
+                  <input id="sf-name" placeholder="如：HR 员工数据"/>
+                </div>
+                <div class="fg">
+                  <label>类型</label>
+                  <select id="sf-type" onchange="renderSourceFields()">
+                    <option value="s3">☁ Cloud Storage (S3 / OSS / COS)</option>
+                    <option value="csv">📄 CSV 文件</option>
+                    <option value="db">🗄 数据库 (MySQL / PG / SQLite)</option>
+                    <option value="rest">🌐 REST API</option>
+                  </select>
+                </div>
+                <div id="sf-fields" style="display:contents;"></div>
+                <p id="sf-err" class="full" style="display:none;font-size:12px;color:#f87171;"></p>
+              </div>
             </div>
-            <div>
-              <label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">类型</label>
-              <select id="sf-type" style="width:100%;" onchange="renderSourceFields()">
-                <option value="s3">S3 / RustFS</option>
-                <option value="csv">CSV 文件</option>
-                <option value="db">数据库</option>
-                <option value="rest">REST API</option>
-              </select>
+            <!-- Action bar -->
+            <div style="padding:12px 24px;border-top:1px solid #1e293b;display:flex;gap:8px;align-items:center;flex-shrink:0;background:#0f172a;">
+              <button class="btn-primary btn-sm" onclick="submitSourceForm()">保存</button>
+              <button id="sp-sync-btn"   class="btn-green btn-sm" onclick="syncSource()"         disabled>▶ 同步</button>
+              <button id="sp-toggle-btn" class="btn-ghost btn-sm" onclick="toggleSourceActive()" disabled>停用</button>
+              <button id="sp-delete-btn" class="btn-danger btn-sm" onclick="deleteCurrentSource()" disabled>删除</button>
+              <button class="btn-ghost btn-sm" onclick="cancelSourceForm()">取消</button>
             </div>
-            <div id="sf-fields"></div>
-            <p id="sf-err" style="display:none;font-size:12px;color:#f87171;"></p>
           </div>
-          <!-- Right: test & file discovery -->
-          <div style="flex:1;min-width:0;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:12px;">
-            <p style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">连接测试 & 文件发现</p>
-            <button type="button" class="btn-ghost" onclick="sfTestConnection()" style="align-self:flex-start;display:flex;align-items:center;gap:8px;">
-              🔌 测试连接 &amp; 发现文件
-            </button>
-            <div id="sf-test-result"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Detail panel -->
-      <div id="src-detail" style="display:none;flex:1;min-height:0;flex-direction:column;">
-        <!-- Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #1e293b;flex-shrink:0;">
-          <div>
-            <h2 id="sd-name" style="font-size:16px;font-weight:600;color:#fff;"></h2>
-            <p id="sd-meta" style="font-size:12px;color:#64748b;margin-top:2px;"></p>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="sd-sync-btn" class="btn-green btn-sm" onclick="syncSource()">▶ Sync Now</button>
-            <button class="btn-ghost btn-sm" onclick="editCurrentSource()">编辑</button>
-            <button class="btn-danger btn-sm" onclick="deleteCurrentSource()">删除</button>
-          </div>
-        </div>
-        <div style="padding:8px 24px;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:12px;font-size:12px;color:#64748b;flex-shrink:0;">
-          <span id="sd-last-sync"></span>
-        </div>
-        <!-- Datasets + Sync history -->
-        <div style="flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px;">
-          <!-- Ontology hint (shown after sync) -->
-          <div id="ontology-hint" style="display:none;align-items:center;gap:12px;padding:10px 16px;border-radius:8px;background:rgba(99,102,241,.12);border:1px solid #4f46e5;">
-            <span style="font-size:13px;color:#a5b4fc;">✓ 同步完成 — 已配置映射的数据集将自动 Promote 到 Ontology</span>
-            <a href="/ontology" style="margin-left:auto;font-size:12px;color:#818cf8;text-decoration:none;white-space:nowrap;border:1px solid #4f46e5;padding:4px 12px;border-radius:6px;"
-               onmouseover="this.style.background='#312e81'" onmouseout="this.style.background=''">
-              前往 Ontology →
-            </a>
-          </div>
-          <div style="display:grid;grid-template-columns:3fr 2fr;gap:20px;align-content:start;">
-            <div>
-              <p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Datasets</p>
+          <!-- Right: tabs -->
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="display:flex;border-bottom:1px solid #1e293b;flex-shrink:0;padding:0 4px;">
+              <button class="sp-tab active" id="sp-tab-test"     onclick="spTab('test')">测试</button>
+              <button class="sp-tab"        id="sp-tab-sync"     onclick="spTab('sync')">同步历史</button>
+              <button class="sp-tab"        id="sp-tab-datasets" onclick="spTab('datasets')">Datasets</button>
+            </div>
+            <!-- 测试 -->
+            <div id="sp-panel-test" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+              <button type="button" class="btn-ghost" onclick="sfTestConnection()" style="align-self:flex-start;display:flex;align-items:center;gap:8px;">
+                🔌 测试连接 &amp; 发现文件
+              </button>
+              <div id="sf-test-result"></div>
+            </div>
+            <!-- 同步历史 -->
+            <div id="sp-panel-sync" style="display:none;flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:6px;">
+              <div id="sd-jobs"></div>
+            </div>
+            <!-- Datasets -->
+            <div id="sp-panel-datasets" style="display:none;flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+              <div id="ontology-hint" style="display:none;align-items:center;gap:12px;padding:10px 16px;border-radius:8px;background:rgba(99,102,241,.12);border:1px solid #4f46e5;">
+                <span style="font-size:13px;color:#a5b4fc;">✓ 同步完成 — 已配置映射的数据集将自动 Promote 到 Ontology</span>
+                <a href="/ontology" style="margin-left:auto;font-size:12px;color:#818cf8;text-decoration:none;white-space:nowrap;border:1px solid #4f46e5;padding:4px 12px;border-radius:6px;"
+                   onmouseover="this.style.background='#312e81'" onmouseout="this.style.background=''">前往 Ontology →</a>
+              </div>
               <div id="sd-datasets" style="display:flex;flex-direction:column;gap:6px;"></div>
-            </div>
-            <div>
-              <p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Sync 历史</p>
-              <div id="sd-jobs" style="display:flex;flex-direction:column;gap:4px;"></div>
             </div>
           </div>
         </div>
@@ -239,6 +244,35 @@ button:hover{opacity:.85;}button:disabled{opacity:.4;cursor:not-allowed;}
     </div>
   </div>
 
+</div>
+
+<!-- New Source Modal -->
+<div id="modal-new-source" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);align-items:center;justify-content:center;z-index:50;" onclick="if(event.target===this)closeNewSourceModal()">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;width:420px;" onclick="event.stopPropagation()">
+    <h3 style="font-size:14px;font-weight:600;color:#fff;margin-bottom:20px;">新建数据源</h3>
+    <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:20px;">
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px;">数据源名称 *</label>
+        <input id="ns-name" placeholder="如：HR 系统数据" style="width:100%;"
+          onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#334155'"
+          onkeydown="if(event.key==='Enter')confirmNewSource();if(event.key==='Escape')closeNewSourceModal()"/>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px;">数据源类型</label>
+        <select id="ns-type" style="width:100%;">
+          <option value="s3">☁ Cloud Storage (S3 / OSS / COS)</option>
+          <option value="csv">📄 CSV 文件</option>
+          <option value="db">🗄 数据库 (MySQL / PG / SQLite)</option>
+          <option value="rest">🌐 REST API</option>
+        </select>
+      </div>
+    </div>
+    <p id="ns-err" style="display:none;font-size:12px;color:#f87171;margin-bottom:10px;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeNewSourceModal()" class="btn-ghost">取消</button>
+      <button onclick="confirmNewSource()" class="btn-primary">确定</button>
+    </div>
+  </div>
 </div>
 
 <!-- Create ET Modal -->
@@ -329,17 +363,44 @@ function renderSourceList() {
   });
 }
 
+function showSrcPanel(isNew) {
+  document.getElementById('src-empty').style.display = 'none';
+  document.getElementById('src-panel').style.display = 'flex';
+  // Disable action buttons for new (unsaved) source
+  ['sp-sync-btn','sp-toggle-btn','sp-delete-btn'].forEach(id => {
+    document.getElementById(id).disabled = isNew;
+  });
+}
+
+function spTab(name) {
+  ['test','sync','datasets'].forEach(t => {
+    document.getElementById('sp-panel-' + t).style.display = 'none';
+    document.getElementById('sp-tab-'   + t).classList.remove('active');
+  });
+  document.getElementById('sp-panel-' + name).style.display = 'flex';
+  document.getElementById('sp-tab-'   + name).classList.add('active');
+}
+
 async function selectSource(s) {
-  currentSrc = s; editingId = null;
+  currentSrc = s; editingId = s.id;
+  sfSelectedFiles.clear(); sfTestData = null;
+  (s.config?.selected_files || []).forEach(f => sfSelectedFiles.add(f));
   renderSourceList();
-  document.getElementById('src-empty').style.display  = 'none';
-  document.getElementById('src-form').style.display   = 'none';
-  document.getElementById('src-detail').style.display = 'flex';
+  showSrcPanel(false);
 
-  document.getElementById('sd-name').textContent = s.name;
-  document.getElementById('sd-meta').textContent = `${s.source_type} · ${s.id.slice(0,8)}…`;
-  document.getElementById('sd-last-sync').textContent = s.last_sync_at ? '上次同步：' + fmtDate(s.last_sync_at) : '从未同步';
-
+  document.getElementById('sp-title').textContent = s.name;
+  document.getElementById('sp-last-sync').textContent = s.last_sync_at ? '上次同步：' + fmtDate(s.last_sync_at) : '从未同步';
+  document.getElementById('sf-name').value = s.name;
+  document.getElementById('sf-type').value = s.source_type || 's3';
+  document.getElementById('sf-err').style.display = 'none';
+  // Update toggle button label based on deprecated flag
+  const togBtn = document.getElementById('sp-toggle-btn');
+  togBtn.textContent = s.deprecated ? '启用' : '停用';
+  togBtn.className = s.deprecated ? 'btn-green btn-sm' : 'btn-ghost btn-sm';
+  // Sync only allowed when source is active (not deprecated)
+  document.getElementById('sp-sync-btn').disabled = !!s.deprecated;
+  renderSourceFields();
+  spTab('test');
   await Promise.all([loadDatasets(s.id), loadSyncHistory(s.id)]);
 }
 
@@ -423,15 +484,15 @@ async function loadSyncHistory(srcId) {
   const el = document.getElementById('sd-jobs');
   el.innerHTML = '';
   try {
-    const r = await fetch(`/api/sources/${srcId}/sync-runs`);
+    const r = await fetch(`/api/sources/${srcId}/jobs`);
     const d = await r.json();
-    const runs = d.runs || d.sync_runs || [];
+    const runs = d.jobs || [];
     if (!runs.length) { el.innerHTML = '<p style="font-size:12px;color:#475569;">暂无记录</p>'; return; }
     runs.slice(0,10).forEach(run => {
       const cls = run.status === 'completed' ? '#10b981' : run.status === 'failed' ? '#f87171' : '#f59e0b';
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:4px;border:1px solid #1e293b;';
-      row.innerHTML = `<span style="font-size:11px;color:${cls};">${run.status}</span><span style="font-size:11px;color:#475569;">${run.record_count!=null?run.record_count+' 条':''}</span>`;
+      row.innerHTML = `<span style="font-size:11px;color:${cls};">${run.status}</span><span style="font-size:11px;color:#475569;">${run.total_records!=null?run.total_records+' 条':''}</span>`;
       el.appendChild(row);
     });
   } catch(e) {}
@@ -439,15 +500,83 @@ async function loadSyncHistory(srcId) {
 
 async function syncSource() {
   if (!currentSrc) return;
-  const btn = document.getElementById('sd-sync-btn');
+  const btn = document.getElementById('sp-sync-btn');
+  const srcId = currentSrc.id;
   btn.disabled = true; btn.textContent = '同步中…';
   try {
-    const r = await fetch(`/api/sources/${currentSrc.id}/sync`, {method:'POST'});
-    if (r.ok) {
-      setTimeout(() => { loadSources(); selectSource(currentSrc); showOntologyHint(); }, 1500);
+    const r = await fetch(`/api/sources/${srcId}/sync`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({files: [...sfSelectedFiles]})
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      btn.disabled = false; btn.textContent = '▶ 同步';
+      showSfErr(err.error || `同步失败 (${r.status})`);
+      return;
     }
-  } finally {
-    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Sync Now'; }, 2000);
+    const d = await r.json();
+    // d.job_id is the primary run; for multi-file mode there may be multiple jobs
+    const jobId = d.job_id;
+    if (jobId) {
+      await pollSyncJob(jobId, btn, srcId);
+    } else {
+      // folder/multi-file mode: no single job_id, poll source status instead
+      await pollSourceSynced(srcId, btn);
+    }
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '▶ 同步';
+  }
+}
+
+async function pollSyncJob(jobId, btn, srcId) {
+  const INTERVAL = 1500, MAX_TRIES = 60;
+  for (let i = 0; i < MAX_TRIES; i++) {
+    await new Promise(r => setTimeout(r, INTERVAL));
+    try {
+      const r = await fetch(`/api/jobs/${jobId}`);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const pct = d.total > 0 ? ` ${Math.round(d.processed/d.total*100)}%` : (d.processed ? ` ${d.processed}条` : '');
+      btn.textContent = `同步中…${pct}`;
+      if (d.status === 'completed' || d.status === 'failed') {
+        await finishSync(srcId, btn);
+        return;
+      }
+    } catch(e) { /* network blip, keep polling */ }
+  }
+  await finishSync(srcId, btn); // timeout fallback
+}
+
+async function pollSourceSynced(srcId, btn) {
+  // For multi-file mode, poll jobs list until all running jobs finish
+  const INTERVAL = 2000, MAX_TRIES = 45;
+  for (let i = 0; i < MAX_TRIES; i++) {
+    await new Promise(r => setTimeout(r, INTERVAL));
+    try {
+      const r = await fetch(`/api/sources/${srcId}/jobs`);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const jobs = d.jobs || [];
+      const running = jobs.filter(j => j.status === 'running' || j.status === 'pending');
+      btn.textContent = running.length ? `同步中… (${running.length} 个进行中)` : '同步中…';
+      if (jobs.length > 0 && running.length === 0) {
+        await finishSync(srcId, btn);
+        return;
+      }
+    } catch(e) { /* keep polling */ }
+  }
+  await finishSync(srcId, btn);
+}
+
+async function finishSync(srcId, btn) {
+  btn.disabled = false; btn.textContent = '▶ 同步';
+  await loadSources();
+  const fresh = sources.find(s => s.id === srcId);
+  if (fresh) {
+    await selectSource(fresh);
+    spTab('sync');       // switch to sync history tab to show results
+    showOntologyHint();
   }
 }
 
@@ -468,33 +597,45 @@ async function updateDatasetSyncMode(dsId, mode) {
 
 // ── Add/Edit source form ───────────────────────────────────────────────────
 function showAddSource() {
+  // Step 1: show name + type modal
+  const modal = document.getElementById('modal-new-source');
+  document.getElementById('ns-name').value = '';
+  document.getElementById('ns-type').value = 's3';
+  document.getElementById('ns-err').style.display = 'none';
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('ns-name').focus(), 50);
+}
+
+function closeNewSourceModal() {
+  document.getElementById('modal-new-source').style.display = 'none';
+}
+
+function confirmNewSource() {
+  const name = document.getElementById('ns-name').value.trim();
+  const type = document.getElementById('ns-type').value;
+  if (!name) {
+    const err = document.getElementById('ns-err');
+    err.textContent = '名称不能为空'; err.style.display = 'block';
+    document.getElementById('ns-name').style.borderColor = '#ef4444';
+    return;
+  }
+  closeNewSourceModal();
+  // Step 2: show unified panel in new-source mode
   currentSrc = null; editingId = null;
   sfSelectedFiles.clear(); sfTestData = null;
   renderSourceList();
-  document.getElementById('src-empty').style.display  = 'none';
-  document.getElementById('src-detail').style.display = 'none';
-  document.getElementById('src-form').style.display   = 'flex';
-  document.getElementById('src-form-title').textContent = '新建数据源';
-  document.getElementById('sf-name').value = '';
-  document.getElementById('sf-type').value = 's3';
+  showSrcPanel(true);
+  document.getElementById('sp-title').textContent = '新建数据源';
+  document.getElementById('sp-last-sync').textContent = '';
+  document.getElementById('sf-name').value = name;
+  document.getElementById('sf-type').value = type;
   document.getElementById('sf-err').style.display = 'none';
+  document.getElementById('sf-test-result').innerHTML = '';
   renderSourceFields();
+  spTab('test');
 }
 
-function editCurrentSource() {
-  if (!currentSrc) return;
-  editingId = currentSrc.id;
-  sfSelectedFiles.clear(); sfTestData = null;
-  (currentSrc.config?.selected_files || []).forEach(f => sfSelectedFiles.add(f));
-  document.getElementById('src-empty').style.display  = 'none';
-  document.getElementById('src-detail').style.display = 'none';
-  document.getElementById('src-form').style.display   = 'flex';
-  document.getElementById('src-form-title').textContent = '编辑数据源';
-  document.getElementById('sf-name').value = currentSrc.name;
-  document.getElementById('sf-type').value = currentSrc.source_type || 's3';
-  document.getElementById('sf-err').style.display = 'none';
-  renderSourceFields();
-}
+// editCurrentSource is no longer needed — the panel is always in edit mode
 
 function renderSourceFields() {
   const type = document.getElementById('sf-type').value;
@@ -503,9 +644,12 @@ function renderSourceFields() {
   document.getElementById('sf-fields').innerHTML = (renders[type] || (() => ''))(cfg);
 }
 
-function fld(label, id, inputHtml, hint) {
-  return `<div style="margin-bottom:10px;"><label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">${label}</label>
-    ${inputHtml}${hint ? `<p style="font-size:11px;color:#475569;margin-top:3px;">${hint}</p>` : ''}</div>`;
+function fg(label, inputHtml, hint, full) {
+  return `<div class="fg${full?' full':''}">
+    <label>${label}</label>
+    ${inputHtml}
+    ${hint ? `<span class="hint">${hint}</span>` : ''}
+  </div>`;
 }
 
 function renderS3FormFields(cfg) {
@@ -514,8 +658,8 @@ function renderS3FormFields(cfg) {
   const bucket   = cfg.bucket   || 'mybucket1';
   const selFiles = [...sfSelectedFiles];
   return `
-    ${fld('云服务商', 'sf-provider',
-      `<select id="sf-provider" onchange="sfUpdateEndpoint(this.value)" style="width:100%;">
+    <div class="section-head">云存储配置</div>
+    ${fg('云服务商', `<select id="sf-provider" onchange="sfUpdateEndpoint(this.value)">
         <option value="aws"     ${provider==='aws'    ?'selected':''}>AWS S3</option>
         <option value="aliyun"  ${provider==='aliyun' ?'selected':''}>阿里云 OSS</option>
         <option value="tencent" ${provider==='tencent'?'selected':''}>腾讯云 COS</option>
@@ -523,40 +667,34 @@ function renderS3FormFields(cfg) {
         <option value="minio"   ${provider==='minio'  ?'selected':''}>MinIO（自定义）</option>
         <option value="rustfs"  ${provider==='rustfs' ?'selected':''}>RustFS（自定义）</option>
       </select>`)}
-    ${fld('Endpoint（MinIO / RustFS / 私有化）', 'sf-endpoint',
-      `<input id="sf-endpoint" value="${esc(endpoint)}" placeholder="http://localhost:9000" style="width:100%;"/>`,
+    ${fg('Endpoint（MinIO / RustFS / 私有化）',
+      `<input id="sf-endpoint" value="${esc(endpoint)}" placeholder="http://localhost:9000"/>`,
       'RustFS 默认：http://host:9000；支持 http:// 和 https://')}
-    ${fld('Bucket *', 'sf-bucket',
-      `<input id="sf-bucket" value="${esc(bucket)}" placeholder="mybucket1" style="width:100%;"/>`)}
-    ${fld('路径前缀（可选）', 'sf-prefix',
-      `<input id="sf-prefix" value="${esc(cfg.prefix||'')}" placeholder="data/hr/" style="width:100%;"/>`)}
-    ${fld('Access Key *', 'sf-access_key',
-      `<input id="sf-access_key" value="${esc(cfg.access_key||'')}" placeholder="AKIAIOSFODNN7EXAMPLE" style="width:100%;"/>`)}
-    ${fld('Secret Key *', 'sf-secret_key',
-      `<input id="sf-secret_key" type="password" value="${esc(cfg.secret_key||'')}" placeholder="••••••••" style="width:100%;"/>`)}
-    ${fld('SSL/PEM 证书（可选）', 'sf-pem_cert',
-      `<textarea id="sf-pem_cert" placeholder="-----BEGIN CERTIFICATE-----&#10;..." style="width:100%;height:72px;resize:vertical;">${esc(cfg.pem_cert||'')}</textarea>`,
-      '用于自签名证书场景')}
-    ${selFiles.length ? `<div style="margin-bottom:6px;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,.08);border:1px solid #312e81;font-size:11px;color:#818cf8;">
-      已选 ${selFiles.length} 个文件：${selFiles.map(f => esc(f.split('/').pop())).join('、')}
-    </div>` : ''}`;
+    ${fg('Bucket *', `<input id="sf-bucket" value="${esc(bucket)}" placeholder="mybucket1"/>`)}
+    ${fg('路径前缀（可选）', `<input id="sf-prefix" value="${esc(cfg.prefix||'')}" placeholder="data/hr/"/>`)}
+    ${fg('Access Key *', `<input id="sf-access_key" value="${esc(cfg.access_key||'')}" placeholder="AKIAIOSFODNN7EXAMPLE"/>`)}
+    ${fg('Secret Key *', `<input id="sf-secret_key" type="password" value="${esc(cfg.secret_key||'')}" placeholder="••••••••"/>`)}
+    ${fg('SSL/PEM 证书（可选）',
+      `<textarea id="sf-pem_cert" placeholder="-----BEGIN CERTIFICATE-----&#10;..." style="height:72px;resize:vertical;">${esc(cfg.pem_cert||'')}</textarea>`,
+      '用于自签名证书场景', true)}
+    ${selFiles.length ? `<div class="full" style="padding:8px 10px;border-radius:6px;background:rgba(99,102,241,.08);border:1px solid #312e81;font-size:11px;color:#818cf8;">
+      已选 ${selFiles.length} 个文件：${selFiles.map(f => esc(f.split('/').pop())).join('、')}</div>` : ''}`;
 }
 
 function renderCsvFormFields(cfg) {
-  return fld('文件路径或 URL', 'sf-file_path',
-    `<input id="sf-file_path" value="${esc(cfg.file_path||'')}" placeholder="/data/employees.csv 或 http://…" style="width:100%;"/>`);
+  return `<div class="section-head">文件配置</div>` +
+    fg('文件路径或 URL', `<input id="sf-file_path" value="${esc(cfg.file_path||'')}" placeholder="/data/employees.csv 或 http://…"/>`, '', true);
 }
 
 function renderDbFormFields(cfg) {
-  return fld('连接字符串 (DSN)', 'sf-dsn',
-    `<input id="sf-dsn" value="${esc(cfg.dsn||cfg.connection_string||'')}" placeholder="postgres://user:pass@host/db" style="width:100%;"/>`);
+  return `<div class="section-head">数据库连接</div>` +
+    fg('连接字符串 (DSN)', `<input id="sf-dsn" value="${esc(cfg.dsn||cfg.connection_string||'')}" placeholder="postgres://user:pass@host/db"/>`, '', true);
 }
 
 function renderRestFormFields(cfg) {
-  return fld('API URL', 'sf-url',
-    `<input id="sf-url" value="${esc(cfg.url||'')}" placeholder="https://api.example.com/data" style="width:100%;"/>`) +
-    fld('HTTP Method', 'sf-method',
-    `<select id="sf-method" style="width:100%;">
+  return `<div class="section-head">API 配置</div>` +
+    fg('API URL', `<input id="sf-url" value="${esc(cfg.url||'')}" placeholder="https://api.example.com/data"/>`, '', true) +
+    fg('HTTP Method', `<select id="sf-method">
       <option value="GET"  ${(cfg.method||'GET')==='GET' ?'selected':''}>GET</option>
       <option value="POST" ${cfg.method==='POST'?'selected':''}>POST</option>
     </select>`);
@@ -656,9 +794,13 @@ function readFormConfig() {
 }
 
 function cancelSourceForm() {
-  document.getElementById('src-form').style.display = 'none';
-  if (currentSrc) selectSource(currentSrc);
-  else { document.getElementById('src-empty').style.display = 'flex'; }
+  if (currentSrc) {
+    // Restore form to saved state
+    selectSource(currentSrc);
+  } else {
+    document.getElementById('src-panel').style.display = 'none';
+    document.getElementById('src-empty').style.display = 'flex';
+  }
 }
 
 async function submitSourceForm() {
@@ -672,11 +814,21 @@ async function submitSourceForm() {
   const r = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const d = await r.json();
   if (!r.ok) { showSfErr(d.error || '保存失败'); return; }
-  editingId = null;
   await loadSources();
-  const fresh = sources.find(s => s.id === (d.id || d.source?.id));
+  const fresh = sources.find(s => s.id === (d.id || d.source?.id || editingId));
   if (fresh) selectSource(fresh);
-  else { document.getElementById('src-form').style.display = 'none'; document.getElementById('src-empty').style.display = 'flex'; }
+  else { document.getElementById('src-panel').style.display = 'none'; document.getElementById('src-empty').style.display = 'flex'; }
+}
+
+async function toggleSourceActive() {
+  if (!currentSrc) return;
+  const url = currentSrc.deprecated
+    ? `/api/sources/${currentSrc.id}/activate`
+    : `/api/sources/${currentSrc.id}/deprecate`;
+  await fetch(url, {method: 'POST'});
+  await loadSources();
+  const fresh = sources.find(s => s.id === currentSrc.id);
+  if (fresh) selectSource(fresh);
 }
 
 function showSfErr(msg) {
@@ -686,10 +838,10 @@ function showSfErr(msg) {
 async function deleteCurrentSource() {
   if (!currentSrc || !confirm(`确认删除「${currentSrc.name}」？`)) return;
   await fetch(`/api/sources/${currentSrc.id}`, {method:'DELETE'});
-  currentSrc = null;
+  currentSrc = null; editingId = null;
   await loadSources();
-  document.getElementById('src-detail').style.display = 'none';
-  document.getElementById('src-empty').style.display  = 'flex';
+  document.getElementById('src-panel').style.display = 'none';
+  document.getElementById('src-empty').style.display = 'flex';
 }
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -60,6 +60,8 @@ pub struct EntityTypeRow {
     pub color: String,
     pub icon: String,
     pub fold_id: Option<String>,
+    /// DDD role: 'aggregate_root' | 'entity' | 'value_object'
+    pub ddd_role: String,
     pub created_at: String,
 }
 
@@ -487,6 +489,9 @@ impl Db {
         // ET → Fold association (idempotent)
         let _ = sqlx::query("ALTER TABLE entity_types ADD COLUMN fold_id TEXT REFERENCES folds(id)")
             .execute(&self.pool).await;
+        // DDD role (idempotent)
+        let _ = sqlx::query("ALTER TABLE entity_types ADD COLUMN ddd_role TEXT NOT NULL DEFAULT 'entity'")
+            .execute(&self.pool).await;
 
         // Platform config table: stores platform-wide settings (e.g. storage backend)
         sqlx::query(
@@ -844,12 +849,13 @@ impl Db {
         color: &str,
         icon: &str,
         fold_id: Option<&str>,
+        ddd_role: &str,
     ) -> Result<EntityTypeRow> {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
         sqlx::query(
-            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, ddd_role, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(name)
@@ -857,6 +863,7 @@ impl Db {
         .bind(color)
         .bind(icon)
         .bind(fold_id)
+        .bind(ddd_role)
         .bind(&now)
         .execute(&self.pool)
         .await?;
@@ -867,13 +874,15 @@ impl Db {
             color: color.to_string(),
             icon: icon.to_string(),
             fold_id: fold_id.map(|s| s.to_string()),
+            ddd_role: ddd_role.to_string(),
             created_at: now,
         })
     }
 
     pub async fn list_entity_types(&self) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, fold_id, created_at
+            "SELECT id, name, display_name, color, icon, fold_id,
+                    COALESCE(ddd_role, 'entity') as ddd_role, created_at
              FROM entity_types ORDER BY created_at ASC",
         )
         .fetch_all(&self.pool)
@@ -887,9 +896,19 @@ impl Db {
                 color: r.get("color"),
                 icon: r.get("icon"),
                 fold_id: r.get("fold_id"),
+                ddd_role: r.get("ddd_role"),
                 created_at: r.get("created_at"),
             })
             .collect())
+    }
+
+    pub async fn update_entity_type_ddd_role(&self, et_id: &str, ddd_role: &str) -> Result<()> {
+        sqlx::query("UPDATE entity_types SET ddd_role = ? WHERE id = ?")
+            .bind(ddd_role)
+            .bind(et_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn update_entity_type_fold(&self, et_id: &str, fold_id: Option<&str>) -> Result<()> {
@@ -1159,6 +1178,50 @@ impl Db {
             .collect())
     }
 
+    /// Like list_links_for_object but also returns the other object's label,
+    /// entity_type_name, and entity_type_id for display purposes.
+    pub async fn list_links_for_object_enriched(
+        &self,
+        object_id: &str,
+    ) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT l.id, l.from_id, l.to_id, l.rel_type,
+                    o.label        AS other_label,
+                    o.entity_type_id   AS other_et_id,
+                    o.entity_type_name AS other_et_name
+             FROM ontology_links l
+             JOIN ontology_objects o ON o.id = CASE
+               WHEN l.from_id = ? THEN l.to_id
+               ELSE l.from_id
+             END
+             WHERE l.from_id = ? OR l.to_id = ?",
+        )
+        .bind(object_id)
+        .bind(object_id)
+        .bind(object_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id":             r.get::<String, _>("id"),
+                    "from_id":        r.get::<String, _>("from_id"),
+                    "to_id":          r.get::<String, _>("to_id"),
+                    "rel_type":       r.get::<String, _>("rel_type"),
+                    "other_id":       if r.get::<String, _>("from_id") == object_id {
+                                          r.get::<String, _>("to_id")
+                                      } else {
+                                          r.get::<String, _>("from_id")
+                                      },
+                    "other_label":    r.get::<String, _>("other_label"),
+                    "other_et_id":    r.get::<String, _>("other_et_id"),
+                    "other_et_name":  r.get::<String, _>("other_et_name"),
+                })
+            })
+            .collect())
+    }
+
     pub async fn delete_link(&self, id: &str) -> Result<()> {
         sqlx::query("DELETE FROM ontology_links WHERE id = ?")
             .bind(id)
@@ -1296,8 +1359,8 @@ impl Db {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
         sqlx::query(
-            "INSERT INTO data_sources (id, fold_id, name, source_type, config, status, created_at, group_id, sync_mode)
-             VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?)",
+            "INSERT INTO data_sources (id, fold_id, name, source_type, config, status, deprecated, created_at, group_id, sync_mode)
+             VALUES (?, ?, ?, ?, ?, 'idle', 1, ?, ?, ?)",
         )
         .bind(&id).bind(fold_id).bind(name).bind(source_type).bind(config).bind(&now).bind(group_id).bind(sync_mode)
         .execute(&self.pool)
@@ -1305,7 +1368,7 @@ impl Db {
         Ok(DataSourceRow { id, fold_id: fold_id.to_string(), name: name.to_string(),
             source_type: source_type.to_string(), config: config.to_string(),
             status: "idle".to_string(), write_lock: None, last_sync_at: None,
-            record_count: None, created_at: now, deprecated: false, deleted_at: None,
+            record_count: None, created_at: now, deprecated: true, deleted_at: None,
             group_id: group_id.map(|s| s.to_string()),
             sync_mode: sync_mode.to_string() })
     }
@@ -1931,6 +1994,15 @@ impl Db {
         Ok(())
     }
 
+    pub async fn list_mapped_dataset_ids(&self) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT DISTINCT dataset_id FROM object_type_mappings WHERE entity_type_id IS NOT NULL AND entity_type_id != ''",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(|r| r.get::<String, _>("dataset_id")).collect())
+    }
+
     pub async fn get_object_type_mapping(
         &self,
         dataset_id: &str,
@@ -2039,10 +2111,10 @@ impl Db {
             let to_et  = m["to_entity_type_id"].as_str().unwrap_or_default();
             let rel    = m["rel_type"].as_str().unwrap_or("HAS");
 
-            // Find source objects promoted from this dataset
+            // Find source objects promoted from this dataset (both manual and auto-promote)
             let src_rows = sqlx::query(
                 "SELECT id, fields FROM ontology_objects
-                 WHERE dataset_id = ? AND sync_run_id = 'promote'",
+                 WHERE dataset_id = ? AND sync_run_id IN ('promote', 'auto-promote')",
             )
             .bind(dataset_id)
             .fetch_all(&self.pool)
@@ -2057,10 +2129,10 @@ impl Db {
                     None => continue,
                 };
 
-                // Look up target object by external_id
+                // Look up target object by external_id (both manual and auto-promote)
                 let tgt: Option<String> = sqlx::query_scalar(
                     "SELECT id FROM ontology_objects
-                     WHERE entity_type_id = ? AND external_id = ? AND sync_run_id = 'promote'",
+                     WHERE entity_type_id = ? AND external_id = ? AND sync_run_id IN ('promote', 'auto-promote')",
                 )
                 .bind(to_et)
                 .bind(&fk_val)

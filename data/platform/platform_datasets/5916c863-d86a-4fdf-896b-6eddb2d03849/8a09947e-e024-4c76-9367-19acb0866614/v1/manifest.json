@@ -1,0 +1,51 @@
+{
+  "dataset_id": "8a09947e-e024-4c76-9367-19acb0866614",
+  "version": 1,
+  "sync_run_id": "b45518be-3d62-4481-971b-e0569daed554",
+  "created_at": 1774397285,
+  "schema": {
+    "fields": [
+      {
+        "name": "department_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "type",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "value",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "vendor_id",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "a33e0ad7decde55b1e41a3d66edc82d2ef3f954bf8c47b7ef96e20ad679d8ff1",
+      "rows": 8,
+      "bytes": 289
+    }
+  ],
+  "total_rows": 8,
+  "total_bytes": 289,
+  "content_hash": "43356ca5e887963a8c86c685b677955e2571b0dedb0d6df064a5b4f84a63e72e"
+}
