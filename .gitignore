@@ -6,3 +6,7 @@ awscliv2.zip
 /palantir*.db-shm
 /palantir*.db-wal
 .run/
+frontend/node_modules/
+frontend/apps/*/node_modules/
+frontend/packages/*/node_modules/
+frontend/dist/

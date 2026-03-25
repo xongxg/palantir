@@ -1,0 +1,8 @@
+{
+  "name": "palantir-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @palantir/app dev",
+    "build": "pnpm --filter @palantir/app build"
+  }
+}
