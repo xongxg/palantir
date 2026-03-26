@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env     = loadEnv(mode, __dirname, '')
-  const backend = env.VITE_API_BASE || 'http://localhost:8080'
+  const backend = env.VITE_BACKEND || 'http://localhost:8080'  // proxy 目标，服务器内部地址
   const port    = parseInt(env.VITE_PORT || '3000', 10)
 
   return {
