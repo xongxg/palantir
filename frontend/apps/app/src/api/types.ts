@@ -69,6 +69,17 @@ export interface EntityType {
 }
 
 // ── Ontology Objects ──────────────────────────────────────────────────────────
+export interface OntologyLink {
+  id: string
+  from_id: string
+  to_id: string
+  rel_type: string
+  other_id?: string
+  other_label?: string
+  other_et_name?: string
+  other_et_id?: string
+}
+
 export interface OntologyObject {
   id: string
   entity_type_id: string
@@ -76,6 +87,7 @@ export interface OntologyObject {
   external_id?: string
   label: string
   fields: Record<string, unknown>
+  links?: OntologyLink[]
   created_at: string
   updated_at: string
 }

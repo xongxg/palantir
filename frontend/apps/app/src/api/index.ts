@@ -2,7 +2,7 @@ export { api } from './client'
 export * from './types'
 
 import { api } from './client'
-import type { Project, Fold, Dataset, EntityType, OntologyGraph, DatasetMapping, LinkTypeMapping } from './types'
+import type { Project, Fold, Dataset, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping } from './types'
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 export const projectsApi = {
@@ -41,6 +41,23 @@ export const entityTypesApi = {
   addField: (etId: string, body: { name: string; data_type: string; is_required?: boolean; classification?: string }) =>
     api.post<void>(`/api/ontology/schema/${etId}/fields`, body),
   deleteField: (fieldId: string) => api.delete<void>(`/api/ontology/fields/${fieldId}`),
+}
+
+// ── Ontology Objects ──────────────────────────────────────────────────────────
+export const objectsApi = {
+  list:   (entityTypeId?: string) =>
+    api.get<{ objects: OntologyObject[] }>(`/api/ontology/objects${entityTypeId ? `?entity_type_id=${entityTypeId}` : ''}`).then(r => r.objects),
+  get:    (id: string) => api.get<OntologyObject>(`/api/ontology/objects/${id}`),
+  create: (body: { entity_type_id: string; label: string; fields?: Record<string, unknown> }) =>
+    api.post<OntologyObject>('/api/ontology/objects', body),
+  delete: (id: string) => api.delete<void>(`/api/ontology/objects/${id}`),
+}
+
+// ── Ontology Links ─────────────────────────────────────────────────────────────
+export const linksApi = {
+  create: (body: { from_id: string; to_id: string; rel_type: string }) =>
+    api.post<void>('/api/ontology/links', body),
+  delete: (id: string) => api.delete<void>(`/api/ontology/links/${id}`),
 }
 
 // ── Graph ─────────────────────────────────────────────────────────────────────
