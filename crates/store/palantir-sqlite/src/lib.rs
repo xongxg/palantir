@@ -5,6 +5,8 @@ pub use palantir_meta_store::{
     BuildRow, ConnectorRow, DataSourceRow, DatasetRow, DatasetVersionRow,
     EntityFieldRow, EntityRow, EntityTypeRow, FoldRow, LinkTypeMappingInput,
     OntologyLinkRow, OntologyObjectRow, ProjectRow, RelRow, SyncRunRow,
+    BoundedContextRow, BcRelationshipRow, InterfaceRow, InterfaceFieldRow,
+    SchemaMigrationRow, BreakingChangeInfo,
     MetadataStore, StoreConfig, build_store,
 };
 

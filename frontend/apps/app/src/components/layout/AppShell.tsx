@@ -1,14 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Outlet, NavLink, Link, useNavigate, useLocation, useParams } from 'react-router-dom'
-import { cn } from '@/lib/utils'
+import { Outlet, Link, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { projectsApi } from '@/api'
-
-const ONTOLOGY_TABS = [
-  { key: 'import', label: '导入' },
-  { key: 'schema', label: '模型' },
-  { key: 'browse', label: '浏览' },
-  { key: 'graph',  label: '图谱' },
-] as const
 
 export default function AppShell() {
   const location  = useLocation()
@@ -17,10 +9,8 @@ export default function AppShell() {
   const [projectName, setProjectName] = useState<string | null>(null)
 
   const isWorkspace = location.pathname.startsWith('/project/')
-  const isOntology  = location.pathname === '/ontology'
   const isProjects  = location.pathname === '/'
 
-  // Load project name when on workspace
   useEffect(() => {
     if (isWorkspace && projectId) {
       projectsApi.get(projectId).then(p => setProjectName(p.name)).catch(() => setProjectName(null))
@@ -28,9 +18,6 @@ export default function AppShell() {
       setProjectName(null)
     }
   }, [projectId, isWorkspace])
-
-  // Active Ontology tab from search params
-  const searchTab = new URLSearchParams(location.search).get('tab') ?? 'import'
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -61,46 +48,6 @@ export default function AppShell() {
             </span>
           </>
         )}
-
-        {isOntology && (
-          <>
-            <Link to="/" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">项目</Link>
-            <span className="text-slate-700 text-xs">›</span>
-            <span className="text-xs text-slate-300 font-medium">Ontology</span>
-          </>
-        )}
-
-        {/* Right side */}
-        <div className="ml-auto flex items-center gap-1">
-          {/* Ontology tab quick-nav — always visible */}
-          {(isWorkspace || isOntology) && ONTOLOGY_TABS.map(t => (
-            <NavLink
-              key={t.key}
-              to={`/ontology?tab=${t.key}`}
-              className={cn(
-                'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
-                isOntology && searchTab === t.key
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800',
-              )}
-            >
-              {t.label}
-            </NavLink>
-          ))}
-
-          {/* Workspace link when on Ontology */}
-          {isOntology && projectId && (
-            <>
-              <span className="text-slate-700 text-xs mx-1">|</span>
-              <Link
-                to={`/project/${projectId}`}
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                ← 返回工作区
-              </Link>
-            </>
-          )}
-        </div>
       </header>
 
       {/* Content */}

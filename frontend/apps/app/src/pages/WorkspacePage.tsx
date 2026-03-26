@@ -4,6 +4,10 @@ import { toast } from 'sonner'
 import { projectsApi, sourcesApi, entityTypesApi } from '@/api'
 import type { DataSource, Dataset, SyncJob, EntityType, Project } from '@/api'
 import { cn } from '@/lib/utils'
+import ImportTab from '@/features/ontology/import/ImportTab'
+import SchemaTab from '@/features/ontology/schema/SchemaTab'
+import BrowseTab from '@/features/ontology/browse/BrowseTab'
+import GraphTab from '@/features/ontology/graph/GraphTab'
 
 // ── Source type icons / labels ─────────────────────────────────────────────
 const SRC_ICON: Record<string, string> = { s3:'🪣', csv:'📄', db:'🗄', rest:'🌐' }
@@ -149,7 +153,7 @@ function DatasetsPanel({ srcId, projectId }: { srcId: string; projectId: string 
               </div>
             </div>
             <button
-              onClick={() => navigate(`/ontology?tab=import&dataset=${ds.id}&from=${projectId}`)}
+              onClick={() => navigate(`/project/${projectId}?tab=import&dataset=${ds.id}`)}
               className={cn(
                 'text-xs px-2.5 py-1.5 rounded-lg border flex-shrink-0 transition-colors',
                 isMapped
@@ -355,9 +359,23 @@ function SourcePanel({ src, projectId, onSaved, onDeleted, onCancel }: SourcePan
     try {
       await sourcesApi.sync(src.id)
       toast.success('同步已启动')
+      // Poll until job completes, then refresh source
+      const poll = setInterval(async () => {
+        try {
+          const jobs = await sourcesApi.jobs(src.id)
+          const latest = jobs[0]
+          if (latest && (latest.status === 'completed' || latest.status === 'failed')) {
+            clearInterval(poll)
+            setSyncing(false)
+            // Refetch source to get updated last_sync_at
+            const srcs = await sourcesApi.list()
+            const updated = srcs.find(s => s.id === src.id)
+            if (updated) onSaved(updated)
+          }
+        } catch { clearInterval(poll); setSyncing(false) }
+      }, 2000)
     } catch (e) {
       toast.error(String(e))
-    } finally {
       setSyncing(false)
     }
   }
@@ -394,7 +412,7 @@ function SourcePanel({ src, projectId, onSaved, onDeleted, onCancel }: SourcePan
         <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800 flex-shrink-0">
           <h3 className="text-sm font-semibold text-slate-200">{src?.name}</h3>
           <span className="text-xs text-slate-500">
-            {src?.last_sync_at ? `上次同步：${new Date(src.last_sync_at).toLocaleString('zh-CN')}` : '从未同步'}
+            {src?.last_sync_at ? `上次同步：${new Date(Number(src.last_sync_at) * 1000).toLocaleString('zh-CN')}` : '从未同步'}
           </span>
         </div>
       )}
@@ -511,81 +529,30 @@ function SourcePanel({ src, projectId, onSaved, onDeleted, onCancel }: SourcePan
   )
 }
 
-// ── Settings tab ───────────────────────────────────────────────────────────
-function SettingsTab({ project }: { project: Project }) {
-  const [name,    setName]    = useState(project.name)
-  const [saving,  setSaving]  = useState(false)
-  const navigate  = useNavigate()
-
-  async function handleSave() {
-    setSaving(true)
-    try {
-      await projectsApi.update(project.id, name)
-      toast.success('已保存')
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!confirm(`确认删除项目「${project.name}」？此操作不可撤销。`)) return
-    try {
-      await projectsApi.delete(project.id)
-      toast.success('项目已删除')
-      navigate('/')
-    } catch (e) {
-      toast.error(String(e))
-    }
-  }
-
-  return (
-    <div className="p-8 max-w-md">
-      <h3 className="text-base font-semibold text-slate-200 mb-5">项目设置</h3>
-      <div className="space-y-4">
-        <div>
-          <label className="text-xs text-slate-400 block mb-1">项目名称</label>
-          <input value={name} onChange={e => setName(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500" />
-        </div>
-        <button onClick={handleSave} disabled={saving}
-          className="px-4 py-2 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg transition-colors">
-          {saving ? '保存中…' : '保存'}
-        </button>
-      </div>
-
-      <div className="mt-10 pt-6 border-t border-slate-800">
-        <p className="text-sm font-semibold text-red-400 mb-2">危险区域</p>
-        <p className="text-xs text-slate-500 mb-4">删除项目后无法恢复。</p>
-        <button onClick={handleDelete}
-          className="px-4 py-2 text-xs bg-red-700 hover:bg-red-600 text-white rounded-lg transition-colors">
-          删除此项目
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ── WorkspacePage ──────────────────────────────────────────────────────────
-type WsTab = 'ingest' | 'settings'
+const WS_TABS = [
+  { key: 'ingest',   label: '数据接入' },
+  { key: 'import',   label: '导入' },
+  { key: 'schema',   label: '模型' },
+  { key: 'browse',   label: '浏览' },
+  { key: 'graph',    label: '图谱' },
+] as const
+type WsTab = typeof WS_TABS[number]['key']
 
 export default function WorkspacePage() {
   const { projectId } = useParams<{ projectId: string }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const wsTab = (searchParams.get('tab') ?? 'ingest') as WsTab
+
   const [project,    setProject]    = useState<Project | null>(null)
   const [sources,    setSources]    = useState<DataSource[]>([])
   const [currentSrc, setCurrentSrc] = useState<DataSource | null>(null)
-  const [showNew,    setShowNew]    = useState(false)  // true = new source form
-  const [wsTab,      setWsTab]      = useState<WsTab>('ingest')
+  const [showNew,    setShowNew]    = useState(false)
 
   useEffect(() => {
     if (!projectId) return
     projectsApi.get(projectId).then(setProject).catch(console.error)
     loadSources()
-    // Check if a specific tab was requested
-    const tab = searchParams.get('tab')
-    if (tab === 'settings') setWsTab('settings')
   }, [projectId])
 
   async function loadSources() {
@@ -624,27 +591,27 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Workspace tab bar */}
+      {/* Tab bar */}
       <div className="flex items-center gap-0 px-4 border-b border-slate-800 flex-shrink-0 h-11">
-        {([['ingest', '1', '数据接入'], ['settings', '2', '设置']] as [WsTab, string, string][]).map(([t, n, l]) => (
-          <button key={t} onClick={() => setWsTab(t)}
-            className={cn('flex items-center gap-2 px-4 h-full text-sm border-b-2 transition-colors',
-              wsTab === t ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300')}>
-            <span className={cn('w-4.5 h-4.5 rounded-full text-[10px] font-bold flex items-center justify-center',
-              wsTab === t ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-500')}>
-              {n}
-            </span>
-            {l}
+        {WS_TABS.map(t => (
+          <button key={t.key} onClick={() => setSearchParams({ tab: t.key })}
+            className={cn('px-4 h-full text-sm border-b-2 transition-colors',
+              wsTab === t.key
+                ? 'border-indigo-500 text-indigo-300'
+                : 'border-transparent text-slate-500 hover:text-slate-300')}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {wsTab === 'settings' && <SettingsTab project={project} />}
-
+        {wsTab === 'import' && <ImportTab />}
+        {wsTab === 'schema' && <SchemaTab projectId={projectId} />}
+        {wsTab === 'browse' && <BrowseTab />}
+        {wsTab === 'graph'    && <GraphTab projectId={projectId} />}
         {wsTab === 'ingest' && (
-          <div className="flex h-full overflow-hidden">
+          <div className="flex h-full overflow-hidden w-full">
             {/* Sidebar: source list */}
             <div className="w-52 flex-shrink-0 border-r border-slate-800 flex flex-col overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800 flex-shrink-0">
@@ -697,3 +664,4 @@ export default function WorkspacePage() {
     </div>
   )
 }
+

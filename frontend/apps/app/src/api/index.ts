@@ -2,7 +2,7 @@ export { api } from './client'
 export * from './types'
 
 import { api } from './client'
-import type { Project, Fold, Dataset, DataSource, SyncJob, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping } from './types'
+import type { Project, Fold, Dataset, DataSource, SyncJob, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping, BreakingChangeInfo, EtLineage, Interface, BoundedContext, BcRelationship, BcSuggestion, BcInferenceResult } from './types'
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 export const projectsApi = {
@@ -14,13 +14,6 @@ export const projectsApi = {
   folds:  (id: string)   => api.get<{ folds: Fold[] }>(`/api/projects/${id}/folds`).then(r => r.folds),
 }
 
-// ── Folds ─────────────────────────────────────────────────────────────────────
-export const foldsApi = {
-  create: (projectId: string, name: string, description?: string) =>
-    api.post<Fold>(`/api/projects/${projectId}/folds`, { name, description }),
-  delete: (id: string) => api.delete<void>(`/api/folds/${id}`),
-}
-
 // ── Datasets ──────────────────────────────────────────────────────────────────
 export const datasetsApi = {
   list:      ()           => api.get<{ datasets: Dataset[] }>('/api/datasets').then(r => r.datasets),
@@ -30,8 +23,15 @@ export const datasetsApi = {
   getLinks:  (id: string)  => api.get<{ mappings: LinkTypeMapping[] }>(`/api/datasets/${id}/mapping`),
   records:   (id: string, limit = 3) =>
     api.get<{ records: Record<string, unknown>[] }>(`/api/datasets/${id}/records?limit=${limit}`),
-  promote:   (id: string, body: { entity_type_id?: string; new_entity_type?: string; sync_mode: string; fold_id?: string }) =>
-    api.post<{ promoted: number; linked: number }>(`/api/datasets/${id}/promote`, body),
+  promote:   (id: string, body: {
+    entity_type_id?: string
+    new_entity_type?: string
+    sync_mode: string
+    fold_id?: string
+    primary_key_col?: string
+    field_mapping?: Record<string, string>
+    links?: { from_fk_col: string; to_entity_type_id: string; rel_type: string }[]
+  }) => api.post<{ promoted: number; linked: number }>(`/api/datasets/${id}/promote`, body),
 }
 
 // ── Entity Types ──────────────────────────────────────────────────────────────
@@ -42,7 +42,66 @@ export const entityTypesApi = {
   delete: (id: string) => api.delete<void>(`/api/ontology/schema/${id}`),
   addField: (etId: string, body: { name: string; data_type: string; is_required?: boolean; classification?: string }) =>
     api.post<void>(`/api/ontology/schema/${etId}/fields`, body),
+  /** P0: check if deleting a field is breaking (dry run — POST with no strategy) */
+  checkDeleteField: (fieldId: string) => api.post<BreakingChangeInfo>(`/api/ontology/fields/${fieldId}/safe-delete`, {}),
+  /** P0: apply delete with strategy (always 'drop') */
+  deleteFieldSafe: (fieldId: string) =>
+    api.post<void>(`/api/ontology/fields/${fieldId}/safe-delete`, { strategy: 'drop' }),
+  /** P0: check if changing field type is breaking */
+  checkFieldTypeChange: (fieldId: string, newType: string) =>
+    api.put<BreakingChangeInfo>(`/api/ontology/fields/${fieldId}/type`, { data_type: newType }),
+  /** P0: apply field type change with strategy */
+  applyFieldTypeChange: (fieldId: string, newType: string, strategy: string) =>
+    api.put<void>(`/api/ontology/fields/${fieldId}/type`, { data_type: newType, strategy }),
   deleteField: (fieldId: string) => api.delete<void>(`/api/ontology/fields/${fieldId}`),
+  /** P1a: change ET lifecycle status */
+  setStatus: (etId: string, status: string) =>
+    api.put<{ ok: boolean; status: string; affected_datasets: number }>(`/api/ontology/schema/${etId}/status`, { status }),
+  /** P1b: data lineage */
+  getLineage: (etId: string) => api.get<EtLineage>(`/api/ontology/schema/${etId}/lineage`),
+  /** DDD role update */
+  setDddRole: (etId: string, ddd_role: string) =>
+    api.put<{ ok: boolean }>(`/api/ontology/schema/${etId}/ddd-role`, { ddd_role }),
+  /** P2c: interfaces */
+  listInterfaces: (etId: string) => api.get<{ interfaces: Interface[] }>(`/api/ontology/schema/${etId}/interfaces`).then(r => r.interfaces),
+  addInterface: (etId: string, interfaceId: string) =>
+    api.post<void>(`/api/ontology/schema/${etId}/interfaces`, { interface_id: interfaceId }),
+  removeInterface: (etId: string, interfaceId: string) =>
+    api.delete<void>(`/api/ontology/schema/${etId}/interfaces/${interfaceId}`),
+}
+
+// ── Interfaces ────────────────────────────────────────────────────────────────
+export const interfacesApi = {
+  list: () => api.get<{ interfaces: Interface[] }>('/api/interfaces').then(r => r.interfaces),
+  create: (name: string, description?: string) =>
+    api.post<Interface>('/api/interfaces', { name, description }),
+  delete: (id: string) => api.delete<void>(`/api/interfaces/${id}`),
+}
+
+// ── Bounded Contexts ──────────────────────────────────────────────────────────
+export const boundedContextsApi = {
+  list: (foldId: string) =>
+    api.get<{ bounded_contexts: BoundedContext[] }>(`/api/folds/${foldId}/bounded-contexts`).then(r => r.bounded_contexts),
+  create: (foldId: string, name: string, color?: string) =>
+    api.post<BoundedContext>(`/api/folds/${foldId}/bounded-contexts`, { name, color: color ?? '#6366f1' }),
+  delete: (id: string) => api.delete<void>(`/api/bounded-contexts/${id}`),
+  createRelationship: (body: { from_bc_id: string; to_bc_id: string; relationship_type: string; notes?: string }) =>
+    api.post<BcRelationship>('/api/bc-relationships', body),
+  deleteRelationship: (id: string) => api.delete<void>(`/api/bc-relationships/${id}`),
+  sharedKernels: () => api.get<{ shared_kernels: Fold[] }>('/api/shared-kernels').then(r => r.shared_kernels),
+  contextMap: (projectId: string) => api.get(`/api/projects/${projectId}/context-map`),
+  /** P1: Union-Find dry-run — returns BC suggestions without writing */
+  inferChildBcs: (foldId: string) => api.get<BcInferenceResult>(`/api/folds/${foldId}/bcs/infer`),
+  /** P1: Write accepted suggestions to DB */
+  applyBcSuggestions: (foldId: string, suggestions: BcSuggestion[]) =>
+    api.post<{ created: BoundedContext[] }>(`/api/folds/${foldId}/bcs/apply-suggestions`, { suggestions }),
+}
+
+// ── Folds (extended) ──────────────────────────────────────────────────────────
+export const foldsApi = {
+  create: (projectId: string, name: string, description?: string, fold_type?: string) =>
+    api.post<Fold>(`/api/projects/${projectId}/folds`, { name, description, fold_type }),
+  delete: (id: string) => api.delete<void>(`/api/folds/${id}`),
 }
 
 // ── Sources ───────────────────────────────────────────────────────────────────
@@ -83,4 +142,5 @@ export const linksApi = {
 export const graphApi = {
   get: (projectId?: string) =>
     api.get<OntologyGraph>(`/api/ontology/graph${projectId ? `?project_id=${projectId}` : ''}`),
+  autoLink: () => api.post<{ ok: boolean; created: number; skipped: number }>('/api/ontology/auto-link', {}),
 }

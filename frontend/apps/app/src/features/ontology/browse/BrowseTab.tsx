@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { objectsApi, linksApi, entityTypesApi } from '@/api'
 import type { OntologyObject, EntityType } from '@/api'
@@ -227,37 +227,64 @@ function ObjDetail({ obj, et, allObjects, onDeleted, onNavigate, onLinkAdded }: 
       </div>
 
       {/* Links */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">关联关系</p>
-        {!links.length
-          ? <p className="text-slate-600 text-sm">暂无关联关系</p>
-          : <div className="space-y-1.5 divide-y divide-slate-800/60">
-              {links.map(l => {
-                const isFrom      = l.from_id === obj.id
-                const otherId     = l.other_id || (isFrom ? l.to_id : l.from_id)
-                const otherLabel  = l.other_label || otherId
-                const otherEtName = l.other_et_name || '?'
-                const otherEtId   = l.other_et_id || ''
-                return (
-                  <div key={l.id} className="flex items-center justify-between py-1.5">
-                    <div className="flex items-center gap-2 text-sm min-w-0 flex-1">
-                      <span className="text-slate-500 flex-shrink-0 font-bold">{isFrom ? '→' : '←'}</span>
-                      <span className="text-xs font-mono flex-shrink-0 px-1.5 py-0.5 rounded" style={{ background: '#6366f122', color: '#818cf8' }}>
-                        {l.rel_type}
-                      </span>
-                      <button
-                        onClick={() => onNavigate(otherId, otherEtId)}
-                        className="text-slate-200 hover:text-indigo-300 truncate text-left text-sm hover:underline underline-offset-2"
-                      >{otherLabel}</button>
-                      <span className="text-slate-500 text-xs flex-shrink-0 italic">{otherEtName}</span>
-                    </div>
-                    <button onClick={() => handleDeleteLink(l.id)}
-                      className="text-slate-700 hover:text-red-400 transition-colors text-xs flex-shrink-0 ml-2 px-1.5">×</button>
-                  </div>
-                )
-              })}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-4 pt-4 pb-2">
+          关联关系
+          {links.length > 0 && <span className="ml-2 text-slate-600 normal-case font-normal">{links.length} 条</span>}
+        </p>
+        {!links.length ? (
+          <p className="text-slate-600 text-sm px-4 pb-4">暂无关联关系</p>
+        ) : (() => {
+          const outgoing = links.filter(l => l.from_id === obj.id)
+          const incoming = links.filter(l => l.from_id !== obj.id)
+          const renderLink = (l: typeof links[0], dir: 'out' | 'in') => {
+            const otherId    = dir === 'out' ? l.to_id   : l.from_id
+            const otherLabel = l.other_label  || otherId
+            const otherEtName= l.other_et_name || '?'
+            const otherEtId  = l.other_et_id   || ''
+            return (
+              <div key={l.id} className="flex items-center justify-between px-4 py-2 hover:bg-slate-800/40 transition-colors group">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className={cn('text-[10px] font-bold flex-shrink-0 w-3', dir === 'out' ? 'text-indigo-400' : 'text-emerald-500')}>
+                    {dir === 'out' ? '→' : '←'}
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 bg-slate-800 text-slate-400">
+                    {l.rel_type}
+                  </span>
+                  <button
+                    onClick={() => onNavigate(otherId, otherEtId)}
+                    className="text-slate-200 hover:text-indigo-300 truncate text-sm text-left hover:underline underline-offset-2 transition-colors"
+                  >{otherLabel}</button>
+                  <span className="text-slate-600 text-[10px] flex-shrink-0 italic">{otherEtName}</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteLink(l.id)}
+                  className="text-slate-800 group-hover:text-slate-600 hover:!text-red-400 transition-colors text-xs flex-shrink-0 ml-2 px-1"
+                >×</button>
+              </div>
+            )
+          }
+          return (
+            <div className="divide-y divide-slate-800/40 pb-2">
+              {outgoing.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-indigo-400/70 font-semibold px-4 py-1.5 bg-slate-800/30 uppercase tracking-wider">
+                    → 指向 ({outgoing.length})
+                  </p>
+                  {outgoing.map(l => renderLink(l, 'out'))}
+                </div>
+              )}
+              {incoming.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-emerald-500/70 font-semibold px-4 py-1.5 bg-slate-800/30 uppercase tracking-wider">
+                    ← 被引用 ({incoming.length})
+                  </p>
+                  {incoming.map(l => renderLink(l, 'in'))}
+                </div>
+              )}
             </div>
-        }
+          )
+        })()}
       </div>
 
       {showAddLink && (
@@ -278,8 +305,11 @@ export default function BrowseTab() {
   const [allObjects,    setAllObjects]    = useState<OntologyObject[]>([])
   const [selectedObj,   setSelectedObj]   = useState<OntologyObject | null>(null)
   const [filterEtId,    setFilterEtId]    = useState<string | null>(null)
+  const [search,        setSearch]        = useState('')
   const [showCreate,    setShowCreate]    = useState(false)
   const [loading,       setLoading]       = useState(false)
+  // When navigating to a specific object, suppress auto-select of first item
+  const pendingNavId = useRef<string | null>(null)
 
   // Load entity types once
   useEffect(() => {
@@ -291,11 +321,18 @@ export default function BrowseTab() {
     loadObjects()
   }, [filterEtId])
 
-  async function loadObjects() {
+  async function loadObjects(autoSelect = true) {
     setLoading(true)
     try {
       const objs = await objectsApi.list(filterEtId ?? undefined)
       setAllObjects(objs)
+      // Auto-select first object unless navigating to a specific one
+      if (autoSelect && !pendingNavId.current && objs.length) {
+        const full = await objectsApi.get(objs[0].id)
+        setSelectedObj(full)
+      } else if (!objs.length) {
+        setSelectedObj(null)
+      }
     } catch (e) {
       toast.error(String(e))
     } finally {
@@ -314,12 +351,21 @@ export default function BrowseTab() {
 
   async function navigateTo(objectId: string, etId: string) {
     if (etId && etId !== filterEtId) {
+      // Switch filter and load — suppress auto-select so we can pick the right object
+      pendingNavId.current = objectId
       setFilterEtId(etId)
-      // loadObjects will run from the effect; then find the object
-      const objs = await objectsApi.list(etId)
-      setAllObjects(objs)
-      const found = objs.find(o => o.id === objectId)
-      if (found) await selectObject(found)
+      try {
+        const objs = await objectsApi.list(etId)
+        setAllObjects(objs)
+        const found = objs.find(o => o.id === objectId)
+        if (found) await selectObject(found)
+        else {
+          const full = await objectsApi.get(objectId)
+          setSelectedObj(full)
+        }
+      } finally {
+        pendingNavId.current = null
+      }
     } else {
       const found = allObjects.find(o => o.id === objectId)
       if (found) await selectObject(found)
@@ -359,7 +405,7 @@ export default function BrowseTab() {
               filterEtId === null ? 'bg-indigo-900/40 text-white' : 'text-slate-300 hover:bg-slate-700/40',
             )}
           >全部对象</button>
-          {entityTypes.map(et => (
+          {entityTypes.filter(et => et.display_name !== '未分类' && et.name !== 'uncategorized').map(et => (
             <button
               key={et.id}
               onClick={() => setFilterEtId(et.id)}
@@ -389,12 +435,23 @@ export default function BrowseTab() {
           </p>
           {!loading && <span className="text-[11px] text-slate-600">{allObjects.length || ''}</span>}
         </div>
+        <div className="px-2 py-1.5 border-b border-slate-800/60 flex-shrink-0">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="搜索…"
+            className="w-full bg-slate-900 border border-slate-700/60 rounded-md px-2.5 py-1 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-600"
+          />
+        </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {loading && <p className="text-xs text-slate-600 text-center py-6">加载中…</p>}
           {!loading && !allObjects.length && (
             <p className="text-xs text-slate-600 text-center py-6">暂无对象</p>
           )}
-          {allObjects.map(obj => {
+          {allObjects.filter(obj =>
+            !search.trim() || obj.label.toLowerCase().includes(search.toLowerCase()) ||
+            (obj.entity_type_name || '').toLowerCase().includes(search.toLowerCase())
+          ).map(obj => {
             const objEt = entityTypes.find(e => e.id === obj.entity_type_id)
             return (
               <button

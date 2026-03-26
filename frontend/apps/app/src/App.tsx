@@ -3,7 +3,6 @@ import { Toaster } from 'sonner'
 import AppShell from '@/components/layout/AppShell'
 import ProjectsPage from '@/pages/ProjectsPage'
 import WorkspacePage from '@/pages/WorkspacePage'
-import OntologyPage from '@/pages/OntologyPage'
 
 export default function App() {
   return (
@@ -12,7 +11,7 @@ export default function App() {
         <Route path="/" element={<AppShell />}>
           <Route index element={<ProjectsPage />} />
           <Route path="project/:projectId" element={<WorkspacePage />} />
-          <Route path="ontology" element={<OntologyPage />} />
+          <Route path="ontology" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

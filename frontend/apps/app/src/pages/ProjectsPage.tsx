@@ -4,7 +4,9 @@ import { toast } from 'sonner'
 import { projectsApi, type Project } from '@/api'
 
 function fmt(d: string) {
-  return new Date(d).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' })
+  const n = Number(d)
+  const date = isNaN(n) ? new Date(d) : new Date(n * 1000)
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export default function ProjectsPage() {
@@ -13,6 +15,7 @@ export default function ProjectsPage() {
   const [creating, setCreating] = useState(false)
   const [newName,  setNewName]  = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -33,6 +36,21 @@ export default function ProjectsPage() {
       toast.error(String(e))
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleDelete(e: React.MouseEvent, p: Project) {
+    e.stopPropagation()
+    if (!confirm(`确认删除项目「${p.name}」？所有数据源、Dataset 和 Ontology 对象将一并删除，不可撤销。`)) return
+    setDeleting(p.id)
+    try {
+      await projectsApi.delete(p.id)
+      setProjects(prev => prev.filter(x => x.id !== p.id))
+      toast.success(`项目「${p.name}」已删除`)
+    } catch (e) {
+      toast.error(String(e))
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -104,7 +122,16 @@ export default function ProjectsPage() {
           >
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors">{p.name}</p>
-              <span className="text-xs text-slate-600 group-hover:text-slate-400 transition-colors">→</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={e => handleDelete(e, p)}
+                  disabled={deleting === p.id}
+                  className="text-xs text-slate-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded hover:bg-red-900/20 disabled:opacity-50"
+                >
+                  {deleting === p.id ? '…' : '删除'}
+                </button>
+                <span className="text-xs text-slate-600 group-hover:text-slate-400 transition-colors">→</span>
+              </div>
             </div>
             <div className="flex items-center gap-3 mt-1.5">
               <p className="text-xs text-slate-600 font-mono">{p.id.slice(0, 8)}…</p>

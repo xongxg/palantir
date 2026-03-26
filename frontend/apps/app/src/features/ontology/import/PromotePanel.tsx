@@ -13,7 +13,7 @@ interface Props { dataset: Dataset }
 
 export default function PromotePanel({ dataset }: Props) {
   const {
-    columns, entityTypes, syncMode,
+    columns, entityTypes, syncMode, links,
     promoting, promoteResult,
     setColumns, setSyncMode, setLinks, setSavedMapping,
     setPromoting, setPromoteResult, markDatasetPromoted,
@@ -103,16 +103,42 @@ export default function PromotePanel({ dataset }: Props) {
   async function handleSaveET() {
     if (!newTypeName.trim() && !selectedEtId) return
     try {
+      let resolvedId = selectedEtId
       if (newTypeName.trim()) {
-        const et = await entityTypesApi.create({ name: newTypeName, display_name: newTypeName })
-        setSelectedEtId(et.id)
-        toast.success(`Entity Type「${et.display_name}」已创建`)
+        try {
+          const et = await entityTypesApi.create({ name: newTypeName, display_name: newTypeName })
+          resolvedId = et.id
+          setSelectedEtId(et.id)
+          // Persist schema fields
+          await Promise.allSettled(
+            columns
+              .filter(c => !c.ignored)
+              .map(c => entityTypesApi.addField(et.id, {
+                name: c.editedName || c.name,
+                data_type: c.inferredType || 'string',
+              }))
+          )
+          toast.success(`Entity Type「${et.display_name}」已创建`)
+        } catch {
+          // Already exists — find and reuse
+          const existing = entityTypes.find(t =>
+            t.display_name.toLowerCase() === newTypeName.trim().toLowerCase() ||
+            t.name.toLowerCase() === newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
+          )
+          if (existing) {
+            resolvedId = existing.id
+            setSelectedEtId(existing.id)
+            toast.info(`使用已有 Entity Type「${existing.display_name}」`)
+          } else {
+            throw new Error(`Entity Type「${newTypeName}」已存在，请从下拉菜单选择`)
+          }
+        }
       }
       // Save mapping
       const fieldMapping: Record<string, string> = {}
       columns.forEach(c => { if (!c.ignored) fieldMapping[c.name] = c.editedName || c.name })
       await datasetsApi.saveMapping(dataset.id, {
-        entity_type_id: selectedEtId || undefined,
+        entity_type_id: resolvedId || undefined,
         primary_key_col: pk,
         field_mapping: fieldMapping,
         sync_mode: syncMode,
@@ -124,7 +150,7 @@ export default function PromotePanel({ dataset }: Props) {
   }
 
   async function handlePromote() {
-    const etId   = selectedEtId
+    let etId   = selectedEtId
     const etName = newTypeName.trim()
     if (!etId && !etName) {
       toast.error('请选择或输入 Entity Type')
@@ -133,10 +159,35 @@ export default function PromotePanel({ dataset }: Props) {
     setPromoting(true)
     setPromoteResult(null)
     try {
+      // Ensure ET exists and fields are saved before promoting
+      if (etName && !etId) {
+        try {
+          const et = await entityTypesApi.create({ name: etName, display_name: etName })
+          etId = et.id
+          setSelectedEtId(et.id)
+          await Promise.allSettled(
+            columns.filter(c => !c.ignored).map(c =>
+              entityTypesApi.addField(et.id, { name: c.editedName || c.name, data_type: c.inferredType || 'string' })
+            )
+          )
+        } catch {
+          const existing = entityTypes.find(t =>
+            t.display_name.toLowerCase() === etName.toLowerCase() ||
+            t.name.toLowerCase() === etName.toLowerCase().replace(/\s+/g, '_')
+          )
+          if (existing) { etId = existing.id; setSelectedEtId(existing.id) }
+          else throw new Error(`无法创建 Entity Type「${etName}」`)
+        }
+      }
+      const fieldMapping: Record<string, string> = {}
+      columns.forEach(c => { if (!c.ignored) fieldMapping[c.name] = c.editedName || c.name })
       const result = await datasetsApi.promote(dataset.id, {
         entity_type_id: etId || undefined,
-        new_entity_type: etName || undefined,
+        new_entity_type: undefined,
         sync_mode: syncMode,
+        primary_key_col: pk || undefined,
+        field_mapping: Object.keys(fieldMapping).length ? fieldMapping : undefined,
+        links: links.map(l => ({ from_fk_col: l.fkCol, to_entity_type_id: l.toEntityTypeId, rel_type: l.relType })),
       })
       markDatasetPromoted(dataset.id, etId)
       setPromoteResult({ ok: true, message: `✓ Promoted ${result.promoted} objects, ${result.linked} links` })
@@ -225,9 +276,9 @@ export default function PromotePanel({ dataset }: Props) {
               className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
             >
               <option value="">— 已有类型 —</option>
-              {entityTypes.map(et => (
-                <option key={et.id} value={et.id}>
-                  {et.namespace ? `[${et.namespace}] ` : ''}{et.display_name || et.name}
+              {entityTypes.filter(et => et.status !== 'deprecated').map(et => (
+                <option key={et.id} value={et.id} disabled={et.status === 'draft'}>
+                  {et.status === 'draft' ? '[草稿] ' : ''}{et.namespace ? `[${et.namespace}] ` : ''}{et.display_name || et.name}
                 </option>
               ))}
             </select>

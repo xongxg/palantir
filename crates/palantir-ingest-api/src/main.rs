@@ -1163,7 +1163,8 @@ async fn list_entity_types_handler() -> impl IntoResponse {
                 result.push(json!({
                     "id": et.id, "name": et.name, "display_name": et.display_name,
                     "color": et.color, "icon": et.icon, "created_at": et.created_at,
-                    "fold_id": et.fold_id, "namespace": et.namespace, "ddd_role": et.ddd_role,
+                    "fold_id": et.fold_id, "bc_id": et.bc_id, "namespace": et.namespace,
+                    "ddd_role": et.ddd_role, "status": et.status,
                     "fields": fields,
                 }));
             }
@@ -1200,11 +1201,14 @@ async fn create_entity_type_handler(
         .await
     {
         Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
-        Err(e) => (
-            StatusCode::CONFLICT,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
+        Err(e) => {
+            let msg = if e.to_string().contains("UNIQUE") {
+                format!("Entity Type「{}」已存在，请换一个名称", req.name)
+            } else {
+                e.to_string()
+            };
+            (StatusCode::CONFLICT, Json(json!({"error": msg}))).into_response()
+        }
     }
 }
 
@@ -1259,6 +1263,302 @@ async fn delete_field_handler(Path(field_id): Path<String>) -> impl IntoResponse
             Json(json!({"error": e.to_string()})),
         )
             .into_response(),
+    }
+}
+
+// ── P0: Breaking change field update ──────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct UpdateFieldTypeReq {
+    data_type: String,
+    /// If None: dry-run (returns breaking info without applying).
+    /// If Some("drop"|"cast"): apply with strategy.
+    #[serde(default)]
+    strategy: Option<String>,
+}
+
+async fn update_field_type_handler(
+    Path(field_id): Path<String>,
+    Json(req): Json<UpdateFieldTypeReq>,
+) -> impl IntoResponse {
+    match req.strategy {
+        None => {
+            // Dry run: just return breaking info
+            match db().check_field_type_change(&field_id, &req.data_type).await {
+                Ok(info) => (StatusCode::OK, Json(json!(info))).into_response(),
+                Err(e) => (StatusCode::NOT_FOUND, Json(json!({"error": e.to_string()}))).into_response(),
+            }
+        }
+        Some(strategy) => {
+            match db().apply_field_type_change(&field_id, &req.data_type, &strategy).await {
+                Ok(migration) => (StatusCode::OK, Json(json!(migration))).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+            }
+        }
+    }
+}
+
+async fn check_delete_field_handler(Path(field_id): Path<String>) -> impl IntoResponse {
+    match db().check_field_delete(&field_id).await {
+        Ok(info) => (StatusCode::OK, Json(json!(info))).into_response(),
+        Err(e) => (StatusCode::NOT_FOUND, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct DeleteFieldWithStrategyReq {
+    #[serde(default)]
+    strategy: Option<String>,
+}
+
+async fn delete_field_safe_handler(
+    Path(field_id): Path<String>,
+    Json(req): Json<DeleteFieldWithStrategyReq>,
+) -> impl IntoResponse {
+    match req.strategy {
+        None => {
+            // Dry run: return breaking info
+            match db().check_field_delete(&field_id).await {
+                Ok(info) => (StatusCode::OK, Json(json!(info))).into_response(),
+                Err(e) => (StatusCode::NOT_FOUND, Json(json!({"error": e.to_string()}))).into_response(),
+            }
+        }
+        Some(_) => {
+            match db().apply_field_delete(&field_id).await {
+                Ok(migration) => (StatusCode::OK, Json(json!(migration))).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+            }
+        }
+    }
+}
+
+// ── P1a: ET status lifecycle ───────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct SetEtStatusReq {
+    status: String,
+}
+
+async fn set_et_status_handler(
+    Path(et_id): Path<String>,
+    Json(req): Json<SetEtStatusReq>,
+) -> impl IntoResponse {
+    let valid = matches!(req.status.as_str(), "draft" | "active" | "deprecated");
+    if !valid {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "status must be draft|active|deprecated"}))).into_response();
+    }
+    match db().set_entity_type_status(&et_id, &req.status).await {
+        Ok(affected_datasets) => (StatusCode::OK, Json(json!({
+            "ok": true, "status": req.status, "affected_datasets": affected_datasets,
+        }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── P1b: Data lineage ─────────────────────────────────────────────────────────
+
+async fn get_et_lineage_handler(Path(et_id): Path<String>) -> impl IntoResponse {
+    match db().get_et_lineage(&et_id).await {
+        Ok(lineage) => (StatusCode::OK, Json(lineage)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── P2a: Bounded Context + Shared Kernel ──────────────────────────────────────
+
+async fn list_bcs_handler(Path(fold_id): Path<String>) -> impl IntoResponse {
+    match db().list_bounded_contexts(&fold_id).await {
+        Ok(rows) => (StatusCode::OK, Json(json!({"bounded_contexts": rows}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateBcReq {
+    name: String,
+    #[serde(default = "default_color")]
+    color: String,
+    #[serde(default)]
+    auto_detected: bool,
+}
+
+async fn create_bc_handler(
+    Path(fold_id): Path<String>,
+    Json(req): Json<CreateBcReq>,
+) -> impl IntoResponse {
+    match db().create_bounded_context(&fold_id, &req.name, &req.color, req.auto_detected).await {
+        Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn delete_bc_handler(Path(bc_id): Path<String>) -> impl IntoResponse {
+    match db().delete_bounded_context(&bc_id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn list_shared_kernels_handler() -> impl IntoResponse {
+    match db().list_shared_kernel_folds().await {
+        Ok(rows) => (StatusCode::OK, Json(json!({"shared_kernels": rows}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn get_context_map_handler(Path(project_id): Path<String>) -> impl IntoResponse {
+    match db().get_context_map(&project_id).await {
+        Ok(map) => (StatusCode::OK, Json(map)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateBcRelReq {
+    from_bc_id: String,
+    to_bc_id: String,
+    relationship_type: String,
+    #[serde(default)]
+    notes: Option<String>,
+}
+
+async fn create_bc_relationship_handler(Json(req): Json<CreateBcRelReq>) -> impl IntoResponse {
+    match db().create_bc_relationship(&req.from_bc_id, &req.to_bc_id, &req.relationship_type, req.notes.as_deref()).await {
+        Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn delete_bc_relationship_handler(Path(rel_id): Path<String>) -> impl IntoResponse {
+    match db().delete_bc_relationship(&rel_id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// Set ET → BC assignment
+#[derive(Deserialize)]
+struct SetEtBcReq {
+    bc_id: Option<String>,
+}
+
+async fn set_et_bc_handler(
+    Path(et_id): Path<String>,
+    Json(req): Json<SetEtBcReq>,
+) -> impl IntoResponse {
+    match db().update_entity_type_bc(&et_id, req.bc_id.as_deref()).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetDddRoleReq { ddd_role: String }
+
+async fn set_et_ddd_role_handler(
+    Path(et_id): Path<String>,
+    Json(req): Json<SetDddRoleReq>,
+) -> impl IntoResponse {
+    match db().update_entity_type_ddd_role(&et_id, &req.ddd_role).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── P1: BC Inference ──────────────────────────────────────────────────────────
+
+/// POST /api/ontology/auto-link — scan all *_id FK columns, auto-create ontology_links
+async fn auto_detect_links_handler() -> impl IntoResponse {
+    match db().auto_detect_links().await {
+        Ok((created, skipped)) => (StatusCode::OK, Json(json!({
+            "ok": true, "created": created, "skipped": skipped,
+        }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// GET /api/folds/:id/bcs/infer — dry-run Union-Find suggestions (no writes)
+async fn infer_child_bcs_handler(Path(fold_id): Path<String>) -> impl IntoResponse {
+    match db().infer_child_bcs(&fold_id).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// POST /api/folds/:id/bcs/apply-suggestions — accept suggestions and write to DB
+#[derive(Deserialize)]
+struct ApplyBcSuggestionsReq {
+    suggestions: Vec<serde_json::Value>,
+}
+
+async fn apply_bc_suggestions_handler(
+    Path(fold_id): Path<String>,
+    Json(req): Json<ApplyBcSuggestionsReq>,
+) -> impl IntoResponse {
+    match db().apply_bc_suggestions(&fold_id, &req.suggestions).await {
+        Ok(created) => (StatusCode::OK, Json(json!({"created": created}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── P2c: System Interfaces ────────────────────────────────────────────────────
+
+async fn list_interfaces_handler() -> impl IntoResponse {
+    match db().list_interfaces().await {
+        Ok(rows) => (StatusCode::OK, Json(json!({"interfaces": rows}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateInterfaceReq {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+async fn create_interface_handler(Json(req): Json<CreateInterfaceReq>) -> impl IntoResponse {
+    match db().create_interface(&req.name, req.description.as_deref()).await {
+        Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn delete_interface_handler(Path(id): Path<String>) -> impl IntoResponse {
+    match db().delete_interface(&id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn list_et_interfaces_handler(Path(et_id): Path<String>) -> impl IntoResponse {
+    match db().list_et_interfaces(&et_id).await {
+        Ok(rows) => (StatusCode::OK, Json(json!({"interfaces": rows}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct AddEtInterfaceReq {
+    interface_id: String,
+}
+
+async fn add_et_interface_handler(
+    Path(et_id): Path<String>,
+    Json(req): Json<AddEtInterfaceReq>,
+) -> impl IntoResponse {
+    match db().add_et_interface(&et_id, &req.interface_id).await {
+        Ok(_) => (StatusCode::CREATED, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn remove_et_interface_handler(
+    Path((et_id, interface_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    match db().remove_et_interface(&et_id, &interface_id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 
@@ -1441,7 +1741,9 @@ async fn get_ontology_graph_handler(
         .filter(|e| e.id != "default")
         .map(|e| json!({
             "id": e.id, "label": e.display_name, "color": e.color,
-            "fold_id": e.fold_id, "count": et_counts.get(&e.id).copied().unwrap_or(0),
+            "fold_id": e.fold_id, "bc_id": e.bc_id,
+            "ddd_role": e.ddd_role,
+            "count": et_counts.get(&e.id).copied().unwrap_or(0),
         }))
         .collect();
 
@@ -1662,6 +1964,8 @@ fn extract_label(record: &serde_json::Value) -> String {
 struct CreateFoldReq {
     name: String,
     description: Option<String>,
+    #[serde(default)]
+    fold_type: Option<String>,
 }
 
 async fn list_folds(Path(project_id): Path<String>) -> impl IntoResponse {
@@ -1673,7 +1977,7 @@ async fn list_folds(Path(project_id): Path<String>) -> impl IntoResponse {
                 folds.push(json!({
                     "id": f.id, "project_id": f.project_id,
                     "name": f.name, "description": f.description,
-                    "created_at": f.created_at,
+                    "fold_type": f.fold_type, "created_at": f.created_at,
                     "source_count": src, "dataset_count": ds, "status": status
                 }));
             }
@@ -1687,10 +1991,10 @@ async fn create_fold(
     Path(project_id): Path<String>,
     Json(req): Json<CreateFoldReq>,
 ) -> impl IntoResponse {
-    match db().create_fold(&project_id, &req.name, req.description.as_deref()).await {
+    match db().create_fold(&project_id, &req.name, req.description.as_deref(), req.fold_type.as_deref()).await {
         Ok(row) => (StatusCode::CREATED, Json(json!({
             "id": row.id, "name": row.name, "description": row.description,
-            "created_at": row.created_at
+            "fold_type": row.fold_type, "created_at": row.created_at
         }))).into_response(),
         Err(e) => (StatusCode::CONFLICT, Json(json!({"error": e.to_string()}))).into_response(),
     }
@@ -1815,7 +2119,7 @@ async fn create_source_simple(Json(req): Json<CreateSourceReq>) -> impl IntoResp
         if let Some(f) = folds.into_iter().next() {
             f.id
         } else {
-            match db().create_fold(&proj.id, "Default Fold", None).await {
+            match db().create_fold(&proj.id, "Default Fold", None, None).await {
                 Ok(f) => f.id,
                 Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({"error": format!("create fold: {e}")}))).into_response(),
@@ -3083,8 +3387,27 @@ async fn promote_dataset_handler(
         }
     } else if !req.new_type_name.is_empty() {
         let name = req.new_type_name.trim().to_lowercase().replace(' ', "_");
-        match db().create_entity_type(&name, &req.new_type_name, "#6366f1", "cube", req.fold_id.as_deref(), "entity", None).await {
+        // Assign a distinct color based on a hash of the ET name so each type looks different
+        let color = {
+            const PALETTE: &[&str] = &[
+                "#6366f1","#8b5cf6","#ec4899","#14b8a6","#f59e0b",
+                "#10b981","#3b82f6","#f97316","#ef4444","#84cc16",
+                "#06b6d4","#d946ef","#a855f7","#22c55e","#0ea5e9",
+            ];
+            let h = name.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+            PALETTE[(h as usize) % PALETTE.len()]
+        };
+        match db().create_entity_type(&name, &req.new_type_name, color, "cube", req.fold_id.as_deref(), "entity", None).await {
             Ok(t) => (t.id, t.display_name),
+            Err(e) if e.to_string().contains("UNIQUE") => {
+                // Already exists — find and reuse
+                let types = db().list_entity_types().await.unwrap_or_default();
+                match types.into_iter().find(|t| t.name == name || t.display_name == req.new_type_name) {
+                    Some(t) => (t.id, t.display_name),
+                    None => return (StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+                }
+            }
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
         }
@@ -3173,8 +3496,10 @@ async fn promote_dataset_handler(
     }
     let total = raw_records.len();
 
-    // ── Resolve FK links → ontology_links ────────────────────────────────────
-    let links_resolved = db().resolve_links_for_dataset(&dataset_id).await.unwrap_or(0);
+    // ── Resolve FK links → ontology_links (current + all other datasets) ─────
+    let links_resolved = db().resolve_all_links().await.unwrap_or(0);
+    // Auto-detect runs after resolve so it clears+rebuilds with correct AR direction
+    let _ = db().auto_detect_links().await;
 
     // ── Mark dataset as promoted ──────────────────────────────────────────────
     let _ = db().update_dataset_entity_type(&dataset_id, &et_id).await;
@@ -3982,7 +4307,30 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/ontology/schema/:id", axum::routing::delete(delete_entity_type_handler))
         .route("/api/ontology/schema/:id/fields", post(add_field_handler))
         .route("/api/ontology/schema/:id/fold", axum::routing::put(update_entity_type_fold_handler))
+        .route("/api/ontology/schema/:id/bc", axum::routing::put(set_et_bc_handler))
+        .route("/api/ontology/schema/:id/ddd-role", axum::routing::put(set_et_ddd_role_handler))
+        .route("/api/ontology/schema/:id/status", axum::routing::put(set_et_status_handler))
+        .route("/api/ontology/schema/:id/lineage", get(get_et_lineage_handler))
+        .route("/api/ontology/schema/:id/interfaces", get(list_et_interfaces_handler).post(add_et_interface_handler))
+        .route("/api/ontology/schema/:id/interfaces/:iface_id", axum::routing::delete(remove_et_interface_handler))
         .route("/api/ontology/fields/:id", axum::routing::delete(delete_field_handler))
+        .route("/api/ontology/fields/:id/type", axum::routing::put(update_field_type_handler))
+        .route("/api/ontology/fields/:id/safe-delete", axum::routing::delete(delete_field_safe_handler).post(delete_field_safe_handler))
+        // P2a: Bounded Contexts
+        .route("/api/folds/:id/bounded-contexts", get(list_bcs_handler).post(create_bc_handler))
+        .route("/api/bounded-contexts/:id", axum::routing::delete(delete_bc_handler))
+        .route("/api/bc-relationships", post(create_bc_relationship_handler))
+        .route("/api/bc-relationships/:id", axum::routing::delete(delete_bc_relationship_handler))
+        .route("/api/shared-kernels", get(list_shared_kernels_handler))
+        .route("/api/projects/:id/context-map", get(get_context_map_handler))
+        // FK auto-link
+        .route("/api/ontology/auto-link", post(auto_detect_links_handler))
+        // P1: BC Inference
+        .route("/api/folds/:id/bcs/infer", get(infer_child_bcs_handler))
+        .route("/api/folds/:id/bcs/apply-suggestions", post(apply_bc_suggestions_handler))
+        // P2c: Interfaces
+        .route("/api/interfaces", get(list_interfaces_handler).post(create_interface_handler))
+        .route("/api/interfaces/:id", axum::routing::delete(delete_interface_handler))
         // Ontology ABox (Objects)
         .route("/api/ontology/objects", get(list_objects_handler).post(create_object_handler))
         .route(

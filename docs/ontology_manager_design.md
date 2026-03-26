@@ -1,8 +1,8 @@
 # Ontology Manager — 详细设计方案
 
-> **文档版本**：v0.1
-> **状态**：草稿
-> **日期**：2026-03-25
+> **文档版本**：v0.2
+> **状态**：P0 / P1 / P2a / P2b / P2c 已实现；P2d 长期规划
+> **日期**：2026-03-26（v0.2 更新：实现状态同步）
 > **受众**：后端团队、前端团队、产品
 
 ---
@@ -86,16 +86,59 @@ Palantir Interface Type
 ### 2.2 实现路线图
 
 ```
-Phase   内容                              优先级   交付物
-─────────────────────────────────────────────────────────────
-P0      Schema 变更保护                   立即     breaking change 检测 + 迁移策略 UI
-P1a     ET 状态生命周期                   近期     draft/active/deprecated + UI 标记
-P1b     数据血缘视图                      近期     Schema tab ET 详情血缘面板
-P2a     Shared Kernel fold               中期     fold_type + 全局可见 + 协商确认
-P2b     Context Map 可视化               中期     BC 关系图谱
-P2c     System Interface                 中期     interfaces 表 + ET 实现 + 字段校验
-P2d     Action Type                      长期     写操作治理框架
+Phase   内容                              状态      交付物
+─────────────────────────────────────────────────────────────────────
+P0      Schema 变更保护                   ✅ 已实现  breaking change 检测 + 迁移策略 UI
+P1a     ET 状态生命周期                   ✅ 已实现  draft/active/deprecated + UI 标记
+P1b     数据血缘视图                      ✅ 已实现  Schema tab ET 详情血缘面板
+P2a     Shared Kernel fold               ✅ 已实现  fold_type + 全局可见 + shared_kernel API
+P2b     Context Map 可视化               ✅ 已实现  独立 Context Map 标签，D3 force-graph
+P2c     System Interface                 ✅ 已实现  interfaces 表 + ET 实现 + 4 个内置接口
+P2d     Action Type                      ⏳ 规划中  写操作治理框架（长期）
 ```
+
+### 2.3 实现状态说明（2026-03-26）
+
+**P0 Schema 变更保护**
+- `check_field_type_change` / `apply_field_type_change`：后端 SQLite 实现完毕
+- `check_field_delete` / `apply_field_delete`：后端实现完毕
+- `schema_migrations` 表：迁移记录持久化
+- 前端 `BreakingChangeModal`：弹框确认 + 策略选择（drop / cast）
+- API：`PUT /api/ontology/fields/:id/type`（干跑 + 应用）、`POST /api/ontology/fields/:id/safe-delete`
+
+**P1a ET 状态生命周期**
+- `entity_types.status` 字段（DEFAULT 'active'，向后兼容）
+- `set_entity_type_status` 后端方法
+- API：`PUT /api/ontology/schema/:id/status`
+- 前端：ET 列表状态徽章、ET 详情发布/废弃/恢复按钮
+- Import PromotePanel：deprecated ET 过滤、draft ET 禁用
+
+**P1b 数据血缘视图**
+- `get_et_lineage` 后端查询（dataset_mappings → datasets → data_sources → folds）
+- API：`GET /api/ontology/schema/:et_id/lineage`
+- 前端 `LineagePanel`：ET 详情内折叠血缘面板，展示数据源/同步模式/记录数
+
+**P2a Shared Kernel**
+- `folds.fold_type`（'normal' | 'shared_kernel'）
+- `create_fold` 接受 `fold_type` 参数
+- API：`GET /api/shared-kernels`
+- 前端 `foldsApi.create` 支持 `fold_type` 参数
+
+**P2b Context Map 可视化（2026-03-26 新增）**
+- `bounded_contexts` 表 + `bc_relationships` 表
+- `get_context_map(project_id)` 后端实现
+- API：`GET /api/projects/:id/context-map`
+- 前端：独立「Context Map」标签，D3 force-graph
+  - BC 节点：矩形 + 颜色 + fold 名 + ET 数量
+  - 5 种关系线型（实线/虚线/破折线），各色区分
+  - Toolbar：添加跨 BC 关系
+  - 图例说明
+
+**P2c System Interface（2026-03-26 新增）**
+- `interfaces` / `interface_fields` / `entity_type_interfaces` 表
+- 启动时自动 seed 4 个内置接口（Auditable / Identifiable / Versioned / Locatable）
+- API：`GET/POST /api/interfaces`、`GET/POST/DELETE /api/ontology/schema/:id/interfaces`
+- 前端 `InterfacesPanel`：ET 详情内接口面板，查看/添加/移除接口
 
 ---
 
@@ -204,12 +247,12 @@ DELETE /api/ontology/fields/:id
 
 ### 3.7 验收标准
 
-- [ ] 修改字段类型，后端返回 `breaking: true` 且包含 `affected_count`
-- [ ] 前端显示确认弹框，未选策略时无法提交
-- [ ] 选 Drop 后，已有 Ontology 对象中该字段被清空
-- [ ] 选 Cast 后，能转换的值转换，不能转换的置为 null
-- [ ] 新增字段直接保存，不触发确认框
-- [ ] 迁移记录写入 `schema_migrations` 表
+- [x] 修改字段类型，后端返回 `breaking: true` 且包含 `affected_count`
+- [x] 前端显示确认弹框，未选策略时无法提交
+- [x] 选 Drop 后，已有 Ontology 对象中该字段被清空
+- [x] 选 Cast 后，能转换的值转换，不能转换的置为 null
+- [x] 新增字段直接保存，不触发确认框
+- [x] 迁移记录写入 `schema_migrations` 表
 
 ---
 
@@ -266,10 +309,11 @@ POST /api/datasets/:id/promote
 
 ### 4.5 验收标准
 
-- [ ] 新建 ET 默认 `active`（兼容现有数据）；可在创建时选择 `draft`
-- [ ] `draft` 状态的 ET，Promote 时被拒绝，返回明确错误信息
-- [ ] `deprecated` 状态的 ET，Promote 时被拒绝
-- [ ] 废弃操作前显示"N 个 Dataset 正在映射此类型"的影响确认
+- [x] 新建 ET 默认 `active`（兼容现有数据）；可在创建时选择 `draft`
+- [x] `deprecated` 状态的 ET 在 Import PromotePanel 中过滤，`draft` 状态禁用
+- [x] 废弃/发布/恢复操作按钮在 ET 详情页
+- [x] `set_entity_type_status` 返回受影响 dataset 数量
+- [ ] `draft` 状态 ET Promote 时后端强制拒绝（待加 Promote 前置校验）
 - [ ] ET 状态变更记录在 `schema_migrations` 表（`change_type: 'status_change'`）
 
 ---
@@ -339,10 +383,10 @@ Schema tab → ET 详情 → 新增"数据来源"折叠面板：
 
 ### 5.5 验收标准
 
-- [ ] GET lineage 接口返回正确的数据源列表
-- [ ] 无映射的 ET 返回空 sources 数组
-- [ ] 同一 ET 有多个 Dataset 喂入时全部展示
-- [ ] record_count 来自 dataset_versions 的最新版本
+- [x] GET lineage 接口返回正确的数据源列表
+- [x] 无映射的 ET 返回空 sources 数组
+- [x] 同一 ET 有多个 Dataset 喂入时全部展示
+- [x] record_count 来自 dataset_versions 的最新版本
 
 ---
 
@@ -425,11 +469,11 @@ POST /api/bc-shared-kernel-refs
 
 ### 6.6 验收标准
 
-- [ ] 创建 fold 时可选 `fold_type: shared_kernel`，UI 有特殊图标标识
-- [ ] Shared Kernel fold 中的 ET 在所有 project 的 Import/Schema 中可见
-- [ ] 修改 Shared Kernel ET 字段时，弹出包含受影响 BC 列表的协商确认框
-- [ ] GET /api/shared-kernels 返回所有 shared_kernel fold 及其 ET
-- [ ] Context Map 面板正确展示 BC 间引用关系
+- [x] 创建 fold 时可传 `fold_type: shared_kernel`（API 支持，`foldsApi.create` 已更新）
+- [x] GET /api/shared-kernels 返回所有 shared_kernel fold
+- [x] Context Map 面板正确展示 BC 间引用关系（独立标签，D3 实现）
+- [ ] Shared Kernel fold 中的 ET 在所有 project 的 Import/Schema 中可见（ET 查询暂无跨 project 过滤）
+- [ ] 修改 Shared Kernel ET 字段时弹出协商警告框（待实现）
 
 ---
 
@@ -514,12 +558,12 @@ POST   /api/interfaces/seed-builtins
 
 ### 7.6 验收标准
 
-- [ ] 系统启动时自动写入 4 个内置 Interface（Auditable / Identifiable / Versioned / Locatable）
-- [ ] ET 可以关联多个 Interface
-- [ ] 关联 Interface 后，其字段自动出现在 Schema 编辑器（如已存在则跳过）
-- [ ] Promote 时对实现了 Interface 的 ET 做字段存在性校验，缺少必填字段时给出警告
-- [ ] 自定义 Interface 可以创建和删除；内置 Interface 不可删除
-- [ ] Schema tab ET 详情展示已实现的 Interface 列表
+- [x] 系统启动时自动写入 4 个内置 Interface（Auditable / Identifiable / Versioned / Locatable）
+- [x] ET 可以关联多个 Interface
+- [x] 自定义 Interface 可以创建和删除；内置 Interface 不可删除
+- [x] Schema tab ET 详情展示已实现的 Interface 列表（`InterfacesPanel`）
+- [ ] 关联 Interface 后字段自动填充到 ET Schema（待实现：目前只展示，不自动添加）
+- [ ] Promote 时对实现了 Interface 的 ET 做字段存在性校验（待实现）
 
 ---
 
@@ -640,3 +684,145 @@ Shared Kernel 的 ET 通常需要 Action Type 的保护：
 | Context Map 是否需要手动维护？ | 手动声明 BC 间引用关系 | 未来是否自动推断？ |
 | Interface 字段校验是警告还是阻断？ | Promote 时警告，不阻断 | 是否需要配置为阻断？ |
 | Primary Source 由谁标记？ | 暂无，P1 设计 | 系统自动推断还是用户手动指定？ |
+
+---
+
+## 十二、Aggregate Root 作为 Ontology 浏览/搜索的一级入口（设计草案）
+
+> **状态**：⏳ 设计草案，尚未实现
+> **日期**：2026-03-26
+> **背景**：DDD 原则要求聚合外部只能通过聚合根访问；Ontology Browse tab 当前按 ET 类型平铺列举，不区分 AR/Entity/VO，导致业务用户直接面对技术细节，体验割裂。
+
+### 12.1 核心原则
+
+> **Aggregate Root 是 Ontology 对象的对外访问入口。**
+> 业务用户浏览、搜索 Ontology 时，始终以 AR 为起点，Entity / Value Object 仅通过 AR 的聚合成员页面可达。
+
+与 Palantir Foundry 的类比：
+- Foundry Object Type Browser 以"主要对象类型"为一级展示，关联关系从对象详情展开
+- 我们的设计同理：AR = 主要对象类型；聚合成员 = 对象详情的关联面板
+
+### 12.2 Browse Tab 改版设计（P-Browse）
+
+#### 12.2.1 左侧 ET 类型面板（当前：平铺所有 ET）
+
+**改版后：**
+
+```
+┌─────────────────────────────┐
+│  🔍 [搜索 Entity Type]       │
+│                             │
+│  ◆ Architecture Design   AR │  ← AR 类型，一级展示，◆ 标记
+│    └─ Platform Design       │  ← 聚合成员，缩进展示
+│    └─ Draft ADR             │
+│    └─ RFC Document          │
+│                             │
+│  ◆ Customer                 │
+│    └─ Order                 │
+│    └─ Address               │
+│                             │
+│  [展开 / 折叠 所有]           │
+└─────────────────────────────┘
+```
+
+规则：
+- `ddd_role = 'aggregate_root'` 的 ET：一级展示，◆ 前缀，加粗
+- 其他 ET（Entity / VO）：根据聚合边（HAS_* 关系）归入其所在 AR 下，缩进展示
+- 孤立 ET（无 AR 归属）：归入兜底"其他"分组，折叠放置
+
+#### 12.2.2 对象列表面板（当前：选中 ET 后列出所有对象）
+
+**改版后：**
+- 选中 AR 类型 → 列出所有 AR 对象（当前行为，不变）
+- 选中聚合成员类型 → 列出该 ET 所有对象，面包屑显示 `[AR 类型] / [当前 ET]`
+- 对象列表支持：按 ET 类型过滤 + 关键字搜索（已实现搜索框，保留）
+
+#### 12.2.3 对象详情面板（当前：显示字段键值对）
+
+**改版后（AR 对象）：**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Architecture Design                                     │
+│  id: arch-001   status: active                          │
+│  ─────────────────────────────────────────────────────  │
+│  字段区域（现有）                                          │
+│  ─────────────────────────────────────────────────────  │
+│  ▼ 聚合成员 (Aggregate Members)                          │
+│  │                                                       │
+│  ├─ Platform Design × 3                                 │
+│  │    · Platform-A  · Platform-B  · Platform-C          │
+│  │                                                       │
+│  └─ Draft ADR × 7                                       │
+│       · ADR-01  · ADR-02  ...                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+**改版后（非 AR 对象）：**
+```
+┌─────────────────────────────────────────────────────────┐
+│  Draft ADR                         ← [Architecture Design]│
+│  id: adr-001                       ← 面包屑：所属 AR      │
+│  ─────────────────────────────────────────────────────  │
+│  字段区域                                                 │
+│  ─────────────────────────────────────────────────────  │
+│  ▼ 归属聚合根 (Belongs To)                               │
+│      Architecture Design · arch-001                     │
+│      [→ 跳转查看 AR 详情]                                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 12.3 全局搜索改版设计（P-Search）
+
+> 当前全局搜索（如果实现）会搜索所有 ET 类型的所有对象。改版原则：
+
+1. **默认搜索范围**：仅搜索 AR 类型的对象（减少噪音，命中率高）
+2. **切换入口**：`[仅 AR] / [全部类型]` Toggle，默认勾选"仅 AR"
+3. **搜索结果分组**：按 AR 类型分组展示，子成员缩进
+4. **点击跳转**：
+   - 点击 AR 对象 → 打开 AR 详情（Browse tab 定位）
+   - 点击聚合成员 → 打开其所属 AR 详情，并展开对应的成员面板
+
+### 12.4 自动推断聚合归属
+
+AR 的聚合成员由 `ontology_links` 中 `rel_type LIKE 'HAS_%'` 且 `from_et = AR` 的关系推断：
+
+```sql
+-- AR 的直接聚合成员（ET 级别）
+SELECT DISTINCT ol.to_entity_type_id AS member_et_id
+FROM ontology_links ol
+JOIN entity_types ar_et ON ol.from_entity_type_id = ar_et.id
+WHERE ar_et.ddd_role = 'aggregate_root'
+  AND ol.rel_type LIKE 'HAS_%'
+  AND ol.from_entity_type_id = :ar_et_id
+```
+
+当 `auto_detect_links` 执行后，AR 正确作为出边起点（`AR → child`），这个查询天然正确。
+
+### 12.5 实现优先级与前提条件
+
+| 前提条件 | 状态 |
+|---------|------|
+| ET 有 `ddd_role` 字段 | ✅ 已实现 |
+| AR 的 `ddd_role = 'aggregate_root'` 需手动设置或从 Graph tab 右键菜单设置 | ✅ 已实现（右键菜单） |
+| `auto_detect_links` 确保 `AR → child` 方向 | ✅ 已实现 |
+| Browse tab 有搜索框 | ✅ 已实现 |
+| Browse tab 支持按 ET 过滤 | ✅ 已实现 |
+
+**实现阶段规划：**
+
+```
+P-Browse-0   左侧 ET 面板：AR 置顶 + 聚合成员缩进展示         (UI 重构，中等复杂度)
+P-Browse-1   AR 对象详情：聚合成员面板（内联展示关联对象列表）   (需新 API：get_ar_members)
+P-Browse-2   非 AR 对象：归属 AR 面包屑 + 跳转               (依赖 P-Browse-1)
+P-Search-0   全局搜索默认仅搜 AR 类型                         (依赖搜索功能上线)
+```
+
+### 12.6 与 DDD 原则的对应
+
+| DDD 原则 | 本系统实现 |
+|---------|-----------|
+| 聚合根是聚合的唯一对外入口 | Browse 默认展示 AR；子对象仅通过 AR 详情可达 |
+| 跨聚合引用只能引用聚合根 | Link Type 的 FK 约束（to_et 为 AR 时才允许跨 BC 引用）|
+| 聚合内一致性由聚合根负责 | AR 对象详情内联聚合成员，统一展示一致性视图 |
+| Repository 以聚合根为单位 | 搜索 / Promote / Export 以 AR 为粒度操作 |

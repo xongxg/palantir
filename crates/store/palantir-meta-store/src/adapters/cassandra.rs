@@ -31,8 +31,9 @@ impl MetadataStore for CassandraStore {
     async fn project_stats(&self, _pid: &str) -> Result<(i64, Option<String>, String)> { ni!() }
     async fn touch_project(&self, _id: &str) -> Result<()> { ni!() }
 
-    async fn create_fold(&self, _pid: &str, _name: &str, _desc: Option<&str>) -> Result<FoldRow> { ni!() }
+    async fn create_fold(&self, _pid: &str, _name: &str, _desc: Option<&str>, _ft: Option<&str>) -> Result<FoldRow> { ni!() }
     async fn list_folds(&self, _pid: &str) -> Result<Vec<FoldRow>> { ni!() }
+    async fn list_shared_kernel_folds(&self) -> Result<Vec<serde_json::Value>> { ni!() }
     async fn get_fold(&self, _id: &str) -> Result<Option<FoldRow>> { ni!() }
     async fn delete_fold(&self, _id: &str) -> Result<()> { ni!() }
     async fn fold_stats(&self, _id: &str) -> Result<(i64, i64, String)> { ni!() }
@@ -42,11 +43,19 @@ impl MetadataStore for CassandraStore {
     async fn list_entity_types_for_fold(&self, _fid: &str) -> Result<Vec<EntityTypeRow>> { ni!() }
     async fn update_entity_type_ddd_role(&self, _id: &str, _role: &str) -> Result<()> { ni!() }
     async fn update_entity_type_fold(&self, _id: &str, _fid: Option<&str>) -> Result<()> { ni!() }
+    async fn update_entity_type_bc(&self, _id: &str, _bid: Option<&str>) -> Result<()> { ni!() }
+    async fn count_objects_for_et(&self, _etid: &str) -> Result<i64> { ni!() }
+    async fn set_entity_type_status(&self, _etid: &str, _s: &str) -> Result<i64> { ni!() }
     async fn delete_entity_type(&self, _id: &str) -> Result<()> { ni!() }
 
-    async fn add_entity_field(&self, _etid: &str, _n: &str, _dt: &str, _req: bool, _cls: &str) -> Result<EntityFieldRow> { ni!() }
+    async fn add_entity_field(&self, _etid: &str, _n: &str, _dt: &str, _req: bool, _cls: &str, _so: i64) -> Result<EntityFieldRow> { ni!() }
     async fn list_entity_fields(&self, _etid: &str) -> Result<Vec<EntityFieldRow>> { ni!() }
+    async fn check_field_type_change(&self, _fid: &str, _nt: &str) -> Result<BreakingChangeInfo> { ni!() }
+    async fn apply_field_type_change(&self, _fid: &str, _nt: &str, _s: &str) -> Result<SchemaMigrationRow> { ni!() }
+    async fn check_field_delete(&self, _fid: &str) -> Result<BreakingChangeInfo> { ni!() }
+    async fn apply_field_delete(&self, _fid: &str) -> Result<SchemaMigrationRow> { ni!() }
     async fn delete_entity_field(&self, _id: &str) -> Result<()> { ni!() }
+    async fn get_et_lineage(&self, _etid: &str) -> Result<serde_json::Value> { ni!() }
 
     async fn upsert_ontology_object(&self, _etid: &str, _etn: &str, _l: &str, _f: &str, _dsid: &str, _eid: &str, _sm: &str) -> Result<String> { ni!() }
     async fn create_ontology_object_with_lineage(&self, _etid: &str, _etn: &str, _l: &str, _f: &str, _dsid: &str, _srid: &str) -> Result<OntologyObjectRow> { ni!() }
@@ -111,6 +120,24 @@ impl MetadataStore for CassandraStore {
     async fn get_link_type_mappings(&self, _dsid: &str) -> Result<Vec<serde_json::Value>> { ni!() }
     async fn list_schema_links(&self) -> Result<Vec<serde_json::Value>> { ni!() }
     async fn resolve_links_for_dataset(&self, _dsid: &str) -> Result<usize> { ni!() }
+
+    async fn create_bounded_context(&self, _fid: &str, _n: &str, _c: &str, _ad: bool) -> Result<BoundedContextRow> { ni!() }
+    async fn list_bounded_contexts(&self, _fid: &str) -> Result<Vec<BoundedContextRow>> { ni!() }
+    async fn delete_bounded_context(&self, _id: &str) -> Result<()> { ni!() }
+    async fn create_bc_relationship(&self, _f: &str, _t: &str, _rt: &str, _n: Option<&str>) -> Result<BcRelationshipRow> { ni!() }
+    async fn list_bc_relationships(&self, _bid: &str) -> Result<Vec<BcRelationshipRow>> { ni!() }
+    async fn delete_bc_relationship(&self, _id: &str) -> Result<()> { ni!() }
+    async fn get_context_map(&self, _pid: &str) -> Result<serde_json::Value> { ni!() }
+
+    async fn list_interfaces(&self) -> Result<Vec<serde_json::Value>> { ni!() }
+    async fn create_interface(&self, _n: &str, _d: Option<&str>) -> Result<InterfaceRow> { ni!() }
+    async fn delete_interface(&self, _id: &str) -> Result<()> { ni!() }
+    async fn list_et_interfaces(&self, _etid: &str) -> Result<Vec<serde_json::Value>> { ni!() }
+    async fn add_et_interface(&self, _etid: &str, _iid: &str) -> Result<()> { ni!() }
+    async fn remove_et_interface(&self, _etid: &str, _iid: &str) -> Result<()> { ni!() }
+
+    async fn infer_child_bcs(&self, _fold_id: &str) -> Result<serde_json::Value> { ni!() }
+    async fn apply_bc_suggestions(&self, _fold_id: &str, _suggestions: &[serde_json::Value]) -> Result<Vec<serde_json::Value>> { ni!() }
 
     async fn get_platform_config(&self, _key: &str) -> Result<Option<String>> { ni!() }
     async fn set_platform_config(&self, _key: &str, _val: &str) -> Result<()> { ni!() }

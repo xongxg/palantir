@@ -5,6 +5,7 @@ use palantir_meta_store::{
     ProjectRow, ConnectorRow, EntityRow, BuildRow, RelRow,
     EntityTypeRow, EntityFieldRow, OntologyObjectRow, OntologyLinkRow,
     LinkTypeMappingInput, FoldRow, DataSourceRow, SyncRunRow, DatasetRow, DatasetVersionRow,
+    BoundedContextRow, BcRelationshipRow, InterfaceRow, SchemaMigrationRow, BreakingChangeInfo,
 };
 
 // ── Db ────────────────────────────────────────────────────────────────────────
@@ -387,6 +388,67 @@ impl Db {
         .execute(&self.pool)
         .await?;
 
+        // ── P0: Schema migration history ──────────────────────────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                id             TEXT PRIMARY KEY,
+                et_id          TEXT NOT NULL REFERENCES entity_types(id) ON DELETE CASCADE,
+                field_name     TEXT NOT NULL,
+                change_type    TEXT NOT NULL,
+                old_value      TEXT,
+                new_value      TEXT,
+                strategy       TEXT NOT NULL DEFAULT 'drop',
+                affected_count INTEGER NOT NULL DEFAULT 0,
+                applied_by     TEXT,
+                applied_at     TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // ── P1a: ET status lifecycle (idempotent) ──────────────────────────────
+        let _ = sqlx::query(
+            "ALTER TABLE entity_types ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // ── P2c: System Interface tables ───────────────────────────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS interfaces (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL UNIQUE,
+                description TEXT,
+                is_builtin  INTEGER NOT NULL DEFAULT 0,
+                created_at  TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS interface_fields (
+                interface_id TEXT NOT NULL REFERENCES interfaces(id) ON DELETE CASCADE,
+                field_name   TEXT NOT NULL,
+                field_type   TEXT NOT NULL,
+                required     INTEGER NOT NULL DEFAULT 1,
+                description  TEXT,
+                PRIMARY KEY (interface_id, field_name)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS entity_type_interfaces (
+                et_id        TEXT NOT NULL REFERENCES entity_types(id) ON DELETE CASCADE,
+                interface_id TEXT NOT NULL REFERENCES interfaces(id) ON DELETE CASCADE,
+                PRIMARY KEY (et_id, interface_id)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Seed a "default" entity type used when syncing without an explicit mapping.
         // INSERT OR IGNORE so it is idempotent.
         sqlx::query(
@@ -397,6 +459,64 @@ impl Db {
         .execute(&self.pool)
         .await?;
 
+        // Seed built-in System Interfaces (idempotent via INSERT OR IGNORE)
+        self.seed_builtin_interfaces().await?;
+
+        Ok(())
+    }
+
+    async fn seed_builtin_interfaces(&self) -> Result<()> {
+        let now = Self::now_iso();
+        let builtins: &[(&str, &str, &str, &[(&str, &str, bool, &str)])] = &[
+            ("iface_auditable", "Auditable", "记录创建/更新时间和操作者", &[
+                ("created_at", "datetime", true, "创建时间"),
+                ("updated_at", "datetime", true, "最后更新时间"),
+                ("updated_by", "string",   false, "最后更新者"),
+            ]),
+            ("iface_identifiable", "Identifiable", "业务标识与展示名", &[
+                ("id",          "string", true,  "业务标识"),
+                ("name",        "string", true,  "展示名"),
+                ("external_id", "string", false, "外部系统 ID"),
+            ]),
+            ("iface_versioned", "Versioned", "版本与有效期", &[
+                ("version",    "integer",  true,  "版本号"),
+                ("valid_from", "datetime", false, "有效开始时间"),
+                ("valid_to",   "datetime", false, "有效结束时间"),
+            ]),
+            ("iface_locatable", "Locatable", "地理位置信息", &[
+                ("latitude",  "float",  false, "纬度"),
+                ("longitude", "float",  false, "经度"),
+                ("address",   "string", false, "地址"),
+            ]),
+        ];
+
+        for (id, name, desc, fields) in builtins {
+            sqlx::query(
+                "INSERT OR IGNORE INTO interfaces (id, name, description, is_builtin, created_at)
+                 VALUES (?, ?, ?, 1, ?)",
+            )
+            .bind(id)
+            .bind(name)
+            .bind(desc)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+
+            for (fname, ftype, req, fdesc) in *fields {
+                sqlx::query(
+                    "INSERT OR IGNORE INTO interface_fields
+                     (interface_id, field_name, field_type, required, description)
+                     VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(id)
+                .bind(fname)
+                .bind(ftype)
+                .bind(if *req { 1i64 } else { 0i64 })
+                .bind(fdesc)
+                .execute(&self.pool)
+                .await?;
+            }
+        }
         Ok(())
     }
 
@@ -405,6 +525,42 @@ impl Db {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs().to_string())
             .unwrap_or_else(|_| "0".into())
+    }
+
+    fn now_iso() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        // Format as ISO-8601 UTC using simple arithmetic (no chrono dep needed)
+        let s = secs % 60;
+        let m = (secs / 60) % 60;
+        let h = (secs / 3600) % 24;
+        let days = secs / 86400;
+        // days since 1970-01-01
+        let (y, mo, d) = Self::days_to_ymd(days);
+        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, m, s)
+    }
+
+    fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+        let mut y = 1970u64;
+        loop {
+            let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+            let ydays = if leap { 366 } else { 365 };
+            if days < ydays { break; }
+            days -= ydays;
+            y += 1;
+        }
+        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+        let mdays = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let mut mo = 1u64;
+        for md in &mdays {
+            if days < *md { break; }
+            days -= md;
+            mo += 1;
+        }
+        (y, mo, days + 1)
     }
 
     // ── Projects ──────────────────────────────────────────────────────────────
@@ -759,60 +915,55 @@ impl Db {
             color: color.to_string(),
             icon: icon.to_string(),
             fold_id: fold_id.map(|s| s.to_string()),
+            bc_id: None,
             namespace: namespace.map(|s| s.to_string()),
             ddd_role: ddd_role.to_string(),
+            status: "active".to_string(),
             created_at: now,
         })
     }
 
     pub async fn list_entity_types(&self) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, fold_id, namespace,
-                    COALESCE(ddd_role, 'entity') as ddd_role, created_at
+            "SELECT id, name, display_name, color, icon, fold_id, bc_id, namespace,
+                    COALESCE(ddd_role, 'entity') as ddd_role,
+                    COALESCE(status, 'active') as status, created_at
              FROM entity_types ORDER BY created_at ASC",
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows
-            .into_iter()
-            .map(|r| EntityTypeRow {
-                id: r.get("id"),
-                name: r.get("name"),
-                display_name: r.get("display_name"),
-                color: r.get("color"),
-                icon: r.get("icon"),
-                fold_id: r.get("fold_id"),
-                namespace: r.get("namespace"),
-                ddd_role: r.get("ddd_role"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+        Ok(rows.into_iter().map(Self::row_to_et).collect())
     }
 
     /// List entity types belonging to a specific fold.
     pub async fn list_entity_types_for_fold(&self, fold_id: &str) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, fold_id, namespace,
-                    COALESCE(ddd_role, 'entity') as ddd_role, created_at
+            "SELECT id, name, display_name, color, icon, fold_id, bc_id, namespace,
+                    COALESCE(ddd_role, 'entity') as ddd_role,
+                    COALESCE(status, 'active') as status, created_at
              FROM entity_types WHERE fold_id = ? ORDER BY created_at ASC",
         )
         .bind(fold_id)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows
-            .into_iter()
-            .map(|r| EntityTypeRow {
-                id: r.get("id"),
-                name: r.get("name"),
-                display_name: r.get("display_name"),
-                color: r.get("color"),
-                icon: r.get("icon"),
-                fold_id: r.get("fold_id"),
-                namespace: r.get("namespace"),
-                ddd_role: r.get("ddd_role"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+        Ok(rows.into_iter().map(Self::row_to_et).collect())
+    }
+
+    fn row_to_et(r: sqlx::sqlite::SqliteRow) -> EntityTypeRow {
+        use sqlx::Row;
+        EntityTypeRow {
+            id: r.get("id"),
+            name: r.get("name"),
+            display_name: r.get("display_name"),
+            color: r.get("color"),
+            icon: r.get("icon"),
+            fold_id: r.get("fold_id"),
+            bc_id: r.get("bc_id"),
+            namespace: r.get("namespace"),
+            ddd_role: r.get("ddd_role"),
+            status: r.get("status"),
+            created_at: r.get("created_at"),
+        }
     }
 
     pub async fn update_entity_type_ddd_role(&self, et_id: &str, ddd_role: &str) -> Result<()> {
@@ -831,6 +982,369 @@ impl Db {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    pub async fn update_entity_type_bc(&self, et_id: &str, bc_id: Option<&str>) -> Result<()> {
+        sqlx::query("UPDATE entity_types SET bc_id = ? WHERE id = ?")
+            .bind(bc_id)
+            .bind(et_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Returns count of ontology_objects for this entity type.
+    pub async fn count_objects_for_et(&self, et_id: &str) -> Result<i64> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ontology_objects WHERE entity_type_id = ?",
+        )
+        .bind(et_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(n)
+    }
+
+    /// P1a: set ET status. Returns count of datasets currently mapped to this ET.
+    pub async fn set_entity_type_status(&self, et_id: &str, status: &str) -> Result<i64> {
+        sqlx::query("UPDATE entity_types SET status = ? WHERE id = ?")
+            .bind(status)
+            .bind(et_id)
+            .execute(&self.pool)
+            .await?;
+        // Count datasets that reference this ET
+        let affected: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM object_type_mappings WHERE entity_type_id = ?",
+        )
+        .bind(et_id)
+        .fetch_one(&self.pool)
+        .await?;
+        // Record in schema_migrations
+        let now = Self::now_iso();
+        let mid = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO schema_migrations
+             (id, et_id, field_name, change_type, old_value, new_value, strategy, affected_count, applied_at)
+             VALUES (?, ?, '', 'status_change', NULL, ?, 'drop', ?, ?)",
+        )
+        .bind(&mid)
+        .bind(et_id)
+        .bind(status)
+        .bind(affected)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(affected)
+    }
+
+    // ── P0: Breaking change detection + migration ──────────────────────────
+
+    /// Check if changing field type would be a breaking change.
+    pub async fn check_field_type_change(&self, field_id: &str, new_type: &str) -> Result<BreakingChangeInfo> {
+        use palantir_meta_store::BreakingChangeInfo;
+        let row = sqlx::query(
+            "SELECT ef.entity_type_id, ef.data_type, ef.name
+             FROM entity_fields ef WHERE ef.id = ?",
+        )
+        .bind(field_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (et_id, old_type, _field_name) = match row {
+            Some(r) => (r.get::<String,_>("entity_type_id"), r.get::<String,_>("data_type"), r.get::<String,_>("name")),
+            None => return Err(anyhow::anyhow!("field not found")),
+        };
+
+        if old_type == new_type {
+            return Ok(BreakingChangeInfo {
+                breaking: false, affected_count: 0,
+                change_type: "type_change".into(),
+                old_value: Some(old_type), new_value: Some(new_type.to_string()),
+                strategies: vec![],
+            });
+        }
+
+        let affected: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ontology_objects WHERE entity_type_id = ?",
+        )
+        .bind(&et_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Determine available strategies
+        let strategies = if Self::types_castable(&old_type, new_type) {
+            vec!["drop".to_string(), "cast".to_string()]
+        } else {
+            vec!["drop".to_string()]
+        };
+
+        Ok(BreakingChangeInfo {
+            breaking: affected > 0,
+            affected_count: affected,
+            change_type: "type_change".into(),
+            old_value: Some(old_type),
+            new_value: Some(new_type.to_string()),
+            strategies,
+        })
+    }
+
+    fn types_castable(from: &str, to: &str) -> bool {
+        matches!((from, to),
+            ("string", "integer") | ("string", "float") | ("string", "boolean") |
+            ("integer", "float") | ("integer", "string") | ("float", "string") |
+            ("boolean", "string") | ("boolean", "integer")
+        )
+    }
+
+    /// Apply field type change: update schema + migrate existing object data.
+    pub async fn apply_field_type_change(
+        &self, field_id: &str, new_type: &str, strategy: &str,
+    ) -> Result<SchemaMigrationRow> {
+        use palantir_meta_store::SchemaMigrationRow;
+        // Get field info
+        let row = sqlx::query(
+            "SELECT ef.id, ef.entity_type_id, ef.data_type, ef.name
+             FROM entity_fields ef WHERE ef.id = ?",
+        )
+        .bind(field_id)
+        .fetch_one(&self.pool)
+        .await?;
+        let et_id: String = row.get("entity_type_id");
+        let old_type: String = row.get("data_type");
+        let field_name: String = row.get("name");
+
+        // 1. Update schema
+        sqlx::query("UPDATE entity_fields SET data_type = ? WHERE id = ?")
+            .bind(new_type)
+            .bind(field_id)
+            .execute(&self.pool)
+            .await?;
+
+        // 2. Migrate object data
+        let affected = self.migrate_field_data(&et_id, &field_name, &old_type, new_type, strategy).await?;
+
+        // 3. Record migration
+        let mid = Uuid::new_v4().to_string();
+        let now = Self::now_iso();
+        sqlx::query(
+            "INSERT INTO schema_migrations
+             (id, et_id, field_name, change_type, old_value, new_value, strategy, affected_count, applied_at)
+             VALUES (?, ?, ?, 'type_change', ?, ?, ?, ?, ?)",
+        )
+        .bind(&mid).bind(&et_id).bind(&field_name)
+        .bind(&old_type).bind(new_type).bind(strategy)
+        .bind(affected).bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(SchemaMigrationRow {
+            id: mid, et_id, field_name,
+            change_type: "type_change".into(),
+            old_value: Some(old_type), new_value: Some(new_type.to_string()),
+            strategy: strategy.to_string(), affected_count: affected,
+            applied_by: None, applied_at: now,
+        })
+    }
+
+    /// Migrate ontology_objects.fields JSON for a changed/deleted field.
+    async fn migrate_field_data(
+        &self, et_id: &str, field_name: &str, old_type: &str, new_type: &str, strategy: &str,
+    ) -> Result<i64> {
+        let objects = sqlx::query(
+            "SELECT id, fields FROM ontology_objects WHERE entity_type_id = ?",
+        )
+        .bind(et_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut count = 0i64;
+        for obj in objects {
+            let obj_id: String = obj.get("id");
+            let fields_str: String = obj.get("fields");
+            let mut fields: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&fields_str).unwrap_or_default();
+
+            if fields.contains_key(field_name) {
+                match strategy {
+                    "drop" => { fields.remove(field_name); }
+                    "cast" => {
+                        let val = fields.get(field_name).cloned().unwrap_or(serde_json::Value::Null);
+                        let casted = Self::cast_value(val, new_type);
+                        fields.insert(field_name.to_string(), casted);
+                    }
+                    _ => { fields.remove(field_name); }
+                }
+                let new_fields = serde_json::to_string(&fields).unwrap_or_else(|_| "{}".into());
+                sqlx::query("UPDATE ontology_objects SET fields = ? WHERE id = ?")
+                    .bind(&new_fields).bind(&obj_id)
+                    .execute(&self.pool).await?;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
+    fn cast_value(val: serde_json::Value, target_type: &str) -> serde_json::Value {
+        use serde_json::Value;
+        match target_type {
+            "integer" => match &val {
+                Value::Number(n) => Value::Number(serde_json::Number::from(n.as_i64().unwrap_or(0))),
+                Value::String(s) => s.parse::<i64>()
+                    .map(|n| Value::Number(n.into()))
+                    .unwrap_or(Value::Null),
+                Value::Bool(b) => Value::Number((*b as i64).into()),
+                _ => Value::Null,
+            },
+            "float" => match &val {
+                Value::Number(n) => val.clone(),
+                Value::String(s) => s.parse::<f64>()
+                    .ok()
+                    .and_then(|f| serde_json::Number::from_f64(f))
+                    .map(Value::Number)
+                    .unwrap_or(Value::Null),
+                _ => Value::Null,
+            },
+            "string" => match &val {
+                Value::Null => Value::Null,
+                other => Value::String(other.to_string()),
+            },
+            "boolean" => match &val {
+                Value::Bool(_) => val.clone(),
+                Value::String(s) => Value::Bool(s == "true" || s == "1"),
+                Value::Number(n) => Value::Bool(n.as_i64().unwrap_or(0) != 0),
+                _ => Value::Null,
+            },
+            _ => val,
+        }
+    }
+
+    /// Check if deleting a field is breaking.
+    pub async fn check_field_delete(&self, field_id: &str) -> Result<BreakingChangeInfo> {
+        use palantir_meta_store::BreakingChangeInfo;
+        let row = sqlx::query(
+            "SELECT entity_type_id, name FROM entity_fields WHERE id = ?",
+        )
+        .bind(field_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (et_id, field_name) = match row {
+            Some(r) => (r.get::<String,_>("entity_type_id"), r.get::<String,_>("name")),
+            None => return Err(anyhow::anyhow!("field not found")),
+        };
+
+        let affected: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ontology_objects WHERE entity_type_id = ?",
+        )
+        .bind(&et_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(BreakingChangeInfo {
+            breaking: affected > 0,
+            affected_count: affected,
+            change_type: "delete".into(),
+            old_value: Some(field_name),
+            new_value: None,
+            strategies: vec!["drop".to_string()],
+        })
+    }
+
+    /// Apply field deletion: remove from schema + drop field data from objects.
+    pub async fn apply_field_delete(&self, field_id: &str) -> Result<SchemaMigrationRow> {
+        use palantir_meta_store::SchemaMigrationRow;
+        let row = sqlx::query(
+            "SELECT entity_type_id, name, data_type FROM entity_fields WHERE id = ?",
+        )
+        .bind(field_id)
+        .fetch_one(&self.pool)
+        .await?;
+        let et_id: String = row.get("entity_type_id");
+        let field_name: String = row.get("name");
+        let old_type: String = row.get("data_type");
+
+        // Delete field from schema
+        sqlx::query("DELETE FROM entity_fields WHERE id = ?")
+            .bind(field_id)
+            .execute(&self.pool)
+            .await?;
+
+        // Drop field from all object JSON
+        let affected = self.migrate_field_data(&et_id, &field_name, &old_type, "", "drop").await?;
+
+        let mid = Uuid::new_v4().to_string();
+        let now = Self::now_iso();
+        sqlx::query(
+            "INSERT INTO schema_migrations
+             (id, et_id, field_name, change_type, old_value, new_value, strategy, affected_count, applied_at)
+             VALUES (?, ?, ?, 'delete', ?, NULL, 'drop', ?, ?)",
+        )
+        .bind(&mid).bind(&et_id).bind(&field_name)
+        .bind(&old_type).bind(affected).bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(SchemaMigrationRow {
+            id: mid, et_id, field_name,
+            change_type: "delete".into(),
+            old_value: Some(old_type), new_value: None,
+            strategy: "drop".to_string(), affected_count: affected,
+            applied_by: None, applied_at: now,
+        })
+    }
+
+    // ── P1b: Data lineage ──────────────────────────────────────────────────
+
+    pub async fn get_et_lineage(&self, et_id: &str) -> Result<serde_json::Value> {
+        let rows = sqlx::query(
+            "SELECT
+               d.id          AS dataset_id,
+               d.name        AS dataset_name,
+               ds.id         AS source_id,
+               ds.name       AS source_name,
+               ds.source_type,
+               ds.fold_id,
+               f.name        AS fold_name,
+               otm.primary_key_col,
+               otm.sync_mode,
+               ds.last_sync_at,
+               COALESCE(dv.total_rows, 0) AS record_count
+             FROM object_type_mappings otm
+             JOIN datasets d    ON d.id = otm.dataset_id
+             JOIN data_sources ds ON ds.id = d.source_id
+             JOIN folds f       ON f.id = ds.fold_id
+             LEFT JOIN dataset_versions dv ON dv.dataset_id = d.id AND dv.is_current = 1
+             WHERE otm.entity_type_id = ?
+             ORDER BY ds.last_sync_at DESC",
+        )
+        .bind(et_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total_records: i64 = rows.iter()
+            .map(|r| r.try_get::<i64,_>("record_count").unwrap_or(0))
+            .sum();
+
+        let sources: Vec<serde_json::Value> = rows.into_iter().map(|r| {
+            serde_json::json!({
+                "dataset_id":     r.get::<String,_>("dataset_id"),
+                "dataset_name":   r.get::<String,_>("dataset_name"),
+                "source_id":      r.get::<String,_>("source_id"),
+                "source_name":    r.get::<String,_>("source_name"),
+                "source_type":    r.get::<String,_>("source_type"),
+                "fold_id":        r.get::<String,_>("fold_id"),
+                "fold_name":      r.get::<String,_>("fold_name"),
+                "primary_key_col":r.get::<String,_>("primary_key_col"),
+                "sync_mode":      r.get::<String,_>("sync_mode"),
+                "last_synced_at": r.get::<Option<String>,_>("last_sync_at"),
+                "record_count":   r.get::<i64,_>("record_count"),
+            })
+        }).collect();
+
+        Ok(serde_json::json!({
+            "entity_type_id": et_id,
+            "sources": sources,
+            "total_records": total_records,
+        }))
     }
 
     pub async fn delete_entity_type(&self, id: &str) -> Result<()> {
@@ -1171,47 +1685,83 @@ impl Db {
         project_id: &str,
         name: &str,
         description: Option<&str>,
+        fold_type: Option<&str>,
     ) -> Result<FoldRow> {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
+        let ft = fold_type.unwrap_or("normal");
         sqlx::query(
-            "INSERT INTO folds (id, project_id, name, description, created_at)
-             VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO folds (id, project_id, name, description, fold_type, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(project_id)
         .bind(name)
         .bind(description)
+        .bind(ft)
         .bind(&now)
         .execute(&self.pool)
         .await?;
-        Ok(FoldRow { id, project_id: project_id.to_string(), name: name.to_string(), description: description.map(|s| s.to_string()), created_at: now })
+        Ok(FoldRow {
+            id, project_id: project_id.to_string(), name: name.to_string(),
+            description: description.map(|s| s.to_string()),
+            fold_type: ft.to_string(), created_at: now,
+        })
     }
 
     pub async fn list_folds(&self, project_id: &str) -> Result<Vec<FoldRow>> {
         let rows = sqlx::query(
-            "SELECT id, project_id, name, description, created_at FROM folds
-             WHERE project_id = ? ORDER BY created_at ASC",
+            "SELECT id, project_id, name, description,
+                    COALESCE(fold_type, 'normal') as fold_type, created_at
+             FROM folds WHERE project_id = ? ORDER BY created_at ASC",
         )
         .bind(project_id)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(|r| FoldRow {
             id: r.get("id"), project_id: r.get("project_id"),
-            name: r.get("name"), description: r.get("description"), created_at: r.get("created_at"),
+            name: r.get("name"), description: r.get("description"),
+            fold_type: r.get("fold_type"), created_at: r.get("created_at"),
+        }).collect())
+    }
+
+    pub async fn list_shared_kernel_folds(&self) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT f.id, f.project_id, f.name, f.description, f.created_at,
+                    COUNT(et.id) as et_count
+             FROM folds f
+             LEFT JOIN entity_types et ON et.fold_id = f.id
+             WHERE f.fold_type = 'shared_kernel'
+             GROUP BY f.id ORDER BY f.created_at ASC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| {
+            serde_json::json!({
+                "id": r.get::<String,_>("id"),
+                "project_id": r.get::<String,_>("project_id"),
+                "name": r.get::<String,_>("name"),
+                "description": r.get::<Option<String>,_>("description"),
+                "fold_type": "shared_kernel",
+                "et_count": r.get::<i64,_>("et_count"),
+                "created_at": r.get::<String,_>("created_at"),
+            })
         }).collect())
     }
 
     pub async fn get_fold(&self, id: &str) -> Result<Option<FoldRow>> {
         let row = sqlx::query(
-            "SELECT id, project_id, name, description, created_at FROM folds WHERE id = ?",
+            "SELECT id, project_id, name, description,
+                    COALESCE(fold_type, 'normal') as fold_type, created_at
+             FROM folds WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(|r| FoldRow {
             id: r.get("id"), project_id: r.get("project_id"),
-            name: r.get("name"), description: r.get("description"), created_at: r.get("created_at"),
+            name: r.get("name"), description: r.get("description"),
+            fold_type: r.get("fold_type"), created_at: r.get("created_at"),
         }))
     }
 
@@ -2076,6 +2626,29 @@ impl Db {
         let now = Self::now_str();
         let mut total = 0usize;
 
+        // Load ET ddd_roles to apply AR direction reversal (same logic as auto_detect_links)
+        let et_roles: std::collections::HashMap<String, String> = sqlx::query(
+            "SELECT id, COALESCE(ddd_role, 'entity') as ddd_role FROM entity_types",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| (r.get::<String, _>("id"), r.get::<String, _>("ddd_role")))
+        .collect();
+
+        // Look up the source entity type for this dataset via object_type_mappings
+        let src_et: String = sqlx::query_scalar(
+            "SELECT entity_type_id FROM object_type_mappings WHERE dataset_id = ? LIMIT 1",
+        )
+        .bind(dataset_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+        let src_et_role = et_roles.get(&src_et).map(|s| s.as_str()).unwrap_or("entity");
+
         for m in &mappings {
             let fk_col = m["from_fk_col"].as_str().unwrap_or_default();
             let to_et  = m["to_entity_type_id"].as_str().unwrap_or_default();
@@ -2090,6 +2663,10 @@ impl Db {
             .fetch_all(&self.pool)
             .await?;
 
+            // Check if target ET is AR (and source is not) → reverse direction so AR → child
+            let to_et_role = et_roles.get(to_et).map(|s| s.as_str()).unwrap_or("entity");
+            let reverse = to_et_role == "aggregate_root" && src_et_role != "aggregate_root";
+
             for src in &src_rows {
                 let src_id: String = src.get("id");
                 let fields_str: String = src.get("fields");
@@ -2099,17 +2676,30 @@ impl Db {
                     None => continue,
                 };
 
-                // Look up target object by external_id (both manual and auto-promote)
+                // Look up target object: try external_id first, then fallback to json id field
                 let tgt: Option<String> = sqlx::query_scalar(
                     "SELECT id FROM ontology_objects
-                     WHERE entity_type_id = ? AND external_id = ? AND sync_run_id IN ('promote', 'auto-promote')",
+                     WHERE entity_type_id = ?
+                       AND (external_id = ?
+                            OR json_extract(fields, '$.id') = ?
+                            OR json_extract(fields, '$.\"id\"') = ?)
+                       AND sync_run_id IN ('promote', 'auto-promote')
+                     LIMIT 1",
                 )
                 .bind(to_et)
+                .bind(&fk_val)
+                .bind(&fk_val)
                 .bind(&fk_val)
                 .fetch_optional(&self.pool)
                 .await?;
 
                 if let Some(tgt_id) = tgt {
+                    // AR → child when target is AR; otherwise normal FK direction
+                    let (from_id, to_id) = if reverse {
+                        (tgt_id.clone(), src_id.clone())
+                    } else {
+                        (src_id.clone(), tgt_id.clone())
+                    };
                     let link_id = Uuid::new_v4().to_string();
                     let _ = sqlx::query(
                         "INSERT OR IGNORE INTO ontology_links
@@ -2117,8 +2707,8 @@ impl Db {
                          VALUES (?, ?, ?, ?, ?)",
                     )
                     .bind(&link_id)
-                    .bind(&src_id)
-                    .bind(&tgt_id)
+                    .bind(&from_id)
+                    .bind(&to_id)
                     .bind(rel)
                     .bind(&now)
                     .execute(&self.pool)
@@ -2128,6 +2718,164 @@ impl Db {
             }
         }
         Ok(total)
+    }
+
+    /// Re-resolve links for every dataset that has link_type_mappings saved.
+    pub async fn resolve_all_links(&self) -> Result<usize> {
+        let dataset_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT dataset_id FROM link_type_mappings",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let mut total = 0usize;
+        for ds_id in dataset_ids {
+            total += self.resolve_links_for_dataset(&ds_id).await.unwrap_or(0);
+        }
+        Ok(total)
+    }
+
+    /// Auto-detect FK relationships by scanning `*_id` fields on all promoted objects.
+    /// For each `foo_id` field, tries to find a promoted object whose `external_id`
+    /// or `fields.id` matches the value, then creates an ontology_link.
+    /// When the FK target is an Aggregate Root, the direction is reversed (AR → child)
+    /// so the AR is always the source. Re-runs clear all previously auto-detected links first.
+    /// Returns (created, skipped) counts.
+    pub async fn auto_detect_links(&self) -> Result<(usize, usize)> {
+        let now = Self::now_str();
+
+        // Clear all previously auto-detected links before re-running
+        // Covers both HAS_* (auto_detect) and 'HAS' (resolve_links default rel_type)
+        sqlx::query("DELETE FROM ontology_links WHERE rel_type LIKE 'HAS%'")
+            .execute(&self.pool).await?;
+
+        // Load explicit ddd_role from DB (user-set via right-click menu)
+        let et_rows = sqlx::query(
+            "SELECT id, ddd_role FROM entity_types",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        // None / NULL means "not explicitly set" — we'll infer below
+        let explicit_roles: std::collections::HashMap<String, Option<String>> = et_rows
+            .iter()
+            .map(|r| {
+                let id: String = r.get("id");
+                let role: Option<String> = r.try_get("ddd_role").ok().flatten();
+                (id, role)
+            })
+            .collect();
+
+        // All promoted objects with their fields
+        let objs = sqlx::query(
+            "SELECT id, entity_type_id, fields FROM ontology_objects
+             WHERE sync_run_id IN ('promote', 'auto-promote') AND fields IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        // Build lookup: raw id field value → (object_id, entity_type_id)
+        let mut id_index: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
+        for obj in &objs {
+            let obj_id: String = obj.get("id");
+            let et_id: String  = obj.get("entity_type_id");
+            let fields_str: String = obj.get("fields");
+            let fields: serde_json::Value = serde_json::from_str(&fields_str).unwrap_or_default();
+            if let Some(raw_id) = fields.get("id").and_then(|v| v.as_str()) {
+                id_index.insert(raw_id.to_string(), (obj_id.clone(), et_id.clone()));
+            }
+        }
+
+        // ── Pass 1: Count how many distinct ET types have FK columns pointing TO each ET ──
+        // AR heuristic: children carry FK columns pointing to AR, so AR has high IN-degree.
+        // e.g. Draft ADR.architecture_design_id → Architecture Design
+        //      → Architecture Design gains +1 referencing-ET (Draft ADR)
+        //      → Architecture Design with many referencing ETs = likely AR
+        let mut et_referencing: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for obj in &objs {
+            let src_et: String = obj.get("entity_type_id");
+            let fields_str: String = obj.get("fields");
+            let fields: serde_json::Value = serde_json::from_str(&fields_str).unwrap_or_default();
+            let Some(fields_map) = fields.as_object() else { continue };
+            for (col, val) in fields_map {
+                if !col.ends_with("_id") || col == "id" { continue }
+                let Some(fk_val) = val.as_str().filter(|s| !s.is_empty()) else { continue };
+                if let Some((_, tgt_et)) = id_index.get(fk_val) {
+                    if tgt_et != &src_et {
+                        et_referencing.entry(tgt_et.clone()).or_default().insert(src_et.clone());
+                    }
+                }
+            }
+        }
+        // Threshold: ET is AR if it's referenced by >= 2 distinct ET types,
+        // or if max referencing count is 1 (small ontology) use >= 1.
+        let max_refs = et_referencing.values().map(|s| s.len()).max().unwrap_or(0);
+        let ar_ref_threshold = if max_refs >= 2 { 2usize } else { 1usize };
+
+        // Effective role: explicit DB value wins; otherwise infer from in-degree
+        let effective_role = |et_id: &str| -> &str {
+            if let Some(Some(role)) = explicit_roles.get(et_id) {
+                return role.as_str();
+            }
+            let refs = et_referencing.get(et_id).map(|s| s.len()).unwrap_or(0);
+            if refs >= ar_ref_threshold { "aggregate_root" } else { "entity" }
+        };
+
+        let mut created = 0usize;
+        let mut skipped = 0usize;
+
+        // ── Pass 2: Create links using effective roles for direction ──────────
+        for obj in &objs {
+            let src_id: String = obj.get("id");
+            let src_et: String = obj.get("entity_type_id");
+            let fields_str: String = obj.get("fields");
+            let fields: serde_json::Value = serde_json::from_str(&fields_str).unwrap_or_default();
+
+            let Some(fields_map) = fields.as_object() else { continue };
+
+            for (col, val) in fields_map {
+                if !col.ends_with("_id") || col == "id" { continue }
+                let Some(fk_val) = val.as_str().filter(|s| !s.is_empty()) else { continue };
+
+                let Some((tgt_id, tgt_et)) = id_index.get(fk_val) else {
+                    skipped += 1;
+                    continue
+                };
+                if tgt_id == &src_id { continue }
+
+                let base = col.trim_end_matches("_id").to_uppercase();
+                let rel_type = format!("HAS_{}", base);
+
+                // If target is AR (explicit or inferred): reverse so AR → child
+                let tgt_role = effective_role(tgt_et);
+                let src_role = effective_role(&src_et);
+                let (from_id, to_id) = if tgt_role == "aggregate_root" && src_role != "aggregate_root" {
+                    (tgt_id.clone(), src_id.clone())
+                } else {
+                    (src_id.clone(), tgt_id.clone())
+                };
+
+                let link_id = Uuid::new_v4().to_string();
+                let result = sqlx::query(
+                    "INSERT OR IGNORE INTO ontology_links (id, from_id, to_id, rel_type, created_at)
+                     VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(&link_id)
+                .bind(&from_id)
+                .bind(&to_id)
+                .bind(&rel_type)
+                .bind(&now)
+                .execute(&self.pool)
+                .await;
+
+                if result.map(|r| r.rows_affected()).unwrap_or(0) > 0 {
+                    created += 1;
+                }
+            }
+        }
+
+        Ok((created, skipped))
     }
 
     // ── Bounded Contexts ──────────────────────────────────────────────────────
@@ -2291,6 +3039,581 @@ impl Db {
         sqlx::query("DELETE FROM bc_relationships WHERE id = ?")
             .bind(rel_id).execute(&self.pool).await?;
         Ok(())
+    }
+
+    // ── Context Map ────────────────────────────────────────────────────────────
+
+    /// Returns all BC nodes + relationships for a project (for Context Map visualization).
+    pub async fn get_context_map(&self, project_id: &str) -> Result<serde_json::Value> {
+        // All BCs in the project's folds
+        let bc_rows = sqlx::query(
+            "SELECT bc.id, bc.fold_id, bc.name, bc.color, bc.auto_detected, bc.created_at,
+                    f.name AS fold_name, f.fold_type,
+                    COUNT(et.id) AS et_count
+             FROM bounded_contexts bc
+             JOIN folds f ON f.id = bc.fold_id
+             LEFT JOIN entity_types et ON et.bc_id = bc.id
+             WHERE f.project_id = ?
+             GROUP BY bc.id ORDER BY bc.created_at",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let nodes: Vec<serde_json::Value> = bc_rows.into_iter().map(|r| serde_json::json!({
+            "id":            r.get::<String,_>("id"),
+            "fold_id":       r.get::<String,_>("fold_id"),
+            "fold_name":     r.get::<String,_>("fold_name"),
+            "fold_type":     r.get::<String,_>("fold_type"),
+            "name":          r.get::<String,_>("name"),
+            "color":         r.get::<String,_>("color"),
+            "auto_detected": r.get::<i64,_>("auto_detected") != 0,
+            "et_count":      r.get::<i64,_>("et_count"),
+        })).collect();
+
+        // All BC relationships within the project
+        let rel_rows = sqlx::query(
+            "SELECT r.id, r.from_bc_id, r.to_bc_id, r.relationship_type, r.notes,
+                    fb.name AS from_name, tb.name AS to_name
+             FROM bc_relationships r
+             JOIN bounded_contexts fb ON fb.id = r.from_bc_id
+             JOIN bounded_contexts tb ON tb.id = r.to_bc_id
+             JOIN folds ff ON ff.id = fb.fold_id
+             WHERE ff.project_id = ?
+             ORDER BY r.created_at",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let edges: Vec<serde_json::Value> = rel_rows.into_iter().map(|r| serde_json::json!({
+            "id":                r.get::<String,_>("id"),
+            "from_bc_id":        r.get::<String,_>("from_bc_id"),
+            "from_name":         r.get::<String,_>("from_name"),
+            "to_bc_id":          r.get::<String,_>("to_bc_id"),
+            "to_name":           r.get::<String,_>("to_name"),
+            "relationship_type": r.get::<String,_>("relationship_type"),
+            "notes":             r.get::<Option<String>,_>("notes"),
+        })).collect();
+
+        // Fallback: if no BCs exist, expose folds as BC nodes so Context Map is never empty
+        if nodes.is_empty() {
+            // Count all ETs for this project — including those without fold_id assignment
+            let fold_rows = sqlx::query(
+                "SELECT f.id, f.name, f.fold_type FROM folds f
+                 WHERE f.project_id = ? ORDER BY f.created_at",
+            )
+            .bind(project_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            // Total ET count for the project (all ETs regardless of fold assignment)
+            let total_ets: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM entity_types WHERE id != 'default'",
+            )
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or(0);
+
+            let palette = [
+                "#6366f1","#8b5cf6","#ec4899","#14b8a6",
+                "#f59e0b","#10b981","#3b82f6","#f97316",
+            ];
+
+            let mut fallback_nodes: Vec<serde_json::Value> = fold_rows.iter().enumerate().map(|(i, r)| {
+                let color = palette[i % palette.len()];
+                serde_json::json!({
+                    "id":            r.get::<String,_>("id"),
+                    "fold_id":       r.get::<String,_>("id"),
+                    "fold_name":     r.get::<String,_>("name"),
+                    "fold_type":     r.get::<String,_>("fold_type"),
+                    "name":          r.get::<String,_>("name"),
+                    "color":         color,
+                    "auto_detected": false,
+                    "et_count":      total_ets,   // show total ETs in the single fold
+                    "is_fold_fallback": true,
+                })
+            }).collect();
+
+            // If no folds either, synthesise one virtual node from the project's ETs
+            if fallback_nodes.is_empty() && total_ets > 0 {
+                fallback_nodes.push(serde_json::json!({
+                    "id":            project_id,
+                    "fold_id":       project_id,
+                    "fold_name":     "Default",
+                    "fold_type":     "normal",
+                    "name":          "Default",
+                    "color":         "#6366f1",
+                    "auto_detected": false,
+                    "et_count":      total_ets,
+                    "is_fold_fallback": true,
+                }));
+            }
+
+            return Ok(serde_json::json!({
+                "bounded_contexts": fallback_nodes,
+                "relationships": [],
+                "is_fold_fallback": true,
+            }));
+        }
+
+        Ok(serde_json::json!({ "bounded_contexts": nodes, "relationships": edges }))
+    }
+
+    // ── System Interfaces ──────────────────────────────────────────────────────
+
+    pub async fn list_interfaces(&self) -> Result<Vec<serde_json::Value>> {
+        let ifaces = sqlx::query(
+            "SELECT id, name, description, is_builtin, created_at FROM interfaces ORDER BY is_builtin DESC, name ASC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut result = Vec::new();
+        for r in ifaces {
+            let iface_id: String = r.get("id");
+            let fields = sqlx::query(
+                "SELECT field_name, field_type, required, description
+                 FROM interface_fields WHERE interface_id = ? ORDER BY field_name",
+            )
+            .bind(&iface_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            let fields_json: Vec<serde_json::Value> = fields.into_iter().map(|f| serde_json::json!({
+                "field_name":  f.get::<String,_>("field_name"),
+                "field_type":  f.get::<String,_>("field_type"),
+                "required":    f.get::<i64,_>("required") != 0,
+                "description": f.get::<Option<String>,_>("description"),
+            })).collect();
+
+            result.push(serde_json::json!({
+                "id":          iface_id,
+                "name":        r.get::<String,_>("name"),
+                "description": r.get::<Option<String>,_>("description"),
+                "is_builtin":  r.get::<i64,_>("is_builtin") != 0,
+                "created_at":  r.get::<String,_>("created_at"),
+                "fields":      fields_json,
+            }));
+        }
+        Ok(result)
+    }
+
+    pub async fn create_interface(&self, name: &str, description: Option<&str>) -> Result<InterfaceRow> {
+        let id = Uuid::new_v4().to_string();
+        let now = Self::now_iso();
+        sqlx::query(
+            "INSERT INTO interfaces (id, name, description, is_builtin, created_at) VALUES (?, ?, ?, 0, ?)",
+        )
+        .bind(&id).bind(name).bind(description).bind(&now)
+        .execute(&self.pool).await?;
+        Ok(InterfaceRow { id, name: name.to_string(), description: description.map(|s| s.to_string()), is_builtin: false, created_at: now })
+    }
+
+    pub async fn delete_interface(&self, id: &str) -> Result<()> {
+        // Guard: cannot delete built-in interfaces
+        let is_builtin: i64 = sqlx::query_scalar(
+            "SELECT is_builtin FROM interfaces WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .unwrap_or(0);
+        if is_builtin != 0 {
+            return Err(anyhow::anyhow!("Cannot delete built-in interface"));
+        }
+        sqlx::query("DELETE FROM interfaces WHERE id = ?")
+            .bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn list_et_interfaces(&self, et_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT i.id, i.name, i.description, i.is_builtin, i.created_at
+             FROM entity_type_interfaces eti
+             JOIN interfaces i ON i.id = eti.interface_id
+             WHERE eti.et_id = ?
+             ORDER BY i.is_builtin DESC, i.name",
+        )
+        .bind(et_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut result = Vec::new();
+        for r in rows {
+            let iface_id: String = r.get("id");
+            let fields = sqlx::query(
+                "SELECT field_name, field_type, required, description
+                 FROM interface_fields WHERE interface_id = ? ORDER BY field_name",
+            )
+            .bind(&iface_id)
+            .fetch_all(&self.pool)
+            .await?;
+            let fields_json: Vec<serde_json::Value> = fields.into_iter().map(|f| serde_json::json!({
+                "field_name":  f.get::<String,_>("field_name"),
+                "field_type":  f.get::<String,_>("field_type"),
+                "required":    f.get::<i64,_>("required") != 0,
+                "description": f.get::<Option<String>,_>("description"),
+            })).collect();
+            result.push(serde_json::json!({
+                "id":          iface_id,
+                "name":        r.get::<String,_>("name"),
+                "description": r.get::<Option<String>,_>("description"),
+                "is_builtin":  r.get::<i64,_>("is_builtin") != 0,
+                "created_at":  r.get::<String,_>("created_at"),
+                "fields":      fields_json,
+            }));
+        }
+        Ok(result)
+    }
+
+    pub async fn add_et_interface(&self, et_id: &str, interface_id: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO entity_type_interfaces (et_id, interface_id) VALUES (?, ?)",
+        )
+        .bind(et_id).bind(interface_id)
+        .execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn remove_et_interface(&self, et_id: &str, interface_id: &str) -> Result<()> {
+        sqlx::query(
+            "DELETE FROM entity_type_interfaces WHERE et_id = ? AND interface_id = ?",
+        )
+        .bind(et_id).bind(interface_id)
+        .execute(&self.pool).await?;
+        Ok(())
+    }
+
+    // ── P1: BC 自动推断（Union-Find 边密度算法）────────────────────────────────
+
+    /// 推断 fold 内的 child-BC 建议，不写入数据库。
+    /// 返回 Vec<SuggestedBC>，含 ET 列表、置信度、建议名称。
+    pub async fn infer_child_bcs(&self, fold_id: &str) -> Result<serde_json::Value> {
+        // 1. 获取 fold 内所有 ET
+        let et_rows = sqlx::query(
+            "SELECT id, name, display_name, COALESCE(ddd_role,'entity') as ddd_role
+             FROM entity_types WHERE fold_id = ? AND name != 'default'",
+        )
+        .bind(fold_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        if et_rows.is_empty() {
+            return Ok(serde_json::json!({ "suggestions": [] }));
+        }
+
+        let et_ids: Vec<String> = et_rows.iter().map(|r| r.get::<String,_>("id")).collect();
+        let et_id_set: std::collections::HashSet<&str> = et_ids.iter().map(|s| s.as_str()).collect();
+
+        // 2. 获取 fold 内 ET 之间的 FK 边（来自 link_type_mappings）
+        //    from_et = promote 时映射到的 ET，to_et = FK 指向的 ET
+        let link_rows = sqlx::query(
+            "SELECT otm.entity_type_id AS from_et_id, ltm.to_entity_type_id AS to_et_id
+             FROM link_type_mappings ltm
+             JOIN object_type_mappings otm ON otm.dataset_id = ltm.dataset_id
+             WHERE otm.entity_type_id IN (SELECT id FROM entity_types WHERE fold_id = ?)
+               AND ltm.to_entity_type_id IN (SELECT id FROM entity_types WHERE fold_id = ?)",
+        )
+        .bind(fold_id)
+        .bind(fold_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        // 3. 也获取 ontology_links 中的实例边（按 ET 对聚合计数）
+        let instance_link_rows = sqlx::query(
+            "SELECT oa.entity_type_id AS from_et_id, ob.entity_type_id AS to_et_id,
+                    COUNT(*) AS edge_count
+             FROM ontology_links ol
+             JOIN ontology_objects oa ON oa.id = ol.from_id
+             JOIN ontology_objects ob ON ob.id = ol.to_id
+             WHERE oa.entity_type_id IN (SELECT id FROM entity_types WHERE fold_id = ?)
+               AND ob.entity_type_id IN (SELECT id FROM entity_types WHERE fold_id = ?)
+               AND oa.entity_type_id != ob.entity_type_id
+             GROUP BY oa.entity_type_id, ob.entity_type_id",
+        )
+        .bind(fold_id)
+        .bind(fold_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        // 4. 构建边集合：(from_et_id, to_et_id, weight)
+        //    schema links (link_type_mappings) 权重 = 3（结构信号强）
+        //    instance links 权重 = edge_count（数据密度信号）
+        let mut edge_weights: std::collections::HashMap<(String, String), f64> = std::collections::HashMap::new();
+
+        for r in &link_rows {
+            let from: String = r.get("from_et_id");
+            let to: String = r.get("to_et_id");
+            if from != to && et_id_set.contains(from.as_str()) && et_id_set.contains(to.as_str()) {
+                let key = if from < to { (from.clone(), to.clone()) } else { (to.clone(), from.clone()) };
+                *edge_weights.entry(key).or_insert(0.0) += 3.0;
+            }
+        }
+        for r in &instance_link_rows {
+            let from: String = r.get("from_et_id");
+            let to: String = r.get("to_et_id");
+            let cnt: i64 = r.get("edge_count");
+            if from != to && et_id_set.contains(from.as_str()) && et_id_set.contains(to.as_str()) {
+                let key = if from < to { (from.clone(), to.clone()) } else { (to.clone(), from.clone()) };
+                *edge_weights.entry(key).or_insert(0.0) += cnt as f64;
+            }
+        }
+
+        // 5. Union-Find — 边密度阈值决定是否合并
+        //    阈值逻辑：schema link（权重≥3）直接合并；instance link 按密度判断
+        let n = et_ids.len();
+        let mut parent: Vec<usize> = (0..n).collect();
+
+        fn find(parent: &mut Vec<usize>, x: usize) -> usize {
+            if parent[x] != x { parent[x] = find(parent, parent[x]); }
+            parent[x]
+        }
+        fn union(parent: &mut Vec<usize>, x: usize, y: usize) {
+            let (px, py) = (find(parent, x), find(parent, y));
+            if px != py { parent[px] = py; }
+        }
+
+        let et_index: std::collections::HashMap<&str, usize> = et_ids.iter().enumerate().map(|(i, id)| (id.as_str(), i)).collect();
+
+        for ((from, to), weight) in &edge_weights {
+            let fi = et_index[from.as_str()];
+            let ti = et_index[to.as_str()];
+            // schema link always merges; instance link merges if weight >= 2
+            if *weight >= 2.0 {
+                union(&mut parent, fi, ti);
+            }
+        }
+
+        // 6. 收集连通分量
+        let mut components: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+        for i in 0..n {
+            let root = find(&mut parent, i);
+            components.entry(root).or_default().push(i);
+        }
+
+        // 7. 对每个分量：找 Aggregate Root（入度最高），计算置信度，生成名称
+        // 入度 = 其他 ET 指向该 ET 的 schema FK 数
+        let mut in_degree: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for r in &link_rows {
+            let to: String = r.get("to_et_id");
+            if et_id_set.contains(to.as_str()) {
+                *in_degree.entry(
+                    et_ids.iter().find(|id| id.as_str() == to).map(|s| s.as_str()).unwrap_or("")
+                ).or_insert(0) += 1;
+            }
+        }
+
+        // 总边数（用于置信度）
+        let total_edges = edge_weights.values().sum::<f64>();
+
+        let mut suggestions: Vec<serde_json::Value> = components.values().map(|indices| {
+            let comp_et_ids: Vec<&str> = indices.iter().map(|&i| et_ids[i].as_str()).collect();
+
+            // 内部边权重之和
+            let internal_weight: f64 = edge_weights.iter()
+                .filter(|((f, t), _)| comp_et_ids.contains(&f.as_str()) && comp_et_ids.contains(&t.as_str()))
+                .map(|(_, w)| w)
+                .sum();
+
+            // 外部边权重之和（跨分量）
+            let external_weight: f64 = edge_weights.iter()
+                .filter(|((f, t), _)| {
+                    let f_in = comp_et_ids.contains(&f.as_str());
+                    let t_in = comp_et_ids.contains(&t.as_str());
+                    f_in ^ t_in  // 只有一端在分量内
+                })
+                .map(|(_, w)| w)
+                .sum();
+
+            // 置信度 = 内部密度 / (内部 + 外部)
+            let confidence = if internal_weight + external_weight > 0.0 {
+                internal_weight / (internal_weight + external_weight)
+            } else if comp_et_ids.len() == 1 {
+                0.6  // 孤立节点：中等置信度
+            } else {
+                0.5
+            };
+
+            // 找 Aggregate Root（最高入度，优先 aggregate_root 角色）
+            let agg_root_idx = indices.iter().max_by_key(|&&i| {
+                let id = et_ids[i].as_str();
+                let ddd_role: String = et_rows[i].get("ddd_role");
+                let role_bonus = if ddd_role == "aggregate_root" { 100 } else { 0 };
+                in_degree.get(id).copied().unwrap_or(0) + role_bonus
+            }).copied().unwrap_or(indices[0]);
+
+            let agg_root_name: String = et_rows[agg_root_idx].get("display_name");
+            let agg_root_id: String = et_rows[agg_root_idx].get("id");
+
+            // BC 名称建议：Aggregate Root 名 + " BC"
+            let bc_name = Self::suggest_bc_name(&agg_root_name);
+
+            // ET 详情
+            let ets: Vec<serde_json::Value> = indices.iter().map(|&i| {
+                let et_id: String = et_rows[i].get("id");
+                let et_name: String = et_rows[i].get("display_name");
+                let ddd_role: String = et_rows[i].get("ddd_role");
+                let is_root = et_id == agg_root_id;
+                serde_json::json!({
+                    "id": et_id, "display_name": et_name,
+                    "ddd_role": ddd_role, "is_aggregate_root": is_root,
+                })
+            }).collect();
+
+            // 默认颜色（从调色板按 index 取）
+            let palette = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
+            let color = palette[agg_root_idx % palette.len()];
+
+            serde_json::json!({
+                "suggested_name": bc_name,
+                "aggregate_root_id": agg_root_id,
+                "confidence": (confidence * 100.0).round() / 100.0,
+                "confidence_pct": (confidence * 100.0).round() as i64,
+                "color": color,
+                "et_ids": comp_et_ids,
+                "entity_types": ets,
+                "internal_links": internal_weight as i64,
+                "external_links": external_weight as i64,
+            })
+        }).collect();
+
+        // 按置信度降序排列
+        suggestions.sort_by(|a, b| {
+            let ca = a["confidence"].as_f64().unwrap_or(0.0);
+            let cb = b["confidence"].as_f64().unwrap_or(0.0);
+            cb.partial_cmp(&ca).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // 8. 检测跨分量（跨 BC）的 FK 边 → 建议 bc_relationships
+        let comp_for_et: std::collections::HashMap<&str, usize> = {
+            let mut m = std::collections::HashMap::new();
+            for (root, indices) in &components {
+                for &i in indices { m.insert(et_ids[i].as_str(), *root); }
+            }
+            m
+        };
+
+        let mut cross_bc_links: Vec<serde_json::Value> = Vec::new();
+        for r in &link_rows {
+            let from: String = r.get("from_et_id");
+            let to: String = r.get("to_et_id");
+            let fc = comp_for_et.get(from.as_str()).copied();
+            let tc = comp_for_et.get(to.as_str()).copied();
+            if let (Some(fc), Some(tc)) = (fc, tc) {
+                if fc != tc {
+                    // 跨 BC FK → 建议 customer_supplier
+                    cross_bc_links.push(serde_json::json!({
+                        "from_bc_suggested_name": suggestions.iter()
+                            .find(|s| s["et_ids"].as_array().map(|a| a.iter().any(|e| e.as_str() == Some(from.as_str()))).unwrap_or(false))
+                            .and_then(|s| s["suggested_name"].as_str())
+                            .unwrap_or(""),
+                        "to_bc_suggested_name": suggestions.iter()
+                            .find(|s| s["et_ids"].as_array().map(|a| a.iter().any(|e| e.as_str() == Some(to.as_str()))).unwrap_or(false))
+                            .and_then(|s| s["suggested_name"].as_str())
+                            .unwrap_or(""),
+                        "from_et_id": from,
+                        "to_et_id": to,
+                        "suggested_relationship_type": "customer_supplier",
+                    }));
+                }
+            }
+        }
+        // Deduplicate cross_bc_links by (from_bc, to_bc) pair
+        let mut seen_pairs = std::collections::HashSet::new();
+        cross_bc_links.retain(|l| {
+            let pair = (
+                l["from_bc_suggested_name"].as_str().unwrap_or("").to_string(),
+                l["to_bc_suggested_name"].as_str().unwrap_or("").to_string(),
+            );
+            seen_pairs.insert(pair)
+        });
+
+        Ok(serde_json::json!({
+            "fold_id": fold_id,
+            "suggestions": suggestions,
+            "cross_bc_links": cross_bc_links,
+            "total_ets": n,
+            "total_edges": total_edges as i64,
+        }))
+    }
+
+    fn suggest_bc_name(agg_root_name: &str) -> String {
+        // "Order" → "Order BC", "CustomerAddress" → "Customer BC"
+        // Simple rule: take the first word and append " BC"
+        let first_word = agg_root_name
+            .split(|c: char| c == '_' || c == ' ' || c.is_uppercase())
+            .find(|s| !s.is_empty())
+            .unwrap_or(agg_root_name);
+        // CamelCase: find first uppercase segment
+        let name = if agg_root_name.chars().any(|c| c.is_uppercase()) {
+            // Extract first CamelCase word
+            let mut word = String::new();
+            for (i, c) in agg_root_name.chars().enumerate() {
+                if i > 0 && c.is_uppercase() && !word.is_empty() { break; }
+                word.push(c);
+            }
+            word
+        } else {
+            first_word.to_string()
+        };
+        format!("{} BC", name)
+    }
+
+    /// 将推断建议应用（写入）到数据库。
+    /// suggestions: Vec of { suggested_name, color, et_ids: [String] }
+    pub async fn apply_bc_suggestions(
+        &self,
+        fold_id: &str,
+        suggestions: &[serde_json::Value],
+    ) -> Result<Vec<serde_json::Value>> {
+        // 清除该 fold 下所有 auto_detected BC（保留手动创建的）
+        sqlx::query(
+            "UPDATE entity_types SET bc_id = NULL
+             WHERE fold_id = ? AND bc_id IN (
+               SELECT id FROM bounded_contexts WHERE fold_id = ? AND auto_detected = 1
+             )",
+        )
+        .bind(fold_id).bind(fold_id)
+        .execute(&self.pool).await?;
+
+        sqlx::query(
+            "DELETE FROM bounded_contexts WHERE fold_id = ? AND auto_detected = 1",
+        )
+        .bind(fold_id).execute(&self.pool).await?;
+
+        let now = Self::now_iso();
+        let mut created = Vec::new();
+
+        for sug in suggestions {
+            let name = sug["suggested_name"].as_str().unwrap_or("Unknown BC");
+            let color = sug["color"].as_str().unwrap_or("#6366f1");
+            let bc_id = uuid::Uuid::new_v4().to_string();
+
+            sqlx::query(
+                "INSERT INTO bounded_contexts (id, fold_id, name, color, auto_detected, created_at)
+                 VALUES (?, ?, ?, ?, 1, ?)",
+            )
+            .bind(&bc_id).bind(fold_id).bind(name).bind(color).bind(&now)
+            .execute(&self.pool).await?;
+
+            if let Some(et_ids) = sug["et_ids"].as_array() {
+                for et_id_val in et_ids {
+                    if let Some(et_id) = et_id_val.as_str() {
+                        sqlx::query("UPDATE entity_types SET bc_id = ? WHERE id = ?")
+                            .bind(&bc_id).bind(et_id)
+                            .execute(&self.pool).await?;
+                    }
+                }
+            }
+
+            created.push(serde_json::json!({
+                "id": bc_id, "fold_id": fold_id,
+                "name": name, "color": color, "auto_detected": true,
+            }));
+        }
+
+        Ok(created)
     }
 
     pub async fn clear_project_graph(&self, project_id: &str) -> Result<()> {

@@ -18,8 +18,9 @@ pub trait MetadataStore: Send + Sync {
     async fn touch_project(&self, id: &str) -> Result<()>;
 
     // ── Folds (Bounded Context boundary) ─────────────────────────────────────
-    async fn create_fold(&self, project_id: &str, name: &str, description: Option<&str>) -> Result<FoldRow>;
+    async fn create_fold(&self, project_id: &str, name: &str, description: Option<&str>, fold_type: Option<&str>) -> Result<FoldRow>;
     async fn list_folds(&self, project_id: &str) -> Result<Vec<FoldRow>>;
+    async fn list_shared_kernel_folds(&self) -> Result<Vec<serde_json::Value>>;
     async fn get_fold(&self, id: &str) -> Result<Option<FoldRow>>;
     async fn delete_fold(&self, id: &str) -> Result<()>;
     async fn fold_stats(&self, fold_id: &str) -> Result<(i64, i64, String)>;
@@ -33,15 +34,30 @@ pub trait MetadataStore: Send + Sync {
     async fn list_entity_types_for_fold(&self, fold_id: &str) -> Result<Vec<EntityTypeRow>>;
     async fn update_entity_type_ddd_role(&self, et_id: &str, ddd_role: &str) -> Result<()>;
     async fn update_entity_type_fold(&self, et_id: &str, fold_id: Option<&str>) -> Result<()>;
+    async fn update_entity_type_bc(&self, et_id: &str, bc_id: Option<&str>) -> Result<()>;
+    /// Returns how many ontology objects exist for this ET
+    async fn count_objects_for_et(&self, et_id: &str) -> Result<i64>;
+    /// P1a: change lifecycle status; returns affected_datasets count
+    async fn set_entity_type_status(&self, et_id: &str, status: &str) -> Result<i64>;
     async fn delete_entity_type(&self, id: &str) -> Result<()>;
 
     // ── Entity Fields ─────────────────────────────────────────────────────────
     async fn add_entity_field(
         &self, entity_type_id: &str, name: &str, data_type: &str,
-        is_required: bool, classification: &str,
+        is_required: bool, classification: &str, sort_order: i64,
     ) -> Result<EntityFieldRow>;
     async fn list_entity_fields(&self, entity_type_id: &str) -> Result<Vec<EntityFieldRow>>;
+    /// P0: check if changing field type/name is breaking; returns BreakingChangeInfo
+    async fn check_field_type_change(&self, field_id: &str, new_type: &str) -> Result<BreakingChangeInfo>;
+    /// P0: apply field type change with migration strategy ('drop' | 'cast')
+    async fn apply_field_type_change(&self, field_id: &str, new_type: &str, strategy: &str) -> Result<SchemaMigrationRow>;
+    /// P0: check if deleting a field is breaking
+    async fn check_field_delete(&self, field_id: &str) -> Result<BreakingChangeInfo>;
+    /// P0: apply field deletion with strategy (always 'drop')
+    async fn apply_field_delete(&self, field_id: &str) -> Result<SchemaMigrationRow>;
     async fn delete_entity_field(&self, id: &str) -> Result<()>;
+    /// P1b: data lineage — datasets feeding this ET
+    async fn get_et_lineage(&self, et_id: &str) -> Result<serde_json::Value>;
 
     // ── Ontology Objects ──────────────────────────────────────────────────────
     async fn upsert_ontology_object(
@@ -141,6 +157,32 @@ pub trait MetadataStore: Send + Sync {
     async fn get_link_type_mappings(&self, dataset_id: &str) -> Result<Vec<serde_json::Value>>;
     async fn list_schema_links(&self) -> Result<Vec<serde_json::Value>>;
     async fn resolve_links_for_dataset(&self, dataset_id: &str) -> Result<usize>;
+
+    // ── Bounded Contexts ──────────────────────────────────────────────────────
+    async fn create_bounded_context(&self, fold_id: &str, name: &str, color: &str, auto_detected: bool) -> Result<BoundedContextRow>;
+    async fn list_bounded_contexts(&self, fold_id: &str) -> Result<Vec<BoundedContextRow>>;
+    async fn delete_bounded_context(&self, id: &str) -> Result<()>;
+
+    async fn create_bc_relationship(
+        &self, from_bc_id: &str, to_bc_id: &str, relationship_type: &str, notes: Option<&str>,
+    ) -> Result<BcRelationshipRow>;
+    async fn list_bc_relationships(&self, bc_id: &str) -> Result<Vec<BcRelationshipRow>>;
+    async fn delete_bc_relationship(&self, id: &str) -> Result<()>;
+    /// Context Map: all BC nodes + relationship edges for a project
+    async fn get_context_map(&self, project_id: &str) -> Result<serde_json::Value>;
+
+    /// P1: Union-Find BC inference — returns suggestions without writing
+    async fn infer_child_bcs(&self, fold_id: &str) -> Result<serde_json::Value>;
+    /// P1: Apply accepted suggestions — writes BCs and assigns ETs
+    async fn apply_bc_suggestions(&self, fold_id: &str, suggestions: &[serde_json::Value]) -> Result<Vec<serde_json::Value>>;
+
+    // ── System Interfaces (P2c) ───────────────────────────────────────────────
+    async fn list_interfaces(&self) -> Result<Vec<serde_json::Value>>;
+    async fn create_interface(&self, name: &str, description: Option<&str>) -> Result<InterfaceRow>;
+    async fn delete_interface(&self, id: &str) -> Result<()>;
+    async fn list_et_interfaces(&self, et_id: &str) -> Result<Vec<serde_json::Value>>;
+    async fn add_et_interface(&self, et_id: &str, interface_id: &str) -> Result<()>;
+    async fn remove_et_interface(&self, et_id: &str, interface_id: &str) -> Result<()>;
 
     // ── Platform Config ───────────────────────────────────────────────────────
     async fn get_platform_config(&self, key: &str) -> Result<Option<String>>;

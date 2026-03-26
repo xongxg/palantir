@@ -3,10 +3,16 @@ set -euo pipefail
 
 # ── Listen address ─────────────────────────────────────────────────────────────
 # 单实例：  ./run.sh
-# 指定端口：INGEST_ADDR=0.0.0.0:3000 ./run.sh
+# 位置参数：./run.sh 0.0.0.0:8089
+# 环境变量：INGEST_ADDR=0.0.0.0:3000 ./run.sh
 # 多实例：  INGEST_ADDR=0.0.0.0:8080 ./run.sh &
 #           INGEST_ADDR=0.0.0.0:8081 ./run.sh &
-export INGEST_ADDR=${INGEST_ADDR:-0.0.0.0:8080}
+if [[ "${1:-}" =~ ^[0-9A-Za-z.:-]+:[0-9]+$ ]]; then
+    export INGEST_ADDR="$1"
+    shift
+else
+    export INGEST_ADDR=${INGEST_ADDR:-0.0.0.0:8080}
+fi
 
 # ── Per-instance isolation ─────────────────────────────────────────────────────
 # 每个端口独立的数据目录和 PID 文件，互不干扰

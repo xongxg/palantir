@@ -1,8 +1,8 @@
 # Bounded Context（BC）独立建模设计
 
-> **文档版本**：v0.5
-> **状态**：草稿·待确认
-> **日期**：2026-03-25
+> **文档版本**：v0.6
+> **状态**：P0 DB + API 已实现；P1 BC 推断 + Context Map 已实现；P2 规划中
+> **日期**：2026-03-26（v0.6 更新：实现状态同步）
 > **关联文档**：
 > - `ontology_manager_design.md` — Ontology Manager 功能设计
 > - `ontology_ai_architecture.md` — 整体架构思考
@@ -543,21 +543,40 @@ Context Map（独立视图）：BC 作为节点，link_type_mappings 的跨 BC �
 
 ### 实现路线图
 
-| Phase | 内容 | 前提 |
+| Phase | 内容 | 状态 |
 |-------|------|------|
-| P0 | DB：bounded_contexts + bc_relationships + et.bc_id + folds.fold_type | 无 |
-| P0 | Child-BC CRUD API + ET 归属 API | DB P0 |
-| P1 | 阶段1后端化：/infer 接口（边密度算法，结果持久化） | BC API |
-| P1 | BC 推断确认 UI（接受/拆分/合并/移动 ET） | /infer 接口 |
-| P1 | 阶段2：多信号融合（DDD 角色 + 字段名约定）+ 置信度显示 | /infer 接口 |
-| P1 | 跨 BC link 检测 + 自动建议 bc_relationship | BC API |
-| P1 | 部门级 Context Map 可视化 | bc_relationships |
-| P2 | 阶段3：Embedding 语义聚类辅助推断 | embedding-svc |
-| P2 | 公司级 Context Map（跨 project 全景） | 部门级完成后 |
-| P2 | Promote 时自动触发 BC 推断（增量更新） | P1 完成 |
-| P2 | acl / open_host 治理行为 | Action Type / Pipeline |
-| P3 | 阶段4：用户决策历史学习 | P1 确认 UI 完成 |
-| P3 | 跨项目推断知识库（行业模式共享） | P3 历史学习 |
+| P0 | DB：bounded_contexts + bc_relationships + et.bc_id + folds.fold_type | ✅ 已实现 |
+| P0 | Child-BC CRUD API + ET 归属 API | ✅ 已实现 |
+| P1 | 阶段1后端化：`GET /api/folds/:id/bcs/infer`（Union-Find + 边密度） | ✅ 已实现 |
+| P1 | `POST /api/folds/:id/bcs/apply-suggestions`（写入 BC + ET 归属） | ✅ 已实现 |
+| P1 | BC 推断确认 UI（接受/重命名/忽略，置信度色码，跨 BC 边警告） | ✅ 已实现 |
+| P1 | 部门级 Context Map 可视化（独立标签，D3 force-graph，5 种关系线） | ✅ 已实现 |
+| P1 | 阶段2：多信号融合（DDD 角色权重）+ 置信度显示 | ✅ 已实现（DDD 角色 bonus 已在后端） |
+| P1 | 跨 BC link 检测 + 自动建议 bc_relationship | ⏳ 待实现（cross_bc_links 字段已返回，UI 提示已有） |
+| P2 | 阶段3：Embedding 语义聚类辅助推断 | ⏳ 待实现（需 embedding-svc） |
+| P2 | 公司级 Context Map（跨 project 全景） | ⏳ 待实现 |
+| P2 | Promote 时自动触发 BC 推断（增量更新） | ⏳ 待实现 |
+| P2 | acl / open_host 治理行为 | ⏳ 待实现（依赖 Action Type / Pipeline） |
+| P3 | 阶段4：用户决策历史学习 | ⏳ 规划中 |
+| P3 | 跨项目推断知识库（行业模式共享） | ⏳ 规划中 |
+
+### 实现细节备注（2026-03-26）
+
+**已实现的 API 与设计文档的差异：**
+
+| 设计文档 | 实际实现 | 原因 |
+|---------|---------|------|
+| `POST /api/folds/:fold_id/bcs/infer`（触发推断） | `GET /api/folds/:fold_id/bcs/infer` | 干跑不写数据，语义上是 GET |
+| BC 列表接口路径 `/api/folds/:id/bcs` | `/api/folds/:id/bounded-contexts` | 与现有命名规范保持一致 |
+| `DELETE /api/bcs/:bc_id` | `DELETE /api/bounded-contexts/:id` | 同上 |
+
+**前端 BC 推断 UI 位置：**
+- 入口：「模型」标签 → 左侧 ET 列表底部「BC 推断」折叠按钮
+- 选择 Fold → 点「↻ 推断」→ 展示建议列表（可改名/勾选/忽略）→ 点「应用 N 个 BC」
+
+**Context Map 位置：**
+- WorkspacePage 顶部标签栏「Context Map」（独立标签，非 Graph 子视图）
+- 若项目无 BC 数据，显示引导提示
 
 ---
 

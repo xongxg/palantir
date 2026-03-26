@@ -10,9 +10,16 @@ const DDD_ROLE_BADGE: Record<string, string> = {
   service:        'SV',
 }
 
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  draft:      { label: '草稿', cls: 'bg-slate-700 text-slate-400' },
+  active:     { label: '活跃', cls: 'bg-green-900/50 text-green-400' },
+  deprecated: { label: '废弃', cls: 'bg-amber-900/50 text-amber-400' },
+}
+
 export default function EntityTypeList() {
   const { entityTypes, selectedId, select } = useSchemaStore()
   const [showCreate, setShowCreate] = useState(false)
+  const visibleTypes = entityTypes.filter(et => et.display_name !== '未分类' && et.name !== 'uncategorized')
 
   return (
     <>
@@ -27,7 +34,7 @@ export default function EntityTypeList() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {entityTypes.map(et => (
+        {visibleTypes.map(et => (
           <button
             key={et.id}
             onClick={() => select(et.id)}
@@ -49,6 +56,11 @@ export default function EntityTypeList() {
                 <p className="text-[10px] text-slate-600 truncate">{et.namespace}</p>
               )}
             </div>
+            {et.status && et.status !== 'active' && STATUS_BADGE[et.status] && (
+              <span className={cn('text-[9px] px-1 py-0.5 rounded font-medium flex-shrink-0', STATUS_BADGE[et.status].cls)}>
+                {STATUS_BADGE[et.status].label}
+              </span>
+            )}
             {et.ddd_role && et.ddd_role !== 'entity' && (
               <span className="text-[9px] px-1 py-0.5 rounded bg-slate-800 text-slate-500 flex-shrink-0">
                 {DDD_ROLE_BADGE[et.ddd_role] ?? et.ddd_role}
@@ -60,7 +72,7 @@ export default function EntityTypeList() {
           </button>
         ))}
 
-        {entityTypes.length === 0 && (
+        {visibleTypes.length === 0 && (
           <p className="text-xs text-slate-600 text-center py-8">暂无实体类型</p>
         )}
       </div>

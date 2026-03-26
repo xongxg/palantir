@@ -57,9 +57,12 @@ pub struct EntityTypeRow {
     pub color: String,
     pub icon: String,
     pub fold_id: Option<String>,
+    pub bc_id: Option<String>,
     pub namespace: Option<String>,
     /// DDD role: 'aggregate_root' | 'entity' | 'value_object'
     pub ddd_role: String,
+    /// Lifecycle status: 'draft' | 'active' | 'deprecated'
+    pub status: String,
     pub created_at: String,
 }
 
@@ -107,7 +110,76 @@ pub struct FoldRow {
     pub project_id: String,
     pub name: String,
     pub description: Option<String>,
+    /// 'normal' | 'shared_kernel'
+    pub fold_type: String,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BoundedContextRow {
+    pub id: String,
+    pub fold_id: String,
+    pub name: String,
+    pub color: String,
+    pub auto_detected: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BcRelationshipRow {
+    pub id: String,
+    pub from_bc_id: String,
+    pub to_bc_id: String,
+    /// 'shared_kernel' | 'customer_supplier' | 'conformist' | 'acl' | 'open_host'
+    pub relationship_type: String,
+    pub notes: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct InterfaceRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_builtin: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct InterfaceFieldRow {
+    pub interface_id: String,
+    pub field_name: String,
+    pub field_type: String,
+    pub required: bool,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SchemaMigrationRow {
+    pub id: String,
+    pub et_id: String,
+    pub field_name: String,
+    /// 'type_change' | 'delete' | 'rename' | 'pk_change' | 'status_change'
+    pub change_type: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    /// 'drop' | 'cast' | 'rename'
+    pub strategy: String,
+    pub affected_count: i64,
+    pub applied_by: Option<String>,
+    pub applied_at: String,
+}
+
+/// Describes a detected breaking change before it is applied.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BreakingChangeInfo {
+    pub breaking: bool,
+    pub affected_count: i64,
+    pub change_type: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    /// Strategies available: e.g. ["drop", "cast"] or ["drop"]
+    pub strategies: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

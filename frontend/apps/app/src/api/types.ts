@@ -76,8 +76,58 @@ export interface EntityType {
   namespace?: string
   ddd_role: string
   bc_id?: string
+  /** 'draft' | 'active' | 'deprecated' */
+  status: string
   fields: EntityField[]
   created_at: string
+}
+
+// ── Breaking change ─────────────────────────────────────────────────────────
+export interface BreakingChangeInfo {
+  breaking: boolean
+  affected_count: number
+  change_type: string
+  old_value?: string
+  new_value?: string
+  strategies: string[]
+}
+
+// ── Lineage ─────────────────────────────────────────────────────────────────
+export interface LineageSource {
+  dataset_id: string
+  dataset_name: string
+  source_id: string
+  source_name: string
+  source_type: string
+  fold_id: string
+  fold_name: string
+  primary_key_col: string
+  sync_mode: string
+  last_synced_at?: string
+  record_count: number
+}
+
+export interface EtLineage {
+  entity_type_id: string
+  sources: LineageSource[]
+  total_records: number
+}
+
+// ── Interfaces ──────────────────────────────────────────────────────────────
+export interface InterfaceField {
+  field_name: string
+  field_type: string
+  required: boolean
+  description?: string
+}
+
+export interface Interface {
+  id: string
+  name: string
+  description?: string
+  is_builtin: boolean
+  created_at: string
+  fields: InterfaceField[]
 }
 
 // ── Ontology Objects ──────────────────────────────────────────────────────────
@@ -112,6 +162,21 @@ export interface BoundedContext {
   color: string
   auto_detected: boolean
   created_at: string
+}
+
+/** One BC suggestion returned by the Union-Find inference */
+export interface BcSuggestion {
+  suggested_name: string
+  color: string
+  et_ids: string[]
+  entity_types: { id: string; name: string; display_name: string; ddd_role: string }[]
+  aggregate_root_id?: string
+  confidence: number
+  cross_bc_links: { from_et_id: string; to_et_id: string }[]
+}
+
+export interface BcInferenceResult {
+  suggestions: BcSuggestion[]
 }
 
 export interface BcRelationship {
