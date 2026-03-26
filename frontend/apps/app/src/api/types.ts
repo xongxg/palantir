@@ -19,14 +19,26 @@ export interface Fold {
 // ── Data Sources ──────────────────────────────────────────────────────────────
 export interface DataSource {
   id: string
-  fold_id: string
+  fold_id?: string
   name: string
   source_type: string
   status: string
-  sync_mode: string
+  sync_mode?: string
+  deprecated?: boolean
   record_count?: number
   last_sync_at?: string
+  config?: Record<string, unknown>
   created_at: string
+}
+
+export interface SyncJob {
+  id: string
+  source_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  total_records?: number
+  error?: string
+  started_at?: string
+  finished_at?: string
 }
 
 // ── Datasets ──────────────────────────────────────────────────────────────────

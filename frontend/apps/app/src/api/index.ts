@@ -2,12 +2,14 @@ export { api } from './client'
 export * from './types'
 
 import { api } from './client'
-import type { Project, Fold, Dataset, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping } from './types'
+import type { Project, Fold, Dataset, DataSource, SyncJob, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping } from './types'
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 export const projectsApi = {
   list:   ()           => api.get<{ projects: Project[] }>('/api/projects').then(r => r.projects),
+  get:    (id: string) => api.get<Project>(`/api/projects/${id}`),
   create: (name: string) => api.post<Project>('/api/projects', { name }),
+  update: (id: string, name: string) => api.put<Project>(`/api/projects/${id}`, { name }),
   delete: (id: string)   => api.delete<void>(`/api/projects/${id}`),
   folds:  (id: string)   => api.get<{ folds: Fold[] }>(`/api/projects/${id}/folds`).then(r => r.folds),
 }
@@ -41,6 +43,23 @@ export const entityTypesApi = {
   addField: (etId: string, body: { name: string; data_type: string; is_required?: boolean; classification?: string }) =>
     api.post<void>(`/api/ontology/schema/${etId}/fields`, body),
   deleteField: (fieldId: string) => api.delete<void>(`/api/ontology/fields/${fieldId}`),
+}
+
+// ── Sources ───────────────────────────────────────────────────────────────────
+export const sourcesApi = {
+  list:       ()           => api.get<{ sources: DataSource[] }>('/api/sources').then(r => r.sources),
+  create:     (body: { name: string; source_type: string; config: Record<string, unknown> }) =>
+    api.post<DataSource>('/api/sources', body),
+  update:     (id: string, body: { name: string; source_type: string; config: Record<string, unknown> }) =>
+    api.put<DataSource>(`/api/sources/${id}`, body),
+  delete:     (id: string) => api.delete<void>(`/api/sources/${id}`),
+  quickTest:  (body: { source_type: string; config: Record<string, unknown> }) =>
+    api.post<{ status: string; files?: string[]; error?: string }>('/api/sources/quick-test', body),
+  sync:       (id: string) => api.post<{ job_id: string }>(`/api/sources/${id}/sync`, {}),
+  activate:   (id: string) => api.post<void>(`/api/sources/${id}/activate`, {}),
+  deprecate:  (id: string) => api.post<void>(`/api/sources/${id}/deprecate`, {}),
+  jobs:       (id: string) => api.get<{ jobs: SyncJob[] }>(`/api/sources/${id}/jobs`).then(r => r.jobs),
+  datasets:   (id: string) => api.get<{ datasets: Dataset[] }>(`/api/sources/${id}/datasets`).then(r => r.datasets),
 }
 
 // ── Ontology Objects ──────────────────────────────────────────────────────────

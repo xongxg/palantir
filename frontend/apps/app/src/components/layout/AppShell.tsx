@@ -1,55 +1,80 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, Link, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
-const NAV_TABS = [
-  { label: '导入', path: '/ontology?tab=import' },
-  { label: '模型', path: '/ontology?tab=schema' },
-  { label: '浏览', path: '/ontology?tab=browse' },
-  { label: '图谱', path: '/ontology?tab=graph' },
-]
-
 export default function AppShell() {
-  const navigate = useNavigate()
+  const location   = useLocation()
+  const navigate   = useNavigate()
+  const { projectId } = useParams<{ projectId?: string }>()
+
+  const isOntology  = location.pathname === '/ontology'
+  const isWorkspace = location.pathname.startsWith('/project/')
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Top nav */}
-      <header className="flex items-center gap-4 px-4 h-12 border-b border-slate-800 flex-shrink-0 bg-slate-950">
+      <header className="flex items-center gap-3 px-4 h-12 border-b border-slate-800 flex-shrink-0 bg-slate-950">
         <button
           onClick={() => navigate('/')}
-          className="text-indigo-400 font-bold text-sm tracking-wide hover:text-indigo-300 transition-colors"
+          className="text-indigo-400 font-bold text-sm tracking-wide hover:text-indigo-300 transition-colors flex-shrink-0"
         >
           Palantir
         </button>
-        <NavLink
-          to="/"
-          className={({ isActive }) =>
-            cn('text-xs text-slate-400 hover:text-slate-200 transition-colors', isActive && 'text-slate-200')
-          }
-        >
-          ← 返回项目
-        </NavLink>
-        <span className="text-slate-600 text-xs">|</span>
-        <span className="text-slate-200 text-sm font-medium">Ontology</span>
 
-        <div className="ml-auto flex items-center gap-1">
-          {NAV_TABS.map(tab => (
+        {/* Breadcrumb */}
+        {isWorkspace && (
+          <>
+            <span className="text-slate-700 text-xs">›</span>
+            <Link to="/" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">项目</Link>
+            <span className="text-slate-700 text-xs">›</span>
+            <span className="text-xs text-slate-300 font-medium">{projectId?.slice(0, 8)}…</span>
+            <span className="text-slate-700 text-xs mx-1">|</span>
             <NavLink
-              key={tab.label}
-              to={tab.path}
+              to={`/ontology`}
               className={({ isActive }) =>
-                cn(
-                  'px-4 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  isActive
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800',
-                )
+                cn('text-xs transition-colors', isActive ? 'text-slate-200' : 'text-slate-500 hover:text-slate-300')
               }
             >
-              {tab.label}
+              Ontology →
             </NavLink>
-          ))}
-        </div>
+          </>
+        )}
+
+        {isOntology && (
+          <>
+            <span className="text-slate-700 text-xs">›</span>
+            <NavLink to="/" className={({ isActive }) =>
+              cn('text-xs transition-colors', isActive ? 'text-slate-200' : 'text-slate-500 hover:text-slate-300')}>
+              项目
+            </NavLink>
+            <span className="text-slate-700 text-xs">›</span>
+            <span className="text-xs text-slate-300 font-medium">Ontology</span>
+          </>
+        )}
+
+        {!isWorkspace && !isOntology && (
+          <>
+            <span className="text-slate-700 text-xs">›</span>
+            <span className="text-xs text-slate-400">项目</span>
+          </>
+        )}
+
+        {/* Right: Ontology quick-nav when on workspace */}
+        {isWorkspace && (
+          <div className="ml-auto flex items-center gap-1">
+            {(['import', 'schema', 'browse', 'graph'] as const).map(tab => (
+              <NavLink
+                key={tab}
+                to={`/ontology?tab=${tab}`}
+                className={({ isActive }) =>
+                  cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                    isActive ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800')
+                }
+              >
+                {{ import:'导入', schema:'模型', browse:'浏览', graph:'图谱' }[tab]}
+              </NavLink>
+            ))}
+          </div>
+        )}
       </header>
 
       {/* Content */}
