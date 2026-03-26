@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import ImportTab from '@/features/ontology/import/ImportTab'
+import SchemaTab from '@/features/ontology/schema/SchemaTab'
 
 const TABS = ['import', 'schema', 'browse', 'graph'] as const
 type Tab = typeof TABS[number]
@@ -43,7 +44,7 @@ export default function OntologyPage() {
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {tab === 'import' && <ImportTab />}
-        {tab === 'schema' && <PlaceholderTab name="Schema 管理" />}
+        {tab === 'schema' && <SchemaTab />}
         {tab === 'browse' && <PlaceholderTab name="对象浏览" />}
         {tab === 'graph'  && <PlaceholderTab name="图谱可视化" />}
       </div>
