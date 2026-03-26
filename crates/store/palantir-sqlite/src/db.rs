@@ -1309,9 +1309,9 @@ impl Db {
                ds.last_sync_at,
                COALESCE(dv.total_rows, 0) AS record_count
              FROM object_type_mappings otm
-             JOIN datasets d    ON d.id = otm.dataset_id
+             JOIN datasets d      ON d.id = otm.dataset_id
              JOIN data_sources ds ON ds.id = d.source_id
-             JOIN folds f       ON f.id = ds.fold_id
+             LEFT JOIN folds f    ON f.id = ds.fold_id
              LEFT JOIN dataset_versions dv ON dv.dataset_id = d.id AND dv.is_current = 1
              WHERE otm.entity_type_id = ?
              ORDER BY ds.last_sync_at DESC",
