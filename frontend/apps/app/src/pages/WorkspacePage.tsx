@@ -197,10 +197,18 @@ function SyncHistoryPanel({ srcId }: { srcId: string }) {
 }
 
 // ── Test connection panel ──────────────────────────────────────────────────
-function TestPanel({ srcType, getConfig }: { srcType: string; getConfig: () => Record<string, unknown> }) {
-  const [result,        setResult]        = useState<{ ok: boolean; message?: string; files?: string[] } | null>(null)
-  const [testing,       setTesting]       = useState(false)
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+function TestPanel({ srcType, getConfig, selectedFiles, onFilesChange }: {
+  srcType: string
+  getConfig: () => Record<string, unknown>
+  selectedFiles: Set<string>
+  onFilesChange: (files: Set<string>) => void
+}) {
+  const [result,  setResult]  = useState<{ ok: boolean; message?: string; files?: string[] } | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  function setSelectedFiles(updater: Set<string> | ((prev: Set<string>) => Set<string>)) {
+    onFilesChange(typeof updater === 'function' ? updater(selectedFiles) : updater)
+  }
 
   async function handleTest() {
     setTesting(true)
@@ -240,8 +248,14 @@ function TestPanel({ srcType, getConfig }: { srcType: string; getConfig: () => R
           <p className={cn('text-xs mb-2', result.ok ? 'text-emerald-400' : 'text-red-400')}>
             {result.ok ? '✓' : '✗'} {result.message}
           </p>
+          {result.ok && (!result.files || result.files.length === 0) && (
+            <p className="text-xs text-slate-500">未发现文件 — 检查 Bucket 和路径前缀</p>
+          )}
           {result.files && result.files.length > 0 && (
             <div>
+              {selectedFiles.size > 0 && (
+                <p className="text-[11px] text-amber-400/80 mb-2">已选 {selectedFiles.size} 个文件 — 点击左侧「保存」后再同步</p>
+              )}
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs text-slate-500">发现 {result.files.length} 个文件（已选 {selectedFiles.size} 个）</p>
                 <div className="flex gap-2">
@@ -289,7 +303,7 @@ function SourcePanel({ src, projectId, onSaved, onDeleted, onCancel }: SourcePan
   const formRef     = useRef<HTMLFormElement>(null)
   const [tab,       setTab]       = useState<SrcTab>('test')
   const [srcType,   setSrcType]   = useState(src?.source_type ?? 's3')
-  const [selFiles] = useState<Set<string>>(new Set(((src?.config as S3Config)?.selected_files) ?? []))
+  const [selFiles, setSelFiles] = useState<Set<string>>(new Set(((src?.config as S3Config)?.selected_files) ?? []))
   const [saving,    setSaving]    = useState(false)
   const [syncing,   setSyncing]   = useState(false)
   const isNew = !src
@@ -484,7 +498,7 @@ function SourcePanel({ src, projectId, onSaved, onDeleted, onCancel }: SourcePan
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            {tab === 'test'     && <TestPanel srcType={srcType} getConfig={readFormConfig} />}
+            {tab === 'test'     && <TestPanel srcType={srcType} getConfig={readFormConfig} selectedFiles={selFiles} onFilesChange={setSelFiles} />}
             {tab === 'history'  && !isNew && <SyncHistoryPanel srcId={src!.id} />}
             {tab === 'datasets' && !isNew && <DatasetsPanel srcId={src!.id} projectId={projectId} />}
             {(tab === 'history' || tab === 'datasets') && isNew && (
