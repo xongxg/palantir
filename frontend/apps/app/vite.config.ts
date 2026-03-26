@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port,
+      host: '0.0.0.0',
       proxy: {
         '/api':    { target: backend, changeOrigin: true },
         '/static': { target: backend, changeOrigin: true },
