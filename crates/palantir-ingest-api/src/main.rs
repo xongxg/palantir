@@ -32,7 +32,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 use tokio::sync::RwLock;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
 // ── Global DB ─────────────────────────────────────────────────────────────────
@@ -3964,21 +3964,18 @@ async fn main() -> anyhow::Result<()> {
     let db_inst = Db::open(&db_path).await?;
     DB.set(Arc::new(db_inst)).ok();
 
+    // ── Determine frontend dist path ──────────────────────────────────────────
+    // In dev: run from repo root → "frontend/dist"
+    // In production containers: may be set via FRONTEND_DIST env var
+    let frontend_dist = std::env::var("FRONTEND_DIST")
+        .unwrap_or_else(|_| "frontend/dist".to_string());
+    let spa_fallback = ServeDir::new(&frontend_dist)
+        .not_found_service(ServeFile::new(format!("{}/index.html", frontend_dist)));
+
     let app = Router::new()
-        .route("/", get(projects_page))
-        .route("/workspace", get(workspace_page))
-        .route("/viz", get(viz_page))
-        .route("/ontology", get(ontology_page))
-        .route("/sources", get(sources_page))
-        .route("/connect", get(connect_page))
-        .route("/ingest", get(projects_page))
+        // Legacy redirects (old HTML → React SPA routes)
         .route("/ingest/project/:id", get(ingest_project_redirect))
-        .route("/project/:id",        get(project_workspace_page))
-        .route("/ingest/fold/:id", get(ingest_fold_redirect))
-        .route("/static/d3.v7.min.js", get(|| async {
-            ([(axum::http::header::CONTENT_TYPE, "application/javascript")],
-             include_str!("ui/d3.v7.min.js"))
-        }))
+        .route("/ingest/fold/:id",    get(ingest_fold_redirect))
         .route("/healthz", get(healthz))
         // Ontology TBox (Schema)
         .route("/api/ontology/schema", get(list_entity_types_handler).post(create_entity_type_handler))
@@ -4059,11 +4056,9 @@ async fn main() -> anyhow::Result<()> {
         // ── Admin: platform storage config ───────────────────────────────────
         .route("/api/admin/storage", get(get_storage_config_handler).post(set_storage_config_handler))
         .route("/api/admin/storage/test", post(test_storage_config_handler))
-        .nest_service(
-            "/static",
-            ServeDir::new("crates/palantir-ingest-api/src/ui/static"),
-        )
-        .nest_service("/docs", ServeDir::new("docs"));
+        .nest_service("/docs", ServeDir::new("docs"))
+        // ── React SPA: serves frontend/dist, falls back to index.html ─────────
+        .fallback_service(spa_fallback);
 
     let addr_str = std::env::args()
         .nth(1)

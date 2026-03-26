@@ -9,7 +9,7 @@ export const projectsApi = {
   list:   ()           => api.get<{ projects: Project[] }>('/api/projects').then(r => r.projects),
   get:    (id: string) => api.get<Project>(`/api/projects/${id}`),
   create: (name: string) => api.post<Project>('/api/projects', { name }),
-  update: (id: string, name: string) => api.put<Project>(`/api/projects/${id}`, { name }),
+  update: (id: string, name: string) => api.patch<Project>(`/api/projects/${id}`, { name }),
   delete: (id: string)   => api.delete<void>(`/api/projects/${id}`),
   folds:  (id: string)   => api.get<{ folds: Fold[] }>(`/api/projects/${id}/folds`).then(r => r.folds),
 }
