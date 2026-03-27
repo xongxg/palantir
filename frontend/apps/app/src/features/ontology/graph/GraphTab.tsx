@@ -22,13 +22,9 @@ interface GraphData {
 // DDD role → ring/indicator color (overlaid on top of ET type color)
 const DDD_RING: Record<string, string> = {
   'aggregate-root': '#f85149',   // red ring = AR
+  'ar-candidate':   '#f0883e',   // orange dashed = possible external BC root
   'value-object':   '#3fb950',   // green dashed = VO
   'entity':         'none',
-}
-const ROLE_LABEL: Record<string, string> = {
-  'aggregate-root': '◆ Aggregate Root',
-  'entity':         '▸ Entity',
-  'value-object':   '○ Value Object',
 }
 
 // Per-ET-type distinct color palette (matches backend)
@@ -240,7 +236,7 @@ export default function GraphTab({ projectId }: Props) {
     const nodeR = (d: ApiNode) => {
       if (d.is_default) return 2
       const role = etRoles[d.et_id] || 'entity'
-      return role === 'aggregate-root' ? Math.round(R * 1.45) : role === 'entity' ? R : Math.round(R * 0.67)
+      return role === 'aggregate-root' ? Math.round(R * 1.45) : role === 'ar-candidate' ? Math.round(R * 1.15) : role === 'entity' ? R : Math.round(R * 0.67)
     }
     // Primary color = ET type's own color; DDD role → ring/style overlay
     const etColor = (d: ApiNode) => etColorMap[d.et_id] || (d.color && d.color !== DEFAULT_ET_COLOR ? d.color : hashEtColor(d.et_id))
@@ -456,6 +452,31 @@ export default function GraphTab({ projectId }: Props) {
           .attr('fill', ring).attr('font-weight', 700).attr('pointer-events','none')
           .attr('paint-order','stroke').attr('stroke','#0d1117').attr('stroke-width', 2).attr('stroke-opacity', 0.9)
           .text('◆')
+      } else if (role === 'ar-candidate') {
+        // ── AR Candidate: orange dashed ring + soft glow ──────────────────────
+        // Outer soft glow
+        sel.append('circle')
+          .attr('r', r + 7).attr('fill', ring + '14').attr('stroke', ring)
+          .attr('stroke-width', 0.5).attr('stroke-opacity', 0.3).attr('pointer-events','none')
+        // BC ring
+        sel.append('circle').attr('class','node-bc-ring')
+          .attr('r', r + 4).attr('fill','none')
+          .attr('stroke', bcColor).attr('stroke-width', 1.5).attr('stroke-opacity', 0.5).attr('pointer-events','none')
+        // Orange dashed ring
+        sel.append('circle').attr('class','node-ddd-ring')
+          .attr('r', r + 2).attr('fill','none')
+          .attr('stroke', ring).attr('stroke-width', 2).attr('stroke-dasharray','4,3').attr('stroke-opacity', 0.9).attr('pointer-events','none')
+        sel.append('circle').attr('class','node-hover-ring')
+          .attr('r', r + 10).attr('fill','none')
+          .attr('stroke', color).attr('stroke-width', 2).attr('stroke-opacity', 0).attr('pointer-events','none')
+        sel.append('circle').attr('class','node-main')
+          .attr('r', r).attr('fill', color + '38').attr('stroke', color).attr('stroke-width', 2)
+        // ? badge at top
+        sel.append('text')
+          .attr('dy', -r + 3).attr('font-size', Math.max(8, r * 0.55)).attr('text-anchor','middle')
+          .attr('fill', ring).attr('font-weight', 700).attr('pointer-events','none')
+          .attr('paint-order','stroke').attr('stroke','#0d1117').attr('stroke-width', 2).attr('stroke-opacity', 0.9)
+          .text('?')
       } else {
         // ── Entity / Value Object ─────────────────────────────────────────────
         sel.append('circle').attr('class','node-bc-ring')
@@ -479,13 +500,13 @@ export default function GraphTab({ projectId }: Props) {
         .attr('fill','#c9d1d9').attr('text-anchor','middle')
         .attr('paint-order','stroke').attr('stroke','#0d1117').attr('stroke-width', 3).attr('stroke-opacity', 0.85)
         .text(lbl)
-      // Sub-label: show "AR" badge for aggregate-root, otherwise ET type name
-      const subLabel = role === 'aggregate-root' ? 'AR' : (d.et_name || '')
-      const subColor  = role === 'aggregate-root' ? DDD_RING['aggregate-root'] : color
+      // Sub-label: show role badge for AR / ar-candidate, otherwise ET type name
+      const subLabel = role === 'aggregate-root' ? 'AR' : role === 'ar-candidate' ? '? AR' : (d.et_name || '')
+      const subColor  = role === 'aggregate-root' ? DDD_RING['aggregate-root'] : role === 'ar-candidate' ? DDD_RING['ar-candidate'] : color
       sel.append('text').attr('class','graph-node-label')
-        .attr('dy', r + 22).attr('font-size', role === 'aggregate-root' ? 9 : 8)
-        .attr('font-weight', role === 'aggregate-root' ? 700 : 400)
-        .attr('fill', subColor).attr('opacity', role === 'aggregate-root' ? 0.95 : 0.6)
+        .attr('dy', r + 22).attr('font-size', role === 'aggregate-root' || role === 'ar-candidate' ? 9 : 8)
+        .attr('font-weight', role === 'aggregate-root' || role === 'ar-candidate' ? 700 : 400)
+        .attr('fill', subColor).attr('opacity', role === 'aggregate-root' || role === 'ar-candidate' ? 0.95 : 0.6)
         .attr('text-anchor','middle')
         .attr('paint-order','stroke').attr('stroke','#0d1117').attr('stroke-width', 2).attr('stroke-opacity', 0.85)
         .text(subLabel)
@@ -544,8 +565,8 @@ export default function GraphTab({ projectId }: Props) {
           `<div style="margin-bottom:1px"><span style="color:#6e7681">${escHtml(k)}:</span> <span style="color:#c9d1d9">${escHtml(String(v ?? ''))}</span></div>`
         ).join('')
 
-        const roleShort = role === 'aggregate-root' ? 'AR' : role === 'value-object' ? 'VO' : 'Entity'
-        const roleColor = role === 'aggregate-root' ? '#f85149' : role === 'value-object' ? '#3fb950' : '#6e7681'
+        const roleShort = role === 'aggregate-root' ? 'AR' : role === 'ar-candidate' ? '? AR' : role === 'value-object' ? 'VO' : 'Entity'
+        const roleColor = role === 'aggregate-root' ? '#f85149' : role === 'ar-candidate' ? '#f0883e' : role === 'value-object' ? '#3fb950' : '#6e7681'
         const rolePill  = `<span style="display:inline-block;font-size:10px;font-weight:700;color:${roleColor};` +
           `background:${roleColor}18;border:1px solid ${roleColor}44;border-radius:4px;padding:0 5px;line-height:16px">${roleShort}</span>`
         tip.html(
@@ -554,7 +575,7 @@ export default function GraphTab({ projectId }: Props) {
             `<span style="color:#8b949e;font-size:11px">${escHtml(d.et_name)}</span>${rolePill}` +
           `</div>` +
           (fieldSection ? `<div style="font-size:11px;line-height:1.7;border-top:1px solid #30363d;padding-top:6px">${fieldSection}</div>` : '') +
-          `<div style="font-size:10px;color:#3d444d;margin-top:${fieldSection?'6px':'4px'}">右键点击可更改角色</div>`
+          (role === 'ar-candidate' ? `<div style="font-size:10px;color:#f0883e;margin-top:4px">可能是外部 BC 的聚合根，右键确认角色</div>` : `<div style="font-size:10px;color:#3d444d;margin-top:${fieldSection?'6px':'4px'}">右键点击可更改角色</div>`)
         ).style('opacity','1')
       })
       .on('mousemove', ev => tip.style('left', (ev.clientX + 14) + 'px').style('top', (ev.clientY - 10) + 'px'))

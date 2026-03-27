@@ -413,6 +413,14 @@ impl Db {
         .execute(&self.pool)
         .await;
 
+        // ddd_role_locked = true means the user explicitly set the role via UI;
+        // false (default) means it was auto-inferred and can be overwritten.
+        let _ = sqlx::query(
+            "ALTER TABLE entity_types ADD COLUMN ddd_role_locked INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(&self.pool)
+        .await;
+
         // ── P2c: System Interface tables ───────────────────────────────────────
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS interfaces (
@@ -967,7 +975,7 @@ impl Db {
     }
 
     pub async fn update_entity_type_ddd_role(&self, et_id: &str, ddd_role: &str) -> Result<()> {
-        sqlx::query("UPDATE entity_types SET ddd_role = ? WHERE id = ?")
+        sqlx::query("UPDATE entity_types SET ddd_role = ?, ddd_role_locked = 1 WHERE id = ?")
             .bind(ddd_role)
             .bind(et_id)
             .execute(&self.pool)
@@ -2737,6 +2745,167 @@ impl Db {
     }
 
     /// Auto-detect FK relationships by scanning `*_id` fields on all promoted objects.
+    /// Infer DDD roles from FK out-degree and persist to entity_types table.
+    /// AR = ET whose objects carry the most *distinct* FK references to OTHER ETs
+    /// (out-degree). This is always run before building links so edge direction is correct.
+    /// Only updates ETs whose ddd_role is currently 'entity' (the default); explicit
+    /// user overrides (aggregate_root / value_object set via UI) are never touched.
+    pub async fn infer_and_persist_ddd_roles(&self) -> Result<()> {
+        // Load all promoted objects
+        let objs = sqlx::query(
+            "SELECT id, entity_type_id, fields FROM ontology_objects
+             WHERE sync_run_id IN ('promote', 'auto-promote') AND fields IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        // Build raw field id → entity_type_id index
+        let mut raw_id_to_et: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for obj in &objs {
+            let fields_str: String = obj.get("fields");
+            let et_id: String = obj.get("entity_type_id");
+            if let Ok(fields) = serde_json::from_str::<serde_json::Value>(&fields_str) {
+                if let Some(raw_id) = fields.get("id").and_then(|v| v.as_str()) {
+                    raw_id_to_et.insert(raw_id.to_string(), et_id);
+                }
+            }
+        }
+
+        // Count distinct ET types each ET's objects FK-reference (out-degree)
+        // e.g. Order.customer_id → Customer, Order.address_id → Address → Order out-degree = 2
+        let mut et_refs_out: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for obj in &objs {
+            let src_et: String = obj.get("entity_type_id");
+            let fields_str: String = obj.get("fields");
+            if let Ok(fields) = serde_json::from_str::<serde_json::Value>(&fields_str) {
+                if let Some(fmap) = fields.as_object() {
+                    for (col, val) in fmap {
+                        if !col.ends_with("_id") || col == "id" { continue }
+                        if let Some(fk_val) = val.as_str().filter(|s| !s.is_empty()) {
+                            if let Some(tgt_et) = raw_id_to_et.get(fk_val) {
+                                if tgt_et != &src_et {
+                                    et_refs_out.entry(src_et.clone()).or_default().insert(tgt_et.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build in-degree: count distinct ETs that FK-reference each ET
+        let mut et_refs_in: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for obj in &objs {
+            let src_et: String = obj.get("entity_type_id");
+            let fields_str: String = obj.get("fields");
+            if let Ok(fields) = serde_json::from_str::<serde_json::Value>(&fields_str) {
+                if let Some(fmap) = fields.as_object() {
+                    for (col, val) in fmap {
+                        if !col.ends_with("_id") || col == "id" { continue }
+                        if let Some(fk_val) = val.as_str().filter(|s| !s.is_empty()) {
+                            if let Some(tgt_et) = raw_id_to_et.get(fk_val) {
+                                if tgt_et != &src_et {
+                                    et_refs_in.entry(tgt_et.clone()).or_default().insert(src_et.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Load current ddd_role values
+        let et_rows = sqlx::query(
+            "SELECT id, display_name, ddd_role, COALESCE(ddd_role_locked,0) as locked FROM entity_types"
+        )
+        .fetch_all(&self.pool).await?;
+
+        // Score = in_deg + out_deg.
+        // AR = nodes with the highest combined connectivity (referenced by many AND/OR reference many).
+        // This correctly handles both patterns:
+        //   "parent has children" (children carry FK → parent has high in_deg)
+        //   "AR coordinates references" (AR carries FKs → AR has high out_deg)
+        let scores: Vec<(String, usize)> = et_rows.iter()
+            .filter(|r| { let id: String = r.get("id"); id != "default" })
+            .map(|r| {
+                let id: String = r.get("id");
+                let out = et_refs_out.get(&id).map(|s| s.len()).unwrap_or(0);
+                let inn = et_refs_in.get(&id).map(|s| s.len()).unwrap_or(0);
+                (id, out + inn)
+            })
+            .collect();
+        let max_score = scores.iter().map(|(_, s)| *s).max().unwrap_or(0);
+        let avg_score = if scores.is_empty() { 0.0 } else {
+            scores.iter().map(|(_, s)| *s as f64).sum::<f64>() / scores.len() as f64
+        };
+        // Adaptive threshold: top 50% above average, min 2 (avoid marking everything AR)
+        let ar_threshold = if max_score > 0 {
+            ((avg_score + (max_score as f64 - avg_score) * 0.5).ceil() as usize).max(2)
+        } else {
+            usize::MAX
+        };
+        let score_map: std::collections::HashMap<String, usize> = scores.into_iter().collect();
+
+        // Pass 1: mark ARs and collect the AR set for pass 2
+        let mut ar_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for r in &et_rows {
+            let id: String = r.get("id");
+            let current_role: String = r.get("ddd_role");
+
+            // Never overwrite roles the user explicitly locked via UI
+            let locked: i64 = r.try_get("locked").unwrap_or(0);
+            if locked != 0 {
+                // Still track user-confirmed ARs for Pass 2
+                if current_role == "aggregate_root" { ar_set.insert(id); }
+                continue
+            }
+
+            let score = score_map.get(&id).copied().unwrap_or(0);
+            let inferred = if score >= ar_threshold { "aggregate_root" } else { "entity" };
+
+            if inferred == "aggregate_root" { ar_set.insert(id.clone()); }
+
+            // Skip if no change needed
+            if inferred == current_role.as_str() { continue }
+
+            sqlx::query("UPDATE entity_types SET ddd_role = ? WHERE id = ?")
+                .bind(inferred)
+                .bind(&id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        // Pass 2: ar_candidate = referenced by an AR AND has no outgoing FKs
+        // These are "possible external BC roots" that topology alone can't confirm.
+        // The graph renders them with a "? AR" hint; user right-clicks to confirm.
+        for r in &et_rows {
+            let id: String = r.get("id");
+            let locked: i64 = r.try_get("locked").unwrap_or(0);
+            if locked != 0 { continue }
+            if ar_set.contains(&id) { continue } // already AR
+
+            let out_deg = et_refs_out.get(&id).map(|s| s.len()).unwrap_or(0);
+            let referenced_by_ar = et_refs_in.get(&id)
+                .map(|refs| refs.iter().any(|r| ar_set.contains(r)))
+                .unwrap_or(false);
+
+            let inferred = if out_deg == 0 && referenced_by_ar { "ar_candidate" } else { "entity" };
+
+            let current_role: String = r.get("ddd_role");
+            if inferred == current_role.as_str() { continue }
+
+            sqlx::query("UPDATE entity_types SET ddd_role = ? WHERE id = ?")
+                .bind(inferred)
+                .bind(&id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// For each `foo_id` field, tries to find a promoted object whose `external_id`
     /// or `fields.id` matches the value, then creates an ontology_link.
     /// When the FK target is an Aggregate Root, the direction is reversed (AR → child)
@@ -2750,20 +2919,18 @@ impl Db {
         sqlx::query("DELETE FROM ontology_links WHERE rel_type LIKE 'HAS%'")
             .execute(&self.pool).await?;
 
-        // Load explicit ddd_role from DB (user-set via right-click menu)
+        // Pass 0: infer and persist DDD roles from FK out-degree (AR = most outgoing refs)
+        let _ = self.infer_and_persist_ddd_roles().await;
+
+        // Load effective ddd_roles (now includes inferred values persisted above)
         let et_rows = sqlx::query(
             "SELECT id, ddd_role FROM entity_types",
         )
         .fetch_all(&self.pool)
         .await?;
-        // None / NULL means "not explicitly set" — we'll infer below
-        let explicit_roles: std::collections::HashMap<String, Option<String>> = et_rows
+        let effective_roles: std::collections::HashMap<String, String> = et_rows
             .iter()
-            .map(|r| {
-                let id: String = r.get("id");
-                let role: Option<String> = r.try_get("ddd_role").ok().flatten();
-                (id, role)
-            })
+            .map(|r| (r.get("id"), r.get("ddd_role")))
             .collect();
 
         // All promoted objects with their fields
@@ -2786,40 +2953,9 @@ impl Db {
             }
         }
 
-        // ── Pass 1: Count how many distinct ET types have FK columns pointing TO each ET ──
-        // AR heuristic: children carry FK columns pointing to AR, so AR has high IN-degree.
-        // e.g. Draft ADR.architecture_design_id → Architecture Design
-        //      → Architecture Design gains +1 referencing-ET (Draft ADR)
-        //      → Architecture Design with many referencing ETs = likely AR
-        let mut et_referencing: std::collections::HashMap<String, std::collections::HashSet<String>> =
-            std::collections::HashMap::new();
-        for obj in &objs {
-            let src_et: String = obj.get("entity_type_id");
-            let fields_str: String = obj.get("fields");
-            let fields: serde_json::Value = serde_json::from_str(&fields_str).unwrap_or_default();
-            let Some(fields_map) = fields.as_object() else { continue };
-            for (col, val) in fields_map {
-                if !col.ends_with("_id") || col == "id" { continue }
-                let Some(fk_val) = val.as_str().filter(|s| !s.is_empty()) else { continue };
-                if let Some((_, tgt_et)) = id_index.get(fk_val) {
-                    if tgt_et != &src_et {
-                        et_referencing.entry(tgt_et.clone()).or_default().insert(src_et.clone());
-                    }
-                }
-            }
-        }
-        // Threshold: ET is AR if it's referenced by >= 2 distinct ET types,
-        // or if max referencing count is 1 (small ontology) use >= 1.
-        let max_refs = et_referencing.values().map(|s| s.len()).max().unwrap_or(0);
-        let ar_ref_threshold = if max_refs >= 2 { 2usize } else { 1usize };
-
-        // Effective role: explicit DB value wins; otherwise infer from in-degree
+        // Effective role lookup using persisted values
         let effective_role = |et_id: &str| -> &str {
-            if let Some(Some(role)) = explicit_roles.get(et_id) {
-                return role.as_str();
-            }
-            let refs = et_referencing.get(et_id).map(|s| s.len()).unwrap_or(0);
-            if refs >= ar_ref_threshold { "aggregate_root" } else { "entity" }
+            effective_roles.get(et_id).map(|s| s.as_str()).unwrap_or("entity")
         };
 
         let mut created = 0usize;
@@ -2847,10 +2983,13 @@ impl Db {
                 let base = col.trim_end_matches("_id").to_uppercase();
                 let rel_type = format!("HAS_{}", base);
 
-                // If target is AR (explicit or inferred): reverse so AR → child
+                // If target is AR or ar_candidate: reverse so AR → child
+                // ar_candidate is a potential root of an external BC and should also be source
                 let tgt_role = effective_role(tgt_et);
                 let src_role = effective_role(&src_et);
-                let (from_id, to_id) = if tgt_role == "aggregate_root" && src_role != "aggregate_root" {
+                let tgt_is_root = tgt_role == "aggregate_root" || tgt_role == "ar_candidate";
+                let src_is_root = src_role == "aggregate_root" || src_role == "ar_candidate";
+                let (from_id, to_id) = if tgt_is_root && !src_is_root {
                     (tgt_id.clone(), src_id.clone())
                 } else {
                     (src_id.clone(), tgt_id.clone())

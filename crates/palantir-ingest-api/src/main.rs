@@ -23,7 +23,7 @@ use palantir_source_adapter::{
     mapping_toml::TomlMapping,
     model::{OntologyEvent, OntologySchema, Value},
 };
-use palantir_sqlite::{BuildRow, ConnectorRow, Db, EntityRow, LinkTypeMappingInput, RelRow};
+use palantir_sqlite::{BuildRow, ConnectorRow, Db, EntityRow, EntityTypeRow, LinkTypeMappingInput, RelRow};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
@@ -1737,6 +1737,9 @@ async fn get_ontology_graph_handler(
         for o in &objs { *m.entry(o.entity_type_id.clone()).or_insert(0) += 1; }
         m
     };
+
+    // DDD roles are already persisted to entity_types by infer_and_persist_ddd_roles()
+    // (called inside auto_detect_links which runs after every promote). Just read from DB.
     let et_summary: Vec<serde_json::Value> = ets.iter()
         .filter(|e| e.id != "default")
         .map(|e| json!({
@@ -3500,6 +3503,17 @@ async fn promote_dataset_handler(
     let links_resolved = db().resolve_all_links().await.unwrap_or(0);
     // Auto-detect runs after resolve so it clears+rebuilds with correct AR direction
     let _ = db().auto_detect_links().await;
+
+    // ── Auto-infer BC for the fold this ET belongs to ─────────────────────────
+    if let Some(ref fold_id) = req.fold_id {
+        if !fold_id.is_empty() {
+            if let Ok(suggestions_val) = db().infer_child_bcs(fold_id).await {
+                if let Some(suggestions) = suggestions_val["suggestions"].as_array() {
+                    let _ = db().apply_bc_suggestions(fold_id, suggestions).await;
+                }
+            }
+        }
+    }
 
     // ── Mark dataset as promoted ──────────────────────────────────────────────
     let _ = db().update_dataset_entity_type(&dataset_id, &et_id).await;

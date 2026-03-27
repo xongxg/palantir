@@ -1,8 +1,8 @@
 # Ontology Manager — 详细设计方案
 
-> **文档版本**：v0.2
-> **状态**：P0 / P1 / P2a / P2b / P2c 已实现；P2d 长期规划
-> **日期**：2026-03-26（v0.2 更新：实现状态同步）
+> **文档版本**：v0.3
+> **状态**：P0 / P1 / P2a / P2b / P2c 已实现；P2d 长期规划；§12 AR-centric Browse 进行中
+> **日期**：2026-03-26（v0.3 更新：§13 AR 作为业务操作中心 ADR）
 > **受众**：后端团队、前端团队、产品
 
 ---
@@ -569,38 +569,103 @@ POST   /api/interfaces/seed-builtins
 
 ## 八、P2d — Action Type（写操作治理）
 
-> 本节为长期规划，仅做方向性设计，不做实现细节约束。
+> **版本**：v0.2（2026-03-26 更新：三层实现模型 + 战略分期）
 
 ### 8.1 核心思想
 
-参考 Palantir Action Type 设计：**所有写操作必须经过定义好的 Action，不允许直接操作 Ontology 对象**。
+**所有写操作必须经过定义好的 Action，不允许直接操作 Ontology 对象。Action 只能绑定在 AR 上。**
 
-这使得：
-- 写操作有明确的参数约束，不允许随意改任意字段
+AR 是一致性边界，也是操作入口边界：
+- 写操作有明确的参数约束
 - 每次写操作都有完整审计记录
-- 写操作可以触发副作用（通知、Webhook、Pipeline）
+- AI Agent 的操作面 = 所有 AR 的 Action 集合（自动可枚举，有界可控）
 
-### 8.2 数据模型方向
+与 Palantir 的差异：Palantir Action 可挂在任意 Object Type，边界靠组织约定。本系统结构强制：`ddd_role = 'aggregate_root'` 才能绑定 Action。
+
+### 8.2 Function 三层实现模型（2026-03-26 确认）
 
 ```
-action_types               -- 操作类型定义（如"更新客户状态"）
-  id, name, et_id, description
-
-action_parameters          -- 操作的输入参数定义
-  action_id, name, type, required, default_value
-
-action_rules               -- 参数到字段变更的映射规则
-  action_id, parameter_name, target_field, rule_expr
-
-action_submissions         -- 操作执行历史（审计链）
-  id, action_type_id, submitted_by, submitted_at, parameters_json, result
+┌─────────────────────────────────────────────────┐
+│  Layer 3: Code Mode（开发者）                    │
+│  直接写 TypeScript / Python，完全控制             │
+├─────────────────────────────────────────────────┤
+│  Layer 2: AI Mode（业务 + 技术）                 │
+│  自然语言描述 → AI 生成代码 → 人工审核后激活      │
+│  AI 有完整 Ontology 上下文（AR schema + 关联）   │
+├─────────────────────────────────────────────────┤
+│  Layer 1: Config Mode（业务人员，no-code）       │
+│  可视化规则编辑器：条件 + 操作 + 校验            │
+└─────────────────────────────────────────────────┘
 ```
 
-### 8.3 与 Shared Kernel 的结合
+优于 Palantir：Palantir Function 只有 Code Mode，门槛高，业务人员无法直接参与。本系统三层覆盖所有角色，主体以 **Config + AI 结合**为主，Code 作为专业兜底。
+
+### 8.3 数据模型
+
+```sql
+CREATE TABLE action_types (
+    id           TEXT PRIMARY KEY,
+    et_id        TEXT NOT NULL REFERENCES entity_types(id),  -- 必须是 AR
+    name         TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    description  TEXT,
+    params       TEXT NOT NULL DEFAULT '[]',     -- JSON: 参数定义列表
+    impl_mode    TEXT NOT NULL DEFAULT 'config', -- 'config' | 'ai' | 'code'
+    impl_body    TEXT,  -- config: 规则JSON; ai: prompt+生成代码; code: 源码
+    status       TEXT NOT NULL DEFAULT 'draft',  -- 'draft' | 'active' | 'disabled'
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE action_logs (
+    id             TEXT PRIMARY KEY,
+    action_type_id TEXT NOT NULL REFERENCES action_types(id),
+    object_id      TEXT NOT NULL,   -- 操作对象（AR 实例）
+    params_json    TEXT NOT NULL,   -- 执行时的参数值
+    executed_by    TEXT,            -- 操作人
+    result         TEXT NOT NULL,   -- 'success' | 'failed'
+    error          TEXT,
+    executed_at    TEXT NOT NULL
+);
+```
+
+`params` 示例：
+```json
+[
+  { "name": "reason",          "type": "string",  "required": true,  "label": "取消原因" },
+  { "name": "notify_customer", "type": "boolean", "required": false, "default": true, "label": "通知客户" }
+]
+```
+
+`impl_body`（Config Mode）示例：
+```json
+{
+  "preconditions": [
+    { "field": "status", "operator": "in", "value": ["pending", "confirmed"],
+      "error": "只有待处理/已确认的订单可以取消" }
+  ],
+  "rules": [
+    { "op": "set_field",   "field": "status",        "value": "cancelled" },
+    { "op": "set_field",   "field": "cancel_reason",  "from_param": "reason" },
+    { "op": "emit_event",  "event": "order.cancelled", "if_param": { "notify_customer": true } }
+  ]
+}
+```
+
+### 8.4 与 Shared Kernel 的结合
 
 Shared Kernel 的 ET 通常需要 Action Type 的保护：
 - 跨 BC 共享的核心业务对象（如 Customer），不应由任意 BC 直接修改字段
 - 应通过定义好的 Action（如"更新客户联系方式"）来约束写路径
+
+### 8.5 实现分期
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 声明层 | `action_types` 表 + CRUD API + AR 详情页 Actions 面板 | ⏳ 下一步 |
+| 执行层（Config） | 规则引擎执行 impl_body，写 Ontology + action_logs | ⏳ |
+| 执行层（AI） | prompt → AI 生成 impl_body → 人工确认激活 | ⏳ |
+| 执行层（Code） | 沙箱运行用户代码 | ⏳ |
+| 出向集成 | emit_event → Webhook / 消息队列 → 客户业务系统 | ⏳ |
 
 ---
 
@@ -826,3 +891,218 @@ P-Search-0   全局搜索默认仅搜 AR 类型                         (依赖�
 | 跨聚合引用只能引用聚合根 | Link Type 的 FK 约束（to_et 为 AR 时才允许跨 BC 引用）|
 | 聚合内一致性由聚合根负责 | AR 对象详情内联聚合成员，统一展示一致性视图 |
 | Repository 以聚合根为单位 | 搜索 / Promote / Export 以 AR 为粒度操作 |
+
+---
+
+## 十三、AR 作为业务操作中心 — 架构决策记录（ADR-2026-03-26）
+
+### 13.1 背景
+
+在讨论如何将 Ontology 的 Logic / Action / Function 与业务结合时，形成了以下核心架构决策。
+
+### 13.2 决策：AR 是所有业务操作的唯一入口
+
+**结论**：不管 BC 的范围如何（fold 内单 BC、fold 内多 BC、跨 fold、跨 project），所有的 Logic、Action、Function 都从 AR 发起，不能直接操作 child ET 或 Value Object。
+
+```
+BC（语义边界）
+  └── AR（操作单元，BC 的"代表"）
+        ├── 内部：聚合成员（VO、child ET）完全由 AR 控制
+        ├── Logic    → AR 内部的业务规则（前置条件、不变量）
+        ├── Function → AR 聚合内的派生计算（totalAmount、completionRate）
+        └── Action   → 从外部改变 AR 状态的唯一入口（Approve、Cancel、Ship）
+```
+
+| BC 范围 | 操作入口 |
+|---------|---------|
+| fold 内单 BC | AR Action |
+| fold 内多 BC | 各自的 AR Action，BC 间通过 AR 接口通信 |
+| 跨 fold 的 BC | AR Action，跨 fold = 跨 AR 调用 |
+| 跨 project 的 BC | Shared Kernel 里的 AR 暴露接口 |
+
+### 13.3 与 Palantir 官方方案的差异
+
+Palantir 官方的 Ontology 是从**数据治理**角度设计的，Object Type 是扁平结构，没有显式的 AR 概念：
+
+| 维度 | Palantir 官方 | 本系统 |
+|------|--------------|--------|
+| 业务边界 | 隐式，靠组织约定 | BC 显式建模 |
+| 操作入口 | Action 可挂在任意 Object Type | Action 只能挂在 AR |
+| 一致性保证 | 无结构约束 | AR = 事务边界 |
+| AI 操作面 | Action 散落各处，无界 | AR Action 集合，清晰有界 |
+| 跨域通信 | Object 直接引用 | AR to AR 接口 |
+
+**本质差异**：Palantir 是数据公司做的 Ontology；本系统从 DDD 出发，AR/BC 模型天然更适合描述业务操作边界，使得 AI Agent 的"可操作面"是清晰有界的。
+
+### 13.4 对 AI 接入的意义
+
+当 AI Agent 需要操作业务时：
+
+- **Palantir 方式**：AI 需要理解所有 Object Type 及其 Action，操作面无序且易越界
+- **本系统方式**：AI 只需要知道"哪些 AR 存在 + 每个 AR 能做哪些 Action" → 操作面完整且有界
+
+```
+AI Agent 的操作清单 = 所有 AR 的 Action 集合
+                     （由 AR 的 ddd_role 标记自动枚举）
+```
+
+### 13.5 Workflow = AR 编排（Saga）
+
+Palantir 的 Workflow 本质是对多个 AR 的 Action 进行跨 AR 协调，对应 DDD 的 **Saga / Process Manager** 模式。
+
+```
+Workflow: "采购审批流程"
+  Step 1: PurchaseOrder.submit()          → AR: PurchaseOrder
+  Step 2: wait(ApprovalRequest.approve()) → AR: ApprovalRequest
+  Step 3: Budget.deduct()                 → AR: Budget
+  Step 4: PurchaseOrder.confirm()         → AR: PurchaseOrder
+```
+
+每一个 Step = 对某个 AR 触发一个 Action。Workflow 是横跨多个 AR 的状态协调层。
+
+| 概念 | Palantir | DDD |
+|------|----------|-----|
+| 单步操作 | Action on Object Type | Command on AR |
+| 跨 AR 协调 | Workflow | Saga / Process Manager |
+| 异常补偿 | Workflow rollback | Compensating Command |
+| 状态追踪 | Workflow instance | Process Manager state |
+
+**本系统的优势**：因为 AR 边界是显式的、有结构约束的，Workflow 的每一步可以用 `{ ar_id, action_name }` 精确描述，并从 AR 的 Action 集合自动枚举合法步骤。Palantir 的 Workflow 因为 Object Type 扁平，Step 合法性只能靠人工约定。
+
+```
+Workflow Step = { ar_type, action_name }
+                  ↑ 可从 ddd_role = 'aggregate_root' 的 ET 及其 Action 集合自动枚举
+```
+
+### 13.6 完整架构层次
+
+```
+BC（语义边界）
+  └── AR（操作单元）
+        ├── Action   （单步业务操作，改变 AR 状态）
+        ├── Function （派生计算，只读）
+        └── Logic    （业务规则 / 不变量，Action 前置条件）
+
+Workflow（跨 AR 编排）
+  └── Saga = Step[] = { ar_type, action_name }[]
+        ├── 顺序 / 条件分支
+        ├── 等待外部事件（human-in-the-loop）
+        └── 补偿回滚（Compensating Action）
+```
+
+### 13.7 实现路径
+
+```
+现在      AR 识别 + AR-centric Browse（地基）          ← 当前工作
+下一步    AR 上挂 Action 元数据定义（声明操作意图）
+再下一步  Action 执行引擎 + 审计日志
+然后      Workflow 定义：Step 序列 + 条件分支 + 等待
+最终      AI Agent 通过 AR Action / Workflow 操作业务
+```
+
+每一步不推翻前一步，叠加式演进。
+
+---
+
+## 十四、设计讨论记录（2026-03-26）
+
+### 14.1 今日讨论要点
+
+**议题**：Ontology 的 Logic / Action / Function 如何与 AR 结合，以及 Workflow 的定位。
+
+**结论一：AR 是所有业务操作的发起点**
+
+不管是 fold 内 BC、跨 fold BC 还是跨 project BC，最终的落脚点都是 AR。AR 聚合内部的关联关系由 AR root 完全掌控，因此 Logic、Function、Action 都应该从 AR 发起。
+
+**结论二：这比 Palantir 官方方案更合理**
+
+Palantir 的 Ontology 从数据治理角度出发，Object Type 是扁平结构，Action 可以挂在任意对象上，没有显式的 AR 和 BC 概念，业务边界靠组织约定而非结构约束。本系统从 DDD 出发，AR/BC 显式建模，操作边界清晰，AI 可操作面有界。
+
+**结论三：Workflow = AR 编排（Saga）**
+
+Palantir 的 Workflow 本质是对 AR 进行编排——每个 Step 都是对某个 AR 触发一个 Action。这对应 DDD 的 Saga / Process Manager 模式。因为我们的 AR 边界是显式的，Workflow 的合法步骤可以从 AR Action 集合自动枚举，这是对 Palantir 方案的结构性改进。
+
+### 14.2 架构全景（本次确认）
+
+```
+数据层
+  └── S3 / RustFS（原始数据）
+        ↓ Ingest Pipeline
+Ontology 层
+  ├── EntityType（Object Type）+ ddd_role（AR 显式标记）
+  ├── Link Type（关联关系，AR → child 方向约束）
+  └── BC（fold 归属，语义边界）
+        ↓
+操作层（待建设）
+  ├── Action   — 绑定 AR，改变 AR 状态的唯一入口
+  ├── Function — 绑定 AR，聚合内派生计算
+  ├── Logic    — AR 内部不变量 / 前置条件
+  └── Workflow — 跨 AR 编排（Saga），Step = { ar_type, action_name }
+        ↓
+应用层（待建设）
+  ├── Workshop — 业务用户 no-code 搭界面，触发 Action / Workflow
+  └── AI Agent — 枚举 AR Action 集合作为工具，自动执行 Workflow
+```
+
+### 14.3 当前进展（2026-03-26 更新）
+
+| 层次 | 状态 |
+|------|------|
+| Ontology 层（ET / Link / BC） | ✅ 已实现 |
+| AR 识别（combined in+out score） | ✅ 已实现 |
+| ar_candidate 推导（外部 BC 候选根） | ✅ 已实现（橙色虚线 `? AR`） |
+| ddd_role_locked（用户确认不被推导覆盖） | ✅ 已实现 |
+| AR → child 边方向反转 | ✅ 已实现（含 ar_candidate） |
+| AR-centric Browse（面包屑 + 归属聚合根） | ✅ 已实现 |
+| Action 元数据定义 | ⏳ 下一阶段 |
+| Action 执行引擎（Config / AI / Code） | ⏳ 待规划 |
+| emit_event → 出向集成 | ⏳ 待规划 |
+| Workflow / Saga | ⏳ 待规划 |
+| AI Agent 接入 | ⏳ 待规划 |
+
+### 14.4 阶段建议（2026-03-26）
+
+**P-Next-0：完成 AR-centric Browse**
+- 修复 BrowseTab TypeScript 错误
+- ETTree：AR 置顶 + 聚合成员缩进 + ◆ 标记
+- AR 对象详情：内联聚合成员面板
+- 非 AR 对象：归属聚合根面包屑
+- 这是所有后续层（Action / Workflow / AI）的导航地基
+
+**P-Next-1：Action 元数据定义（只做声明，不做执行）**
+- `entity_type_actions` 表：`ar_et_id, name, display_name, input_schema, precondition`
+- AR 对象详情页展示 Action 列表
+- 业务用户能看到"这个 AR 能做什么"，驱动后续 Workflow 和 AI 设计讨论
+
+**不建议现在做：**
+- Action 执行引擎（等 Action 元数据积累后再看执行模式）
+- Workflow 编排（依赖 Action 体系稳定）
+- AI 接入（Action 枚举出来后水到渠成）
+
+原则：让真实需求驱动，不超前实现。
+
+### 14.5 与 Palantir Foundry 的对位评估（2026-03-26 确认）
+
+**结论：本系统已具备 Foundry 的数据接入层 + Ontology 核心层雏形，且 Ontology 层的 DDD 建模比 Foundry 更严谨。**
+
+| Foundry 模块 | 本系统对应实现 | 状态 |
+|-------------|--------------|------|
+| Pipeline Builder（数据接入） | Ingest API + S3/RustFS + sync_mode | ✅ |
+| Dataset（数据集管理） | datasets + versions + record_count | ✅ |
+| Ontology — Object Type | EntityType + fields + ddd_role | ✅ |
+| Ontology — Link Type | ontology_links + auto_detect | ✅ |
+| Ontology Manager — Schema 保护 | breaking change 检测 + 迁移策略 | ✅ |
+| Ontology Manager — 生命周期 | draft / active / deprecated | ✅ |
+| Ontology Manager — 血缘 | get_et_lineage + LineagePanel | ✅ |
+| Ontology Manager — Interface | System Interface + 4 内置接口 | ✅ |
+| Context Map | BC + bc_relationships + D3 可视化 | ✅ |
+| Object Browser | Browse tab（AR-centric 重构中） | 🔄 |
+| Action Framework | AR 写操作定义与执行 | ⏳ |
+| Function | 派生计算 | ⏳ |
+| Workflow | 跨 AR Saga 编排 | ⏳ |
+| Workshop | no-code 业务应用 | ⏳ |
+| AIP | AI 通过 Ontology 操作业务 | ⏳ |
+
+**本系统的核心差异化**：Foundry 没有显式的 AR / BC 概念，Object Type 是扁平结构，Action 可挂在任意对象，业务边界靠约定而非结构约束。本系统从 DDD 出发，`BC → AR → Action / Workflow` 的层次使一致性边界明确，AI 操作面有界可枚举。
+
+**下一个里程碑**：Action Framework（AR 上的写操作元数据定义）。完成后本系统正式具备"业务操作平台"的雏形。

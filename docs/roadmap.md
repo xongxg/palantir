@@ -172,6 +172,45 @@ AI Agent        ───────────────────── 
 
 ---
 
+## 战略分期：Ontology as OS（2026-03-26 确认）
+
+> 最终目标：成为客户业务的操作系统（对标 Palantir Foundry）。分期交付，每期独立价值。
+
+```
+Phase 1（已完成）：Ontology as 理解层
+  数据接入 → Schema 推导 → AR/BC 识别 → 关联关系可视化
+  客户收益：第一次看清自己的数据长什么样，业务概念有了统一语言
+
+Phase 2（进行中）：Ontology as 操作声明层
+  Action Type 元数据 → 业务操作可见、可枚举、可审计
+  客户收益：业务规则有了统一的描述语言，"能做什么"有了清单
+
+Phase 3（下一阶段）：Ontology as 执行层
+  Config / AI / Code 三层执行引擎
+  → Ontology 内部数据变更 + action_logs 审计
+  客户收益：操作在系统内闭环，有完整审计记录
+
+Phase 4：Ontology as 集成层
+  emit_event → Webhook / 消息队列 → 客户业务系统回写
+  客户收益：Ontology 的操作同步到 ERP / OMS / CRM，打通内外系统
+
+Phase 5（终态）：Ontology as 操作系统
+  双向实时同步 + Workflow（AR Saga）+ AI Agent 自动执行
+  客户收益：Ontology 成为业务操作的唯一入口，外部系统成为数据源和执行节点
+```
+
+**与 Palantir 的核心差异**：
+
+| | Palantir Foundry | 本系统 |
+|--|-----------------|--------|
+| Action 入口 | 任意 Object Type | **只允许 AR**，结构约束 |
+| Function 实现 | TypeScript / Python（仅 Code） | **Config + AI + Code 三层** |
+| 业务人员参与 | 需工程师中转 | **业务分析师直接定义规则** |
+| AI 操作面 | 需手动维护 | **= AR Action 集合，自动可枚举** |
+| 业务边界 | 组织约定 | **DDD AR/BC 结构强制** |
+
+---
+
 ## 开发路线图
 
 ### P1 — 近期：补全核心层

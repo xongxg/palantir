@@ -339,15 +339,6 @@ export default function PromotePanel({ dataset }: Props) {
         <RelationshipSection entityTypeId={selectedEtId} />
       </div>
 
-      {/* Promote button */}
-      <button
-        onClick={handlePromote}
-        disabled={promoting}
-        className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
-      >
-        {promoting ? '处理中…' : isPromoted ? '↺ 重新 Promote' : 'Promote → Ontology'}
-      </button>
-
       {/* Result */}
       {promoteResult && (
         <div className={cn(

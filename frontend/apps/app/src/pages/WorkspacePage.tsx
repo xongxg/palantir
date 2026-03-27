@@ -608,7 +608,7 @@ export default function WorkspacePage() {
       <div className="flex-1 overflow-hidden">
         {wsTab === 'import' && <ImportTab />}
         {wsTab === 'schema' && <SchemaTab projectId={projectId} />}
-        {wsTab === 'browse' && <BrowseTab />}
+        {wsTab === 'browse' && <BrowseTab projectId={projectId ?? ''} />}
         {wsTab === 'graph'    && <GraphTab projectId={projectId} />}
         {wsTab === 'ingest' && (
           <div className="flex h-full overflow-hidden w-full">

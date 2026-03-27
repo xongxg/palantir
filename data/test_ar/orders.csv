@@ -1,0 +1,6 @@
+id,order_no,customer_id,status,total_amount,created_at
+O001,ORD-2024-001,C001,pending,1580.00,2024-01-10
+O002,ORD-2024-002,C002,confirmed,3200.00,2024-01-12
+O003,ORD-2024-003,C001,shipped,860.00,2024-01-15
+O004,ORD-2024-004,C003,delivered,2450.00,2024-01-18
+O005,ORD-2024-005,C004,pending,990.00,2024-01-20

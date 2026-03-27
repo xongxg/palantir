@@ -212,62 +212,14 @@ export function buildBCsFromFolds(
 
 export function classifyDDDRoles(
   etSummary: EtSummary[],
-  edges: GEdge[],
-  nodes: GNode[],
+  _edges: GEdge[],
+  _nodes: GNode[],
 ): Record<string, string> {
   const roles: Record<string, string> = {}
-  const etIds = etSummary.map(e => e.id)
-
-  // Count outgoing edges per ET
-  const outCount: Record<string, number> = {}
-  const inCount:  Record<string, number> = {}
-  etIds.forEach(id => { outCount[id] = 0; inCount[id] = 0 })
-
-  const nodeToET = Object.fromEntries(nodes.map(n => [n.id, n.et_id]))
-  edges.forEach(e => {
-    const s = typeof e.source === 'object' ? e.source.id : e.source
-    const t = typeof e.target === 'object' ? e.target.id : e.target
-    const setId = nodeToET[s]
-    const tetId = nodeToET[t]
-    if (setId) outCount[setId] = (outCount[setId] ?? 0) + 1
-    if (tetId) inCount[tetId]  = (inCount[tetId]  ?? 0) + 1
-  })
-
-  // Adaptive threshold: AR must have significantly more outgoing than average
-  const maxOut = Math.max(...etIds.map(id => outCount[id] ?? 0), 0)
-  const avgOut = etIds.length > 0 ? etIds.reduce((s, id) => s + (outCount[id] ?? 0), 0) / etIds.length : 0
-  // AR threshold = top 25% of outgoing edge count (at least 3 to avoid low-edge noise)
-  const arThreshold = Math.max(3, Math.ceil(avgOut + (maxOut - avgOut) * 0.5))
-
-  etIds.forEach(id => {
-    const out = outCount[id] ?? 0
-    const inn = inCount[id]  ?? 0
-    const et  = etSummary.find(e => e.id === id)
-
-    // 1. Use stored ddd_role from DB first (highest priority)
-    if (et?.ddd_role) {
-      roles[id] = et.ddd_role.replace('_', '-')
-      return
-    }
-
-    // 2. Infer from name hints
-    const nameLower = (et?.label ?? '').toLowerCase()
-    if (nameLower.includes('event') || nameLower.includes('evt') ||
-        nameLower.includes('log') || nameLower.includes('history') || nameLower.includes('snapshot')) {
-      roles[id] = 'value-object'
-      return
-    }
-
-    // 3. Infer from edge connectivity: AR = clearly dominates outgoing edges
-    // Note: edges are now AR → child, so AR has high out-degree.
-    // VO can no longer be auto-inferred from edge structure (all children have
-    // high in-degree and zero out-degree after direction reversal → false VO).
-    // VO must be set explicitly via right-click or name hints above.
-    if (maxOut > 0 && out >= arThreshold) {
-      roles[id] = 'aggregate-root'
-    } else {
-      roles[id] = 'entity'
-    }
+  // Role is inferred and persisted by the backend (infer_and_persist_ddd_roles).
+  // VO is set explicitly by the user via the Model tab dropdown.
+  etSummary.forEach(et => {
+    roles[et.id] = (et.ddd_role ?? 'entity').replace('_', '-')
   })
 
   return roles
