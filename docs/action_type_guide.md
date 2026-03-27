@@ -202,15 +202,35 @@ Phase 5：操作系统（终态）
 
 ## 八、ActionType 层级模型
 
-> 核心原则：**用 Fold 边界划分操作复杂度**
+> 核心原则：**用 Fold / Project 边界划分操作复杂度，Domain Service 覆盖域内所有协作**
 
-### 三个层级
+### 四个层级
 
-| 层级 | 范围 | 复杂度 | 编排方式 | 定义者 |
-|------|------|--------|---------|--------|
-| **对象级** | 单个 AR 内部 | 简单 | AR 自治 | 业务分析师 |
-| **BC 级** | 同一 Fold 内跨 AR | 中等 | Domain Service | 业务分析师 + 技术 |
-| **应用级** | 跨 Fold / 跨 Project | 复杂 | Saga / Process Manager | 业务人员定义流程，技术人员实施 |
+| 层级 | 范围 | 编排方式 | 定义者 |
+|------|------|---------|--------|
+| **对象级** | 单个 AR 内部 | AR 自治 | 业务分析师 |
+| **BC 级** | 同一 BC 内跨 AR | Domain Service | 业务分析师 + 技术 |
+| **Fold/Project 级** | 同一 Project 内跨 BC | Domain Service | 业务分析师 + 技术 |
+| **应用级** | 跨 Fold / 跨 Project | Saga / Process Manager | 业务人员定义，技术人员实施 |
+
+### Domain Service 的覆盖范围
+
+**关键点**：Domain Service 不只限于单个 BC 内，只要在**同一 Project 内**，不管跨几个 BC，Domain Service 都可以编排。
+
+```
+同一 Project 内：
+  ┌─────────────────────────────────────────┐
+  │  Fold: 电商域                            │
+  │  ┌──────────┐    ┌──────────┐           │
+  │  │ Order BC │    │ Payment BC│           │
+  │  │          │◄───│          │           │
+  │  │ Order AR │    │Invoice AR │           │
+  │  └──────────┘    └──────────┘           │
+  │         ↑ Domain Service 可以跨 BC 编排  │
+  └─────────────────────────────────────────┘
+```
+
+Domain Service 知道同一 Project 下所有 BC 的 AR，可以跨 BC 调用多个 AR 的 ActionType 完成一个完整的业务操作——这仍然是**域内行为**，不需要 Saga。
 
 ### AR 自治的本质
 
@@ -224,26 +244,27 @@ AR 内部的 Action 不需要外部协调，因为 AR 自己掌握：
 
 ### 应用级 = Saga 编排
 
-跨 Fold 的操作（如"用户下单"跨 Customer / Order / Inventory / Payment BC）：
+**真正需要 Saga 的边界是跨 Fold 或跨 Project**——这才是真正的"域外"协作，需要异步、补偿、幂等保障。
 
 ```
-PlaceOrder（应用级 Use Case）
+PlaceOrder（跨 Fold 的应用级 Use Case）
     ↓ Saga 编排
-  ├── Step 1: Customer BC   → 校验客户信用额度
-  ├── Step 2: Inventory BC  → 锁定库存
-  ├── Step 3: Order BC      → 创建 Order AR
-  └── Step 4: Payment BC    → 生成 Invoice
+  ├── Step 1: 电商域 / Customer BC  → 校验客户信用额度
+  ├── Step 2: 仓储域 / Inventory BC → 锁定库存          ← 跨 Fold！
+  ├── Step 3: 电商域 / Order BC     → 创建 Order AR
+  └── Step 4: 财务域 / Payment BC   → 生成 Invoice      ← 跨 Fold！
 
 补偿链（任一步失败）:
   ← Step 3 失败 → 释放库存（补偿 Step 2）
   ← Step 2 失败 → 结束（Step 1 无副作用）
 ```
 
-**Saga 的核心价值就是幂等性保障**——每一步可重试，失败可补偿，不会产生部分修改的脏数据。
+**Saga 的核心价值**：幂等性保障——每一步可重试，失败可补偿，不产生部分修改的脏数据。
 
 ### 声明层当前范围
 
-**P2 实现对象级 + BC 级**。应用级 Saga 编排留到执行引擎（Phase 3）再做——没有执行引擎支撑，声明了也没意义。
+**P2 实现对象级 + BC 级 + Fold/Project 级**（均由 Domain Service 编排）。
+跨 Fold/Project 的 Saga 编排留到执行引擎（Phase 3）——没有执行引擎支撑，声明了也没意义。
 
 ---
 
