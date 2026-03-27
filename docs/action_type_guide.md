@@ -200,7 +200,179 @@ Phase 5：操作系统（终态）
 
 ---
 
-## 八、常见问题
+## 八、ActionType 层级模型
+
+> 核心原则：**用 Fold 边界划分操作复杂度**
+
+### 三个层级
+
+| 层级 | 范围 | 复杂度 | 编排方式 | 定义者 |
+|------|------|--------|---------|--------|
+| **对象级** | 单个 AR 内部 | 简单 | AR 自治 | 业务分析师 |
+| **BC 级** | 同一 Fold 内跨 AR | 中等 | Domain Service | 业务分析师 + 技术 |
+| **应用级** | 跨 Fold / 跨 Project | 复杂 | Saga / Process Manager | 业务人员定义流程，技术人员实施 |
+
+### AR 自治的本质
+
+AR 内部的 Action 不需要外部协调，因为 AR 自己掌握：
+
+- 自己的**状态**（`Order.status`）
+- 自己的**聚合成员**（OrderItem、Address）
+- 自己的**不变量**（总金额必须 > 0）
+
+**`CancelOrder` 不需要外部告诉它怎么找 OrderItem，它自己管着。**
+
+### 应用级 = Saga 编排
+
+跨 Fold 的操作（如"用户下单"跨 Customer / Order / Inventory / Payment BC）：
+
+```
+PlaceOrder（应用级 Use Case）
+    ↓ Saga 编排
+  ├── Step 1: Customer BC   → 校验客户信用额度
+  ├── Step 2: Inventory BC  → 锁定库存
+  ├── Step 3: Order BC      → 创建 Order AR
+  └── Step 4: Payment BC    → 生成 Invoice
+
+补偿链（任一步失败）:
+  ← Step 3 失败 → 释放库存（补偿 Step 2）
+  ← Step 2 失败 → 结束（Step 1 无副作用）
+```
+
+**Saga 的核心价值就是幂等性保障**——每一步可重试，失败可补偿，不会产生部分修改的脏数据。
+
+### 声明层当前范围
+
+**P2 实现对象级 + BC 级**。应用级 Saga 编排留到执行引擎（Phase 3）再做——没有执行引擎支撑，声明了也没意义。
+
+---
+
+## 九、ActionType = 状态机的 Transition
+
+**Action 的本质是 AR 状态机上的边（transition）**，不是孤立的操作。
+
+### 电商订单状态机示例
+
+```
+         PlaceOrder
+  draft ──────────→ pending
+                       │
+          ConfirmOrder  │  CancelOrder
+                       ↓         ↓
+                  confirmed   cancelled
+                       │
+            ShipOrder  │
+                       ↓
+                   shipped
+                       │
+         CompleteOrder │
+                       ↓
+                  completed
+```
+
+每个 ActionType 声明对应状态机上的一条边：
+
+```yaml
+ActionType: CancelOrder
+target_ar:  Order
+from_states: [pending, confirmed]   # precondition = 合法的 from-state
+to_state:    cancelled              # effect = 执行后的 to-state
+params:
+  - name: cancel_reason
+    type: string
+    required: true
+trigger: manual                     # 手动 / event / cron
+allowed_personas: [客服, 运营]
+```
+
+**好处**：所有 ActionType 合在一起就是完整的状态图，业务人员一眼能理解，可以直接可视化。
+
+### 关键原则：客户定义状态，我们只关注转换
+
+客户的业务系统定义了自己的状态值（如 `pending / confirmed / cancelled`），**本系统不干预状态语义**，只需要：
+
+1. 知道当前状态是否允许某个 transition（precondition）
+2. 知道执行后状态变成什么（effect）
+3. 知道 transition 时触发什么 Action
+
+这让系统对任何行业的状态机都适用，无需硬编码业务语义。
+
+---
+
+## 十、触发方式
+
+ActionType 支持三种触发来源：
+
+| 触发方式 | 描述 | 典型场景 |
+|---------|------|---------|
+| **手动触发** | 用户在 Browse 页对 AR 对象点击执行 | 客服取消订单 |
+| **事件触发** | 另一个 AR 状态变化时自动触发 | Order confirmed → 自动生成 Invoice |
+| **定时触发** | Cron 表达式周期执行 | 每天凌晨对超时订单执行 AutoCancel |
+
+**事件触发是 BC 级协作的核心粘合剂**——不需要 Saga，但能实现跨 AR 的自动联动。
+
+---
+
+## 十一、Persona 权限绑定
+
+不同角色只能执行对应的 Action，在声明层就锁定：
+
+```yaml
+CancelOrder:
+  allowed_personas: [客服, 运营]   # 仓库管理员不能取消订单
+
+ShipOrder:
+  allowed_personas: [仓库管理员]
+
+RefundOrder:
+  allowed_personas: [财务, 运营主管]
+```
+
+权限在声明时定义，执行时自动校验，无需额外的权限代码。
+
+---
+
+## 十二、行业参考模板
+
+> 不同行业的状态机不同，但 ActionType 的声明结构完全一致。
+> 客户导入自己的数据后，可以参考对应行业模板快速配置。
+
+### 电商 — 订单状态机
+
+| ActionType | from | to | 触发方式 | 执行角色 |
+|-----------|------|----|---------|---------|
+| PlaceOrder | draft | pending | 手动 | 买家 |
+| ConfirmOrder | pending | confirmed | 手动/事件 | 运营 |
+| ShipOrder | confirmed | shipped | 手动 | 仓库 |
+| CompleteOrder | shipped | completed | 事件（签收确认） | 系统 |
+| CancelOrder | pending/confirmed | cancelled | 手动 | 客服/运营 |
+| ReturnOrder | completed | returning | 手动 | 客服 |
+
+### 制造 — 工单状态机
+
+| ActionType | from | to | 触发方式 | 执行角色 |
+|-----------|------|----|---------|---------|
+| CreateWorkOrder | - | draft | 手动 | 计划员 |
+| ReleaseWorkOrder | draft | released | 手动 | 生产主管 |
+| StartProduction | released | in_progress | 手动 | 班组长 |
+| PauseProduction | in_progress | paused | 手动/事件 | 班组长 |
+| CompleteProduction | in_progress | completed | 手动 | 质检员 |
+| ScrapWorkOrder | any | scrapped | 手动 | 生产主管 |
+
+### 金融 — 贷款审批状态机
+
+| ActionType | from | to | 触发方式 | 执行角色 |
+|-----------|------|----|---------|---------|
+| SubmitApplication | draft | submitted | 手动 | 客户经理 |
+| InitialReview | submitted | under_review | 事件 | 系统 |
+| RequestDocuments | under_review | pending_docs | 手动 | 审核员 |
+| ApproveApplication | under_review | approved | 手动 | 审批主管 |
+| RejectApplication | under_review | rejected | 手动 | 审批主管 |
+| Disburse | approved | disbursed | 手动 | 放款员 |
+
+---
+
+## 十三、常见问题
 
 **Q：为什么 Entity 上没有 Actions？**
 A：Entity 没有独立的一致性边界。对 Entity 的修改必须通过它所属的 AR 来协调，这样才能保证数据一致性和审计完整性。
