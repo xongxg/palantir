@@ -1,0 +1,9 @@
+country,id,name,status,tier
+USA,cu1,Acme Corp,Active,Gold
+Germany,cu2,Beta GmbH,Active,Silver
+UK,cu3,Gamma Ltd,Active,Platinum
+France,cu4,Delta SA,Active,Silver
+Canada,cu5,Epsilon Inc,Active,Gold
+Australia,cu6,Zeta Corp,Inactive,Bronze
+Japan,cu7,Eta Partners,Active,Gold
+USA,cu8,Theta LLC,Active,Platinum

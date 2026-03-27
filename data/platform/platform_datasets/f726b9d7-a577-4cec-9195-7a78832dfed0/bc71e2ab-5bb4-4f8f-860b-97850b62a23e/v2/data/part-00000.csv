@@ -1,0 +1,25 @@
+id,milestone_id,name,priority,status
+tsk1,ms1,Draft ADR,High,Completed
+tsk2,ms1,Review ADR,Medium,Completed
+tsk3,ms2,Setup CI,High,Active
+tsk4,ms2,Write Tests,Medium,Active
+tsk5,ms2,Deploy Staging,High,Pending
+tsk6,ms4,User Interviews,High,Completed
+tsk7,ms4,Affinity Map,Medium,Completed
+tsk8,ms5,Build APIs,High,Active
+tsk9,ms5,Build UI,Medium,Active
+tsk10,ms10,Define Models,High,Completed
+tsk11,ms11,Write ETL,High,Active
+tsk12,ms11,QA ETL,Medium,Pending
+tsk1,ms1,Draft ADR,High,Completed
+tsk2,ms1,Review ADR,Medium,Completed
+tsk3,ms2,Setup CI,High,Active
+tsk4,ms2,Write Tests,Medium,Active
+tsk5,ms2,Deploy Staging,High,Pending
+tsk6,ms4,User Interviews,High,Completed
+tsk7,ms4,Affinity Map,Medium,Completed
+tsk8,ms5,Build APIs,High,Active
+tsk9,ms5,Build UI,Medium,Active
+tsk10,ms10,Define Models,High,Completed
+tsk11,ms11,Write ETL,High,Active
+tsk12,ms11,QA ETL,Medium,Pending

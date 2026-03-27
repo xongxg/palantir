@@ -104,6 +104,16 @@ export const foldsApi = {
   delete: (id: string) => api.delete<void>(`/api/folds/${id}`),
 }
 
+// ── ActionTypes ───────────────────────────────────────────────────────────────
+export const actionTypesApi = {
+  list:      (etId?: string) =>
+    api.get<{ action_types: ActionType[] }>(`/api/ontology/action-types${etId ? `?et_id=${etId}` : ''}`).then(r => r.action_types),
+  create:    (body: Partial<ActionType>) => api.post<{ id: string }>('/api/ontology/action-types', body),
+  update:    (id: string, body: Partial<ActionType>) => api.put<{ ok: boolean }>(`/api/ontology/action-types/${id}`, body),
+  setStatus: (id: string, status: string) => api.put<{ ok: boolean }>(`/api/ontology/action-types/${id}/status`, { status }),
+  delete:    (id: string) => api.delete<{ ok: boolean }>(`/api/ontology/action-types/${id}`),
+}
+
 // ── Sources ───────────────────────────────────────────────────────────────────
 export const sourcesApi = {
   list:       ()           => api.get<{ sources: DataSource[] }>('/api/sources').then(r => r.sources),

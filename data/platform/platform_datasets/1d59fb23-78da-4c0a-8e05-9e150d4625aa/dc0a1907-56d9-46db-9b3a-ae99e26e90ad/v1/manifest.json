@@ -1,0 +1,51 @@
+{
+  "dataset_id": "dc0a1907-56d9-46db-9b3a-ae99e26e90ad",
+  "version": 1,
+  "sync_run_id": "f609c024-dd7a-4a9a-b54d-f3a599fad11c",
+  "created_at": 1774489583,
+  "schema": {
+    "fields": [
+      {
+        "name": "currency",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "customer_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "priority",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "total_amount",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "3318dada4034e4fd5b0175d25ad442a487bc6ba13ceb27b161da992fd8d79262",
+      "rows": 10,
+      "bytes": 381
+    }
+  ],
+  "total_rows": 10,
+  "total_bytes": 381,
+  "content_hash": "a3a3826d1fa4ba66f0a0d6679528563421cd784417692b7742366090b9c06b64"
+}

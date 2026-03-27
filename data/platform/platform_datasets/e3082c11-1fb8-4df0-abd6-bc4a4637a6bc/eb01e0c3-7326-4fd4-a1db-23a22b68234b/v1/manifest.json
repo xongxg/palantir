@@ -1,0 +1,46 @@
+{
+  "dataset_id": "eb01e0c3-7326-4fd4-a1db-23a22b68234b",
+  "version": 1,
+  "sync_run_id": "c89b466a-b0b6-481a-8bcd-18df4b4a03ed",
+  "created_at": 1774488916,
+  "schema": {
+    "fields": [
+      {
+        "name": "country",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "tier",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "dcdcca330c8f010120d5b0f9224f448367f707c780b2efbad0d1b74b6bee9dc8",
+      "rows": 5,
+      "bytes": 217
+    }
+  ],
+  "total_rows": 5,
+  "total_bytes": 217,
+  "content_hash": "abdf81771374b6441cd13761030fe85d2f066844bfd7a9128b45f3201a9c3f9a"
+}

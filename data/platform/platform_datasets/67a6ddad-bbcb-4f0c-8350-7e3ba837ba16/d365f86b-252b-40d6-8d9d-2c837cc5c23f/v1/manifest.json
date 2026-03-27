@@ -1,0 +1,46 @@
+{
+  "dataset_id": "d365f86b-252b-40d6-8d9d-2c837cc5c23f",
+  "version": 1,
+  "sync_run_id": "45f8f948-a543-4dcc-a036-fb3961be3a58",
+  "created_at": 1774490541,
+  "schema": {
+    "fields": [
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "priority",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "project_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "8b4890e31fc32755848fa7980d10ac5ff223db30eb674a36277f3777ac596dfe",
+      "rows": 12,
+      "bytes": 454
+    }
+  ],
+  "total_rows": 12,
+  "total_bytes": 454,
+  "content_hash": "f3388d05bd9022ccafaff657aef33c314202c7214f75cf9cb2fc8b0bb05d498e"
+}

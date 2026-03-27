@@ -4,6 +4,7 @@ import { useSchemaStore } from '@/store/schemaStore'
 import { entityTypesApi, interfacesApi } from '@/api'
 import type { BreakingChangeInfo, EtLineage, Interface } from '@/api/types'
 import AddFieldDialog from './AddFieldDialog'
+import ActionTypesPanel from './ActionTypesPanel'
 import { cn } from '@/lib/utils'
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
@@ -537,6 +538,9 @@ export default function EntityTypeDetail() {
 
       {/* P2c: Interfaces Panel */}
       <InterfacesPanel etId={et.id} />
+
+      {/* P2d: ActionTypes Panel */}
+      <ActionTypesPanel etId={et.id} />
 
       <AddFieldDialog
         open={showAddField}

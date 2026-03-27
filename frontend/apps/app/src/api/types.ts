@@ -232,3 +232,27 @@ export interface OntologyGraph {
   edges: GraphEdge[]
   entity_types?: EntityType[]
 }
+
+export interface ActionTypeParam {
+  name: string
+  type: string          // string | number | boolean | date
+  required: boolean
+  description?: string
+}
+
+export interface ActionType {
+  id: string
+  name: string
+  display_name: string
+  target_et_id?: string
+  level: 'object' | 'bc' | 'fold' | 'app'
+  from_states: string[]
+  to_state?: string
+  params: ActionTypeParam[]
+  trigger: 'manual' | 'event' | 'cron'
+  allowed_personas: string[]
+  bc_id?: string
+  saga_def_id?: string
+  status: 'draft' | 'active' | 'deprecated'
+  created_at: string
+}

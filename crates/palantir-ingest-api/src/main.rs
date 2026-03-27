@@ -1468,6 +1468,58 @@ async fn set_et_ddd_role_handler(
 // ── P1: BC Inference ──────────────────────────────────────────────────────────
 
 /// POST /api/ontology/auto-link — scan all *_id FK columns, auto-create ontology_links
+// ── ActionType handlers ───────────────────────────────────────────────────────
+
+async fn list_action_types_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let et_id = params.get("et_id").map(|s| s.as_str());
+    match db().list_action_types(et_id).await {
+        Ok(rows) => (StatusCode::OK, Json(json!({ "action_types": rows }))).into_response(),
+        Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn create_action_type_handler(Json(req): Json<serde_json::Value>) -> impl IntoResponse {
+    match db().create_action_type(&req).await {
+        Ok(res) => (StatusCode::CREATED, Json(res)).into_response(),
+        Err(e)  => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn update_action_type_handler(
+    Path(id): Path<String>,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    match db().update_action_type(&id, &req).await {
+        Ok(_)  => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn set_action_type_status_handler(
+    Path(id): Path<String>,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let status = req["status"].as_str().unwrap_or("draft");
+    if !["draft", "active", "deprecated"].contains(&status) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "status must be draft | active | deprecated"}))).into_response();
+    }
+    match db().set_action_type_status(&id, status).await {
+        Ok(_)  => (StatusCode::OK, Json(json!({"ok": true, "status": status}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn delete_action_type_handler(Path(id): Path<String>) -> impl IntoResponse {
+    match db().delete_action_type(&id).await {
+        Ok(_)  => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 async fn auto_detect_links_handler() -> impl IntoResponse {
     match db().auto_detect_links().await {
         Ok((created, skipped)) => (StatusCode::OK, Json(json!({
@@ -4354,6 +4406,10 @@ async fn main() -> anyhow::Result<()> {
         // Ontology Links
         .route("/api/ontology/links", post(create_link_handler))
         .route("/api/ontology/links/:id", axum::routing::delete(delete_link_handler))
+        // ActionType 声明层
+        .route("/api/ontology/action-types", get(list_action_types_handler).post(create_action_type_handler))
+        .route("/api/ontology/action-types/:id", axum::routing::put(update_action_type_handler).delete(delete_action_type_handler))
+        .route("/api/ontology/action-types/:id/status", axum::routing::put(set_action_type_status_handler))
         // Graph view
         .route("/api/ontology/graph", get(get_ontology_graph_handler))
         .route("/api/ontology/schema-links", get(list_schema_links_handler))

@@ -10,6 +10,7 @@ pub mod adapters_mongodb;
 pub mod adapters_elasticsearch;
 pub mod adapters_kafka;
 pub mod adapters_excel;
+pub mod saga;
 pub mod errors;
 pub mod manager;
 pub mod mapping;

@@ -1,0 +1,51 @@
+{
+  "dataset_id": "f5a0443d-33e3-47ab-a235-a646875dbc50",
+  "version": 2,
+  "sync_run_id": "bb422920-4456-4a63-bcc8-a10c7b9f7a44",
+  "created_at": 1774488635,
+  "schema": {
+    "fields": [
+      {
+        "name": "country",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "department_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "level",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "salary",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "94975adb1b5ca789efbbc6c69e54ce05fb9ed0f80cc92e79d468356c56e1862d",
+      "rows": 24,
+      "bytes": 987
+    }
+  ],
+  "total_rows": 24,
+  "total_bytes": 987,
+  "content_hash": "9959e5d8fd24cb900f0d7e0963641155a07b3ec3d34701aebf2569fe461b6690"
+}

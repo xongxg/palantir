@@ -1,0 +1,25 @@
+country,department_id,id,level,name,salary
+USA,dep1,em1,Staff,Alice Chen,145000
+USA,dep1,em2,Senior,Bob Martinez,120000
+Germany,dep2,em3,Senior,Carol White,115000
+South Korea,dep3,em4,Mid,David Kim,85000
+India,dep3,em5,Staff,Eva Patel,140000
+USA,dep4,em6,Junior,Frank Lee,68000
+Vietnam,dep4,em7,Senior,Grace Nguyen,95000
+UK,dep5,em8,Mid,Henry Brown,78000
+Italy,dep5,em9,Senior,Ivan Russo,98000
+Brazil,dep6,em10,Junior,Julia Santos,62000
+Germany,dep2,em11,Mid,Karl Muller,88000
+USA,dep1,em12,Senior,Laura Kim,118000
+USA,dep1,em1,Staff,Alice Chen,145000
+USA,dep1,em2,Senior,Bob Martinez,120000
+Germany,dep2,em3,Senior,Carol White,115000
+South Korea,dep3,em4,Mid,David Kim,85000
+India,dep3,em5,Staff,Eva Patel,140000
+USA,dep4,em6,Junior,Frank Lee,68000
+Vietnam,dep4,em7,Senior,Grace Nguyen,95000
+UK,dep5,em8,Mid,Henry Brown,78000
+Italy,dep5,em9,Senior,Ivan Russo,98000
+Brazil,dep6,em10,Junior,Julia Santos,62000
+Germany,dep2,em11,Mid,Karl Muller,88000
+USA,dep1,em12,Senior,Laura Kim,118000

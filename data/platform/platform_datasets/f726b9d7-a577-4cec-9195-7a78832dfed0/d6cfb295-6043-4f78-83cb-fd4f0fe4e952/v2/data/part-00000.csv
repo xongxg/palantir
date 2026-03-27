@@ -1,0 +1,13 @@
+budget,country,headcount,id,name,status
+2000000,USA,18,dep1,Engineering,Active
+800000,Germany,9,dep2,Product,Active
+1200000,South Korea,14,dep3,Sales,Active
+600000,USA,7,dep4,Marketing,Active
+500000,UK,11,dep5,Logistics,Active
+300000,Brazil,5,dep6,Support,Review
+2000000,USA,18,dep1,Engineering,Active
+800000,Germany,9,dep2,Product,Active
+1200000,South Korea,14,dep3,Sales,Active
+600000,USA,7,dep4,Marketing,Active
+500000,UK,11,dep5,Logistics,Active
+300000,Brazil,5,dep6,Support,Review

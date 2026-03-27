@@ -1,0 +1,46 @@
+{
+  "dataset_id": "3c324fe0-3ea8-48f4-a195-cd97aff7f9b4",
+  "version": 2,
+  "sync_run_id": "113013b0-6bbc-4bcf-873e-ea6b1f2d9216",
+  "created_at": 1774488635,
+  "schema": {
+    "fields": [
+      {
+        "name": "budget",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "priority",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "b60bc6bd8f7dbea5a653f8c23a1da051a4ff872bb12c58772a1c6899d71388b0",
+      "rows": 14,
+      "bytes": 587
+    }
+  ],
+  "total_rows": 14,
+  "total_bytes": 587,
+  "content_hash": "2f0d698351192200cc9db2e07dce4d38f8384474a8f2150634e3a221a059224a"
+}

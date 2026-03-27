@@ -1,0 +1,46 @@
+{
+  "dataset_id": "5f732e9e-fe99-4dbd-bb1c-f41f36ebcdab",
+  "version": 1,
+  "sync_run_id": "f0d9f580-e804-4fb4-be7f-ca207978935e",
+  "created_at": 1774490413,
+  "schema": {
+    "fields": [
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "milestone_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "priority",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "e0a382cc805ec1bcc07ed199cbc3c844f2513a8debace10c8687b9535c092387",
+      "rows": 12,
+      "bytes": 459
+    }
+  ],
+  "total_rows": 12,
+  "total_bytes": 459,
+  "content_hash": "647c0413b544bef27a801e085b61e24a04739f9e6d21ea56687203f22d67e1a5"
+}

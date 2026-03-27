@@ -457,6 +457,40 @@ impl Db {
         .execute(&self.pool)
         .await?;
 
+        // ── ActionType 声明层（Phase 2）─────────────────────────────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS action_types (
+                id               TEXT PRIMARY KEY,
+                name             TEXT NOT NULL,
+                display_name     TEXT NOT NULL,
+                target_et_id     TEXT REFERENCES entity_types(id) ON DELETE CASCADE,
+                level            TEXT NOT NULL DEFAULT 'object',
+                from_states      TEXT NOT NULL DEFAULT '[]',
+                to_state         TEXT,
+                params           TEXT NOT NULL DEFAULT '[]',
+                trigger          TEXT NOT NULL DEFAULT 'manual',
+                allowed_personas TEXT NOT NULL DEFAULT '[]',
+                bc_id            TEXT REFERENCES bounded_contexts(id) ON DELETE SET NULL,
+                saga_def_id      TEXT,
+                status           TEXT NOT NULL DEFAULT 'draft',
+                created_at       TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // ── SagaDefinition stub（Phase 3 执行引擎接入时填充）──────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS saga_definitions (
+                id         TEXT PRIMARY KEY,
+                name       TEXT NOT NULL,
+                steps      TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Seed a "default" entity type used when syncing without an explicit mapping.
         // INSERT OR IGNORE so it is idempotent.
         sqlx::query(
@@ -3788,6 +3822,115 @@ impl Db {
         }
 
         Ok(created)
+    }
+
+    // ── ActionType CRUD ───────────────────────────────────────────────────────
+
+    pub async fn list_action_types(&self, target_et_id: Option<&str>) -> Result<Vec<serde_json::Value>> {
+        let rows = if let Some(et_id) = target_et_id {
+            sqlx::query(
+                "SELECT id, name, display_name, target_et_id, level, from_states, to_state,
+                        params, trigger, allowed_personas, bc_id, saga_def_id, status, created_at
+                 FROM action_types WHERE target_et_id = ? ORDER BY created_at ASC",
+            )
+            .bind(et_id)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                "SELECT id, name, display_name, target_et_id, level, from_states, to_state,
+                        params, trigger, allowed_personas, bc_id, saga_def_id, status, created_at
+                 FROM action_types ORDER BY created_at ASC",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(rows.iter().map(|r| serde_json::json!({
+            "id":               r.get::<String, _>("id"),
+            "name":             r.get::<String, _>("name"),
+            "display_name":     r.get::<String, _>("display_name"),
+            "target_et_id":     r.get::<Option<String>, _>("target_et_id"),
+            "level":            r.get::<String, _>("level"),
+            "from_states":      serde_json::from_str::<serde_json::Value>(&r.get::<String, _>("from_states")).unwrap_or_default(),
+            "to_state":         r.get::<Option<String>, _>("to_state"),
+            "params":           serde_json::from_str::<serde_json::Value>(&r.get::<String, _>("params")).unwrap_or_default(),
+            "trigger":          r.get::<String, _>("trigger"),
+            "allowed_personas": serde_json::from_str::<serde_json::Value>(&r.get::<String, _>("allowed_personas")).unwrap_or_default(),
+            "bc_id":            r.get::<Option<String>, _>("bc_id"),
+            "saga_def_id":      r.get::<Option<String>, _>("saga_def_id"),
+            "status":           r.get::<String, _>("status"),
+            "created_at":       r.get::<String, _>("created_at"),
+        })).collect())
+    }
+
+    pub async fn create_action_type(&self, req: &serde_json::Value) -> Result<serde_json::Value> {
+        let id = Uuid::new_v4().to_string();
+        let now = Self::now_str();
+        sqlx::query(
+            "INSERT INTO action_types
+                (id, name, display_name, target_et_id, level, from_states, to_state,
+                 params, trigger, allowed_personas, bc_id, saga_def_id, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)",
+        )
+        .bind(&id)
+        .bind(req["name"].as_str().unwrap_or(""))
+        .bind(req["display_name"].as_str().unwrap_or(""))
+        .bind(req["target_et_id"].as_str())
+        .bind(req["level"].as_str().unwrap_or("object"))
+        .bind(req["from_states"].as_array().map(|_| req["from_states"].to_string()).unwrap_or_else(|| "[]".to_string()))
+        .bind(req["to_state"].as_str())
+        .bind(req["params"].as_array().map(|_| req["params"].to_string()).unwrap_or_else(|| "[]".to_string()))
+        .bind(req["trigger"].as_str().unwrap_or("manual"))
+        .bind(req["allowed_personas"].as_array().map(|_| req["allowed_personas"].to_string()).unwrap_or_else(|| "[]".to_string()))
+        .bind(req["bc_id"].as_str())
+        .bind(req["saga_def_id"].as_str())
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(serde_json::json!({ "id": id }))
+    }
+
+    pub async fn update_action_type(&self, id: &str, req: &serde_json::Value) -> Result<()> {
+        sqlx::query(
+            "UPDATE action_types SET
+                name             = COALESCE(?, name),
+                display_name     = COALESCE(?, display_name),
+                level            = COALESCE(?, level),
+                from_states      = COALESCE(?, from_states),
+                to_state         = ?,
+                params           = COALESCE(?, params),
+                trigger          = COALESCE(?, trigger),
+                allowed_personas = COALESCE(?, allowed_personas),
+                bc_id            = ?,
+                saga_def_id      = ?
+             WHERE id = ?",
+        )
+        .bind(req["name"].as_str())
+        .bind(req["display_name"].as_str())
+        .bind(req["level"].as_str())
+        .bind(req["from_states"].as_array().map(|_| req["from_states"].to_string()))
+        .bind(req["to_state"].as_str())
+        .bind(req["params"].as_array().map(|_| req["params"].to_string()))
+        .bind(req["trigger"].as_str())
+        .bind(req["allowed_personas"].as_array().map(|_| req["allowed_personas"].to_string()))
+        .bind(req["bc_id"].as_str())
+        .bind(req["saga_def_id"].as_str())
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_action_type_status(&self, id: &str, status: &str) -> Result<()> {
+        sqlx::query("UPDATE action_types SET status = ? WHERE id = ?")
+            .bind(status).bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn delete_action_type(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM action_types WHERE id = ?")
+            .bind(id).execute(&self.pool).await?;
+        Ok(())
     }
 
     pub async fn clear_project_graph(&self, project_id: &str) -> Result<()> {

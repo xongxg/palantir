@@ -1,0 +1,46 @@
+{
+  "dataset_id": "6fa67b5b-ffd0-468c-b8e5-b165a710abb2",
+  "version": 1,
+  "sync_run_id": "fa0abaa5-2779-4813-b22f-0be58812bea6",
+  "created_at": 1774488915,
+  "schema": {
+    "fields": [
+      {
+        "name": "annual_value",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "contract_type",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "employee_id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "f090284fc1b5e2603b82f4f223a9c2a3e99c6e22db33a4da40d037251735112c",
+      "rows": 12,
+      "bytes": 449
+    }
+  ],
+  "total_rows": 12,
+  "total_bytes": 449,
+  "content_hash": "b9356eddc27a2c60edf85dfe8eb3bd60a09bcdaf3b4b9cdc5d42ebbc1707e778"
+}

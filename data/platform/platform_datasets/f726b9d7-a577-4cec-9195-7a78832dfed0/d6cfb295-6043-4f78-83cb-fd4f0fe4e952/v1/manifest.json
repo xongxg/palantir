@@ -1,0 +1,51 @@
+{
+  "dataset_id": "d6cfb295-6043-4f78-83cb-fd4f0fe4e952",
+  "version": 1,
+  "sync_run_id": "397bf3ca-6d49-42e4-89e8-1e4d0c71836e",
+  "created_at": 1774487843,
+  "schema": {
+    "fields": [
+      {
+        "name": "budget",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "country",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "headcount",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "id",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "data_type": "string",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "data_type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "data/part-00000.csv",
+      "sha256": "7608a1426a992fb4575a89f4bbdca7e3e87d05028144f1d538a9bd8bb363b019",
+      "rows": 6,
+      "bytes": 263
+    }
+  ],
+  "total_rows": 6,
+  "total_bytes": 263,
+  "content_hash": "ee54250fa1a40366b46ba4fbea307c8cabf4f6b65dbb3d9d3f3e868e28c0bab9"
+}
