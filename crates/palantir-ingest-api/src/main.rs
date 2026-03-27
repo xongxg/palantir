@@ -3588,11 +3588,9 @@ async fn auto_promote_if_mapped(dataset_id: &str) {
                 other => other.to_string(),
             })
         } else { None };
-        // APPEND: skip if object already exists (insert only new records)
         if sync_mode == "append" && ext_id.is_some() {
-            // upsert_ontology_object will skip update if ext_id conflicts — good enough for append
-            // Use INSERT OR IGNORE semantics by checking first
-            let _ = db().upsert_ontology_object(
+            // Append: INSERT OR IGNORE — keep existing records unchanged, only insert new IDs
+            let _ = db().insert_ontology_object_if_new(
                 &et.id, &et.display_name, ext_id.as_deref(), &label, &fields, dataset_id, "auto-promote",
             ).await;
         } else {

@@ -2438,6 +2438,41 @@ impl Db {
         Ok(())
     }
 
+    /// Insert ontology object only if external_id doesn't exist yet (append semantics).
+    pub async fn insert_ontology_object_if_new(
+        &self,
+        entity_type_id: &str,
+        entity_type_name: &str,
+        external_id: Option<&str>,
+        label: &str,
+        fields: &str,
+        dataset_id: &str,
+        run_id: &str,
+    ) -> Result<()> {
+        let now = Self::now_str();
+        let id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT OR IGNORE INTO ontology_objects
+                (id, entity_type_id, entity_type_name, external_id, label, fields,
+                 dataset_id, sync_run_id, source_ids, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, json_array(?), ?, ?)",
+        )
+        .bind(&id)
+        .bind(entity_type_id)
+        .bind(entity_type_name)
+        .bind(external_id)
+        .bind(label)
+        .bind(fields)
+        .bind(dataset_id)
+        .bind(run_id)
+        .bind(dataset_id)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     // ── Object Type Mappings ───────────────────────────────────────────────────
 
     pub async fn save_object_type_mapping(
