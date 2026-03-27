@@ -422,6 +422,16 @@ function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }
     })
   }
 
+  // Auto-expand all ARs that have children when map first loads
+  useEffect(() => {
+    if (!arChildMap.size) return
+    setExpanded(prev => {
+      const next = new Set(prev)
+      arChildMap.forEach((children, arId) => { if (children.length) next.add(arId) })
+      return next
+    })
+  }, [arChildMap])
+
   // Auto-expand AR that contains the currently selected child ET
   useEffect(() => {
     if (!filterEtId) return
@@ -455,7 +465,7 @@ function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }
               {children.length > 0 && (
                 <button
                   onClick={() => toggle(ar.id)}
-                  className="text-slate-600 hover:text-slate-400 w-3 flex-shrink-0 text-[10px]"
+                  className="text-slate-400 hover:text-white w-3 flex-shrink-0 text-[10px]"
                 >{isOpen ? '▾' : '▸'}</button>
               )}
               <button
