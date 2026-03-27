@@ -393,6 +393,71 @@ RefundOrder:
 
 ---
 
+## 十四、技术选型决策（ADR）
+
+### ADR-001: 状态机独立建模，不内嵌到 ET
+
+**决策**：为 AR 的状态机单独建两张表 `state_definitions` + `state_transitions`，而非将状态信息存为 ET 的 JSON 属性。
+
+**背景**：ActionType 的 from_states / to_state 目前是用户手填字符串，存在拼写错误、无法下拉选择、无法验证合法性等问题。用户在配置 ActionType 之前，需要先完成对该 AR 状态机的定义。
+
+**分层配置模型**：
+```
+L1: 状态值定义     → state_definitions（每个状态的名称、含义、颜色）
+L2: 状态转换规则   → state_transitions（哪些 from→to 合法）
+L3: ActionType     → 引用 L2 的 transition，补充参数、触发方式、权限
+```
+
+**为什么不用 JSON 内嵌**：
+- 状态定义需要独立查询（配置 ActionType 时下拉选择）
+- 状态转换矩阵需要单独可视化（状态图）
+- 行业模板需要批量导入状态机，独立表更易操作
+- 未来执行引擎需要在执行前校验当前状态是否允许该 transition
+
+**影响**：ActionType 的 from_states / to_state 字段将从自由文本改为引用 `state_transitions.id`，UI 从文本输入改为下拉选择。
+
+---
+
+### ADR-002: 行业模板作为状态机的加速器，不是硬编码
+
+**决策**：行业模板（电商、制造、金融等）以数据形式存储，用于预填 L1+L2，用户可按业务需求修改，不锁定。
+
+**背景**：不同行业状态机差异巨大，不可能有统一标准。但大多数电商订单、工单、审批流有共性，模板能大幅降低初始配置成本。
+
+**模板机制**：
+- 用户创建 AR 后，可选择"从模板导入状态机"
+- 模板预填常见状态值 + 常见转换规则
+- 用户按自己业务调整（增删状态、修改转换方向）
+- 完成后进入 ActionType 配置，from/to 从下拉选
+
+**内置模板清单**（初版）：
+- 电商订单：draft → pending → confirmed → shipped → completed / cancelled
+- 制造工单：draft → released → in_progress → paused / completed / scrapped
+- 金融审批：draft → submitted → under_review → approved / rejected → disbursed
+
+**实现时机**：P2 后期，状态机表建好后配套实现。
+
+---
+
+### ADR-003: 元配置挑战的应对策略
+
+**问题**：不同行业、不同客户需要输入的配置参数不同（状态名、转换规则、参数类型…），如何灵活支持而不硬编码？
+
+**决策**：采用"结构化声明 + 模板 + 渐进引导"三层策略：
+
+| 策略 | 描述 |
+|------|------|
+| 结构化声明 | 用独立表建模每类配置（状态、转换、参数），有 schema 约束，不是万能 JSON |
+| 行业模板 | 预置常见领域的配置起点，降低用户从零开始的成本 |
+| 渐进引导 | 配置 ActionType 时，系统先检查 AR 是否有状态机定义；若无，引导用户先完成状态机配置 |
+
+**实现顺序**：
+1. `state_definitions` + `state_transitions` 表（P2 后期）
+2. ActionType UI 改为引用状态机下拉（同步）
+3. 行业模板数据 + 导入功能（P2 末期）
+
+---
+
 ## 十三、常见问题
 
 **Q：为什么 Entity 上没有 Actions？**
