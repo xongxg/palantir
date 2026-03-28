@@ -1,8 +1,109 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import { objectsApi, linksApi, entityTypesApi, graphApi } from '@/api'
-import type { OntologyObject, EntityType, GraphNode, GraphEdge } from '@/api'
+import { objectsApi, linksApi, entityTypesApi, graphApi, actionTypesApi, stateMachineApi } from '@/api'
+import type { OntologyObject, EntityType, GraphNode, GraphEdge, ActionType, ActionExecution, StateDef } from '@/api'
 import { cn } from '@/lib/utils'
+
+// ── Run Action Dialog ──────────────────────────────────────────────────────
+interface RunActionDialogProps {
+  action: ActionType
+  objId: string
+  onClose: () => void
+  onExecuted: () => void  // refresh object state after success
+}
+function RunActionDialog({ action, objId, onClose, onExecuted }: RunActionDialogProps) {
+  const [params, setParams] = useState<Record<string, string>>({})
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; message: string; fromState?: string; toState?: string } | null>(null)
+
+  async function handleRun() {
+    setRunning(true)
+    try {
+      const res = await fetch(`/api/ontology/action-types/${action.id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ object_id: objId, params }),
+      })
+      const data = await res.json()
+      setResult({
+        ok: !!data.ok,
+        message: data.message ?? data.error ?? (data.ok ? '执行成功' : '执行失败'),
+        fromState: data.from_state,
+        toState: data.to_state,
+      })
+      if (data.ok) onExecuted()
+    } catch (e) {
+      setResult({ ok: false, message: String(e) })
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-[440px] shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <div>
+            <h3 className="text-sm font-semibold text-white">{action.display_name}</h3>
+            <p className="text-[10px] text-slate-500 mt-0.5 font-mono">{action.name} · {action.level}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
+        </div>
+
+        {result ? (
+          <div className="p-5 space-y-4">
+            <div className={cn(
+              'rounded-lg px-4 py-3 text-sm',
+              result.ok ? 'bg-green-900/20 border border-green-700/30 text-green-300' : 'bg-red-900/20 border border-red-700/30 text-red-300'
+            )}>
+              <p>{result.message}</p>
+              {result.ok && result.fromState && result.toState && (
+                <p className="text-xs mt-2 opacity-70">{result.fromState} → {result.toState}</p>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded-lg">关闭</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="p-5 space-y-3">
+              {action.level === 'app' && (
+                <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2 text-xs text-amber-400">
+                  应用级 Action（Saga）— 跨 Fold 编排
+                </div>
+              )}
+              {action.params.length > 0 ? (
+                action.params.map(p => (
+                  <div key={p.name}>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      {p.name}{p.required && <span className="text-red-400 ml-1">*</span>}
+                      <span className="ml-1 text-slate-600">({p.type})</span>
+                    </label>
+                    <input
+                      value={params[p.name] ?? ''}
+                      onChange={e => setParams(prev => ({ ...prev, [p.name]: e.target.value }))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500">此 Action 无需参数</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-800">
+              <button onClick={onClose} className="px-4 py-1.5 text-xs text-slate-400 border border-slate-700 rounded-lg hover:text-white">取消</button>
+              <button onClick={handleRun} disabled={running}
+                className="px-4 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg disabled:opacity-50">
+                {running ? '执行中…' : '执行'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ── Create Object Dialog ───────────────────────────────────────────────────
 interface CreateObjProps {
@@ -157,9 +258,81 @@ interface ObjDetailProps {
   onSelectEt: (id: string) => void
 }
 function ObjDetail({ obj, et, allObjects, entityTypes, childToAR, onDeleted, onNavigate, onLinkAdded, onSelectEt }: ObjDetailProps) {
-  const [showAddLink, setShowAddLink] = useState(false)
+  const [showAddLink, setShowAddLink]     = useState(false)
+  const [actions, setActions]             = useState<ActionType[]>([])
+  const [states, setStates]               = useState<StateDef[]>([])
+  const [runningAction, setRunningAction] = useState<ActionType | null>(null)
+  const [currentObj, setCurrentObj]       = useState<OntologyObject>(obj)
+  const [executions, setExecutions]       = useState<ActionExecution[]>([])
+  const [showHistory, setShowHistory]     = useState(false)
+  const [settingState, setSettingState]   = useState(false)
+
+  useEffect(() => { setCurrentObj(obj) }, [obj])
+
+  useEffect(() => {
+    if (et?.id) {
+      actionTypesApi.list(et.id).then(list => setActions(list.filter(a => a.status === 'active'))).catch(() => {})
+      stateMachineApi.listStates(et.id).then(setStates).catch(() => {})
+    }
+  }, [et?.id])
+
+  async function handleSetState(stateId: string) {
+    setSettingState(true)
+    try {
+      await objectsApi.setState(obj.id, stateId)
+      await refreshObj()
+      toast.success('状态已设置')
+    } catch {
+      toast.error('设置状态失败')
+    } finally {
+      setSettingState(false)
+    }
+  }
+
+  async function refreshObj() {
+    try {
+      const fresh = await objectsApi.get(obj.id)
+      setCurrentObj(fresh)
+    } catch (_) {}
+  }
+
+  async function loadHistory() {
+    try {
+      setExecutions(await objectsApi.executions(obj.id))
+    } catch (_) {}
+  }
+
+  useEffect(() => {
+    if (showHistory) loadHistory()
+  }, [showHistory, obj.id])
 
   const isAR = et?.ddd_role === 'aggregate_root'
+
+  // Derive displayed state: DB current_state first, then match field values to state names
+  const displayedState = useMemo((): StateDef | null => {
+    if (currentObj.current_state_id) {
+      return states.find(s => s.id === currentObj.current_state_id) ?? null
+    }
+    let fields: Record<string, unknown> = {}
+    try { fields = typeof currentObj.fields === 'string' ? JSON.parse(currentObj.fields as string) : (currentObj.fields as Record<string, unknown>) } catch {}
+    for (const v of Object.values(fields)) {
+      if (typeof v === 'string') {
+        const match = states.find(s => s.name === v)
+        if (match) return match
+      }
+    }
+    return null
+  }, [currentObj, states])
+
+  // Filter actions by current state
+  const availableActions = useMemo(() => {
+    const curId = currentObj.current_state_id ?? displayedState?.id
+    return actions.filter(a => {
+      if (a.from_states.length === 0) return true
+      if (!curId) return false
+      return a.from_states.includes(curId)
+    })
+  }, [actions, currentObj.current_state_id, displayedState])
   const parentARId = et ? childToAR.get(et.id) : undefined
   const parentAR   = parentARId ? entityTypes.find(e => e.id === parentARId) : undefined
 
@@ -263,11 +436,41 @@ function ObjDetail({ obj, et, allObjects, entityTypes, childToAR, onDeleted, onN
             {isAR && <span className="text-red-400 text-sm">◆</span>}
             <h2 className="text-xl font-bold text-white">{obj.label}</h2>
           </div>
-          <p className="text-xs mt-1.5">
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="px-2 py-0.5 rounded text-xs font-medium" style={{ background: (et?.color || '#6366f1') + '22', color: et?.color || '#6366f1' }}>
-              {isAR ? 'AR · ' : ''}{obj.entity_type_name}
+              {isAR ? 'AR · ' : ''}{currentObj.entity_type_name}
             </span>
-          </p>
+            {displayedState ? (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium border"
+                style={{
+                  borderColor: (displayedState.color || '#6366f1') + '60',
+                  backgroundColor: (displayedState.color || '#6366f1') + '18',
+                  color: displayedState.color || '#6366f1',
+                }}>
+                ● {displayedState.display_name}
+              </span>
+            ) : isAR && states.length > 0 ? (
+              <select
+                disabled={settingState}
+                onChange={e => { if (e.target.value) handleSetState(e.target.value) }}
+                defaultValue=""
+                className="text-xs bg-slate-800 border border-slate-700 text-slate-400 rounded px-2 py-0.5 cursor-pointer"
+              >
+                <option value="" disabled>设置初始状态…</option>
+                {states.filter(s => s.is_initial).map(s => (
+                  <option key={s.id} value={s.id}>{s.display_name}</option>
+                ))}
+                {states.filter(s => !s.is_initial).length > 0 && (
+                  <>
+                    <option disabled>──</option>
+                    {states.filter(s => !s.is_initial).map(s => (
+                      <option key={s.id} value={s.id}>{s.display_name}</option>
+                    ))}
+                  </>
+                )}
+              </select>
+            ) : null}
+          </div>
         </div>
         <div className="flex gap-2 flex-shrink-0">
           <button onClick={() => setShowAddLink(true)}
@@ -383,12 +586,89 @@ function ObjDetail({ obj, et, allObjects, entityTypes, childToAR, onDeleted, onN
         </div>
       )}
 
+      {/* Actions panel: AR objects only */}
+      {isAR && actions.length > 0 && (
+        <div className="bg-slate-900 border border-indigo-900/40 rounded-lg overflow-hidden">
+          <p className="text-xs font-semibold text-indigo-400/80 uppercase tracking-wide px-4 pt-4 pb-3 flex items-center gap-1.5">
+            ⚡ Actions
+            <span className="text-slate-600 normal-case font-normal ml-1">
+              {availableActions.length}/{actions.length} 可用
+            </span>
+          </p>
+          {availableActions.length > 0 ? (
+            <div className="flex flex-wrap gap-2 px-4 pb-4">
+              {availableActions.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => setRunningAction(a)}
+                  className={cn(
+                    'px-3 py-1.5 text-xs rounded-lg border transition-colors',
+                    a.level === 'app'
+                      ? 'border-amber-700/40 text-amber-300 hover:bg-amber-900/20'
+                      : 'border-indigo-700/40 text-indigo-300 hover:bg-indigo-900/20'
+                  )}
+                >
+                  {a.display_name}
+                  {a.level === 'app' && <span className="ml-1 text-[9px] opacity-60">Saga</span>}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Execution history */}
+      {isAR && executions.length > 0 || (isAR && showHistory) ? (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-xs text-slate-400 hover:bg-slate-800/40"
+          >
+            <span className="font-semibold uppercase tracking-wide">执行历史</span>
+            <span>{showHistory ? '▲' : '▼'}</span>
+          </button>
+          {showHistory && (
+            <div className="border-t border-slate-800 divide-y divide-slate-800/60">
+              {executions.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-slate-600">暂无执行记录</p>
+              ) : executions.map(e => (
+                <div key={e.id} className="px-4 py-2.5 flex items-center gap-3">
+                  <span className={cn('text-[10px] px-1.5 py-0.5 rounded flex-shrink-0', e.status === 'ok' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400')}>
+                    {e.status === 'ok' ? '✓' : '✗'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-200">{e.action_display}</p>
+                    {e.from_display && e.to_display && (
+                      <p className="text-[10px] text-slate-500">{e.from_display} → {e.to_display}</p>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-600 flex-shrink-0">{new Date(e.executed_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : isAR ? (
+        <button onClick={() => setShowHistory(true)} className="text-xs text-slate-600 hover:text-slate-400 px-1">
+          查看执行历史
+        </button>
+      ) : null}
+
       {showAddLink && (
         <AddLinkDialog
           fromObj={obj}
           allObjects={allObjects}
           onClose={() => setShowAddLink(false)}
           onAdded={onLinkAdded}
+        />
+      )}
+
+      {runningAction && (
+        <RunActionDialog
+          action={runningAction}
+          objId={obj.id}
+          onClose={() => setRunningAction(null)}
+          onExecuted={() => { refreshObj(); if (showHistory) loadHistory() }}
         />
       )}
     </div>
@@ -532,6 +812,8 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
   const [selectedObj,   setSelectedObj]   = useState<OntologyObject | null>(null)
   const [filterEtId,    setFilterEtId]    = useState<string | null>(null)
   const [search,        setSearch]        = useState('')
+  const [stateFilter,   setStateFilter]   = useState<string | null>(null)
+  const [filterStates,  setFilterStates]  = useState<StateDef[]>([])
   const [showCreate,    setShowCreate]    = useState(false)
   const [loading,       setLoading]       = useState(false)
   const [graphNodes,    setGraphNodes]    = useState<GraphNode[]>([])
@@ -547,7 +829,18 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
     }).catch(console.error)
   }, [])
 
-  useEffect(() => { loadObjects() }, [filterEtId])
+  useEffect(() => { loadObjects(); setStateFilter(null) }, [filterEtId])
+
+  // Load state definitions for filter pills when a specific AR ET is selected
+  useEffect(() => {
+    if (!filterEtId || !entityTypes.length) { setFilterStates([]); return }
+    const et = entityTypes.find(e => e.id === filterEtId)
+    if (et?.ddd_role === 'aggregate_root') {
+      stateMachineApi.listStates(filterEtId).then(setFilterStates).catch(() => setFilterStates([]))
+    } else {
+      setFilterStates([])
+    }
+  }, [filterEtId, entityTypes])
 
   // Derive AR → child ET map from graph edges
   const arChildMap = useMemo(() => {
@@ -644,11 +937,31 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
     ? (entityTypes.find(e => e.id === filterEtId)?.display_name ?? '对象')
     : '全部对象'
 
-  const filteredObjs = allObjects.filter(obj =>
-    !search.trim() ||
-    obj.label.toLowerCase().includes(search.toLowerCase()) ||
-    (obj.entity_type_name || '').toLowerCase().includes(search.toLowerCase())
-  )
+  // Derive visible state: DB current_state first, then match field values against state names
+  function deriveObjState(obj: OntologyObject): StateDef | null {
+    if (obj.current_state_id) return filterStates.find(s => s.id === obj.current_state_id) ?? null
+    let fields: Record<string, unknown> = {}
+    try { fields = typeof obj.fields === 'string' ? JSON.parse(obj.fields as string) : (obj.fields as Record<string, unknown>) } catch {}
+    for (const v of Object.values(fields)) {
+      if (typeof v === 'string') {
+        const match = filterStates.find(s => s.name === v)
+        if (match) return match
+      }
+    }
+    return null
+  }
+
+  const filteredObjs = allObjects.filter(obj => {
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      if (!obj.label.toLowerCase().includes(q) && !(obj.entity_type_name || '').toLowerCase().includes(q)) return false
+    }
+    if (stateFilter) {
+      const state = deriveObjState(obj)
+      if (!state || state.id !== stateFilter) return false
+    }
+    return true
+  })
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -683,7 +996,13 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
       <div className="w-64 flex-shrink-0 border-r border-slate-800 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800 flex-shrink-0">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{col2Label}</p>
-          {!loading && <span className="text-[11px] text-slate-600">{allObjects.length || ''}</span>}
+          {!loading && (
+            <span className="text-[11px] text-slate-600">
+              {filteredObjs.length !== allObjects.length
+                ? `${filteredObjs.length} / ${allObjects.length}`
+                : (allObjects.length || '')}
+            </span>
+          )}
         </div>
         <div className="px-2 py-1.5 border-b border-slate-800/60 flex-shrink-0">
           <input
@@ -693,6 +1012,32 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
             className="w-full bg-slate-900 border border-slate-700/60 rounded-md px-2.5 py-1 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-600"
           />
         </div>
+        {/* 状态过滤条（AR ET 且有状态定义时显示）*/}
+        {filterStates.length > 0 && (
+          <div className="px-2 py-1.5 border-b border-slate-800/60 flex-shrink-0 flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => setStateFilter(null)}
+              className={cn(
+                'text-[10px] px-2 py-0.5 rounded-full border transition-colors',
+                !stateFilter ? 'border-slate-500 text-slate-200 bg-slate-700/40' : 'border-slate-700 text-slate-500 hover:text-slate-300'
+              )}
+            >全部</button>
+            {filterStates.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setStateFilter(stateFilter === s.id ? null : s.id)}
+                className={cn(
+                  'text-[10px] px-2 py-0.5 rounded-full border transition-colors',
+                  stateFilter === s.id ? 'border-current text-current' : 'border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
+                )}
+                style={stateFilter === s.id ? { borderColor: s.color + '80', color: s.color, backgroundColor: s.color + '18' } : {}}
+              >
+                <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: s.color }} />
+                {s.display_name}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {loading && <p className="text-xs text-slate-600 text-center py-6">加载中…</p>}
           {!loading && !filteredObjs.length && (
@@ -701,6 +1046,7 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
           {filteredObjs.map(obj => {
             const objEt = entityTypes.find(e => e.id === obj.entity_type_id)
             const isObjAR = objEt?.ddd_role === 'aggregate_root'
+            const objState = isObjAR ? deriveObjState(obj) : null
             return (
               <button
                 key={obj.id}
@@ -715,7 +1061,10 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
                   <span style={{ color: objEt?.color || '#6366f1' }} className="flex-shrink-0 text-[10px]">
                     {objEt?.icon || '●'}
                   </span>
-                  <span className="text-sm text-white truncate">{obj.label}</span>
+                  <span className="text-sm text-white truncate flex-1">{obj.label}</span>
+                  {objState && (
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: objState.color }} title={objState.display_name} />
+                  )}
                 </div>
                 {!filterEtId && (
                   <p className="text-xs text-slate-500 mt-0.5 pl-5">{obj.entity_type_name}</p>

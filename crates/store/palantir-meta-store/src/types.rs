@@ -86,6 +86,11 @@ pub struct OntologyObjectRow {
     pub fields: String, // JSON
     pub created_at: String,
     pub updated_at: String,
+    // Phase 3: current state
+    pub current_state_id:      Option<String>,
+    pub current_state_name:    Option<String>,
+    pub current_state_display: Option<String>,
+    pub current_state_color:   Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

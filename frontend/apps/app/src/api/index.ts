@@ -2,7 +2,7 @@ export { api } from './client'
 export * from './types'
 
 import { api } from './client'
-import type { Project, Fold, Dataset, DataSource, SyncJob, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping, BreakingChangeInfo, EtLineage, Interface, BoundedContext, BcRelationship, BcSuggestion, BcInferenceResult } from './types'
+import type { Project, Fold, Dataset, DataSource, SyncJob, EntityType, OntologyGraph, OntologyObject, DatasetMapping, LinkTypeMapping, BreakingChangeInfo, EtLineage, Interface, BoundedContext, BcRelationship, BcSuggestion, BcInferenceResult, StateDef, StateTransition, ActionType, ActionExecution } from './types'
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 export const projectsApi = {
@@ -104,6 +104,21 @@ export const foldsApi = {
   delete: (id: string) => api.delete<void>(`/api/folds/${id}`),
 }
 
+// ── State Machine ─────────────────────────────────────────────────────────────
+export const stateMachineApi = {
+  listStates:       (etId: string) =>
+    api.get<{ states: StateDef[] }>(`/api/ontology/states?et_id=${etId}`).then(r => r.states),
+  createState:      (etId: string, body: Partial<StateDef>) =>
+    api.post<{ id: string }>(`/api/ontology/states?et_id=${etId}`, body),
+  updateState:      (id: string, body: Partial<StateDef>) => api.put<{ ok: boolean }>(`/api/ontology/states/${id}`, body),
+  deleteState:      (id: string) => api.delete<{ ok: boolean }>(`/api/ontology/states/${id}`),
+  listTransitions:  (etId: string) =>
+    api.get<{ transitions: StateTransition[] }>(`/api/ontology/state-transitions?et_id=${etId}`).then(r => r.transitions),
+  createTransition: (etId: string, fromId: string, toId: string) =>
+    api.post<{ id: string }>(`/api/ontology/state-transitions?et_id=${etId}`, { from_state_id: fromId, to_state_id: toId }),
+  deleteTransition: (id: string) => api.delete<{ ok: boolean }>(`/api/ontology/state-transitions/${id}`),
+}
+
 // ── ActionTypes ───────────────────────────────────────────────────────────────
 export const actionTypesApi = {
   list:      (etId?: string) =>
@@ -139,6 +154,10 @@ export const objectsApi = {
   create: (body: { entity_type_id: string; label: string; fields?: Record<string, unknown> }) =>
     api.post<OntologyObject>('/api/ontology/objects', body),
   delete: (id: string) => api.delete<void>(`/api/ontology/objects/${id}`),
+  executions: (id: string) =>
+    api.get<{ executions: ActionExecution[] }>(`/api/ontology/objects/${id}/executions`).then(r => r.executions),
+  setState: (id: string, state_id: string) =>
+    api.put<{ ok: boolean }>(`/api/ontology/objects/${id}/state`, { state_id }),
 }
 
 // ── Ontology Links ─────────────────────────────────────────────────────────────

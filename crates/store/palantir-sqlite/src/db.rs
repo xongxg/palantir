@@ -457,6 +457,37 @@ impl Db {
         .execute(&self.pool)
         .await?;
 
+        // ── 状态机声明层（Phase 2）───────────────────────────────────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS state_definitions (
+                id           TEXT PRIMARY KEY,
+                target_et_id TEXT NOT NULL REFERENCES entity_types(id) ON DELETE CASCADE,
+                name         TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                color        TEXT NOT NULL DEFAULT '#6366f1',
+                description  TEXT,
+                is_initial   INTEGER NOT NULL DEFAULT 0,
+                is_terminal  INTEGER NOT NULL DEFAULT 0,
+                created_at   TEXT NOT NULL,
+                UNIQUE(target_et_id, name)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS state_transitions (
+                id            TEXT PRIMARY KEY,
+                target_et_id  TEXT NOT NULL REFERENCES entity_types(id) ON DELETE CASCADE,
+                from_state_id TEXT NOT NULL REFERENCES state_definitions(id) ON DELETE CASCADE,
+                to_state_id   TEXT NOT NULL REFERENCES state_definitions(id) ON DELETE CASCADE,
+                created_at    TEXT NOT NULL,
+                UNIQUE(target_et_id, from_state_id, to_state_id)
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         // ── ActionType 声明层（Phase 2）─────────────────────────────────────────
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS action_types (
@@ -486,6 +517,33 @@ impl Db {
                 name       TEXT NOT NULL,
                 steps      TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // ── Phase 3: object 当前状态 ──────────────────────────────────────────
+        sqlx::query(
+            "ALTER TABLE ontology_objects ADD COLUMN current_state_id TEXT
+             REFERENCES state_definitions(id) ON DELETE SET NULL",
+        )
+        .execute(&self.pool)
+        .await
+        .ok(); // ignore if column already exists
+
+        // ── Phase 3: action 执行记录 ──────────────────────────────────────────
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS action_executions (
+                id               TEXT PRIMARY KEY,
+                action_type_id   TEXT NOT NULL REFERENCES action_types(id) ON DELETE CASCADE,
+                object_id        TEXT NOT NULL REFERENCES ontology_objects(id) ON DELETE CASCADE,
+                from_state_id    TEXT REFERENCES state_definitions(id) ON DELETE SET NULL,
+                to_state_id      TEXT REFERENCES state_definitions(id) ON DELETE SET NULL,
+                executor_persona TEXT,
+                params           TEXT NOT NULL DEFAULT '{}',
+                result           TEXT,
+                status           TEXT NOT NULL DEFAULT 'ok',
+                executed_at      TEXT NOT NULL
             )",
         )
         .execute(&self.pool)
@@ -1491,6 +1549,10 @@ impl Db {
             fields: fields_json.to_string(),
             created_at: now.clone(),
             updated_at: now,
+            current_state_id: None,
+            current_state_name: None,
+            current_state_display: None,
+            current_state_color: None,
         })
     }
 
@@ -1515,6 +1577,10 @@ impl Db {
             fields: fields_json.to_string(),
             created_at: now.clone(),
             updated_at: now,
+            current_state_id: None,
+            current_state_name: None,
+            current_state_display: None,
+            current_state_color: None,
         })
     }
 
@@ -1522,52 +1588,63 @@ impl Db {
         &self,
         entity_type_id: Option<&str>,
     ) -> Result<Vec<OntologyObjectRow>> {
+        let sql = "SELECT o.id, o.entity_type_id, o.entity_type_name, o.label, o.fields,
+                          o.created_at, o.updated_at, o.current_state_id,
+                          s.name AS state_name, s.display_name AS state_display, s.color AS state_color
+                   FROM ontology_objects o
+                   LEFT JOIN state_definitions s ON s.id = o.current_state_id";
         let rows = if let Some(et) = entity_type_id {
-            sqlx::query(
-                "SELECT id, entity_type_id, entity_type_name, label, fields, created_at, updated_at
-                 FROM ontology_objects WHERE entity_type_id = ? ORDER BY created_at DESC",
-            )
-            .bind(et)
-            .fetch_all(&self.pool)
-            .await?
+            sqlx::query(&format!("{sql} WHERE o.entity_type_id = ? ORDER BY o.created_at DESC"))
+                .bind(et)
+                .fetch_all(&self.pool)
+                .await?
         } else {
-            sqlx::query(
-                "SELECT id, entity_type_id, entity_type_name, label, fields, created_at, updated_at
-                 FROM ontology_objects ORDER BY created_at DESC",
-            )
-            .fetch_all(&self.pool)
-            .await?
+            sqlx::query(&format!("{sql} ORDER BY o.created_at DESC"))
+                .fetch_all(&self.pool)
+                .await?
         };
         Ok(rows
             .into_iter()
             .map(|r| OntologyObjectRow {
-                id: r.get("id"),
-                entity_type_id: r.get("entity_type_id"),
-                entity_type_name: r.get("entity_type_name"),
-                label: r.get("label"),
-                fields: r.get("fields"),
-                created_at: r.get("created_at"),
-                updated_at: r.get("updated_at"),
+                id:                  r.get("id"),
+                entity_type_id:      r.get("entity_type_id"),
+                entity_type_name:    r.get("entity_type_name"),
+                label:               r.get("label"),
+                fields:              r.get("fields"),
+                created_at:          r.get("created_at"),
+                updated_at:          r.get("updated_at"),
+                current_state_id:      r.get("current_state_id"),
+                current_state_name:    r.get("state_name"),
+                current_state_display: r.get("state_display"),
+                current_state_color:   r.get("state_color"),
             })
             .collect())
     }
 
     pub async fn get_ontology_object(&self, id: &str) -> Result<Option<OntologyObjectRow>> {
         let row = sqlx::query(
-            "SELECT id, entity_type_id, entity_type_name, label, fields, created_at, updated_at
-             FROM ontology_objects WHERE id = ?",
+            "SELECT o.id, o.entity_type_id, o.entity_type_name, o.label, o.fields,
+                    o.created_at, o.updated_at, o.current_state_id,
+                    s.name AS state_name, s.display_name AS state_display, s.color AS state_color
+             FROM ontology_objects o
+             LEFT JOIN state_definitions s ON s.id = o.current_state_id
+             WHERE o.id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(|r| OntologyObjectRow {
-            id: r.get("id"),
-            entity_type_id: r.get("entity_type_id"),
-            entity_type_name: r.get("entity_type_name"),
-            label: r.get("label"),
-            fields: r.get("fields"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
+            id:                  r.get("id"),
+            entity_type_id:      r.get("entity_type_id"),
+            entity_type_name:    r.get("entity_type_name"),
+            label:               r.get("label"),
+            fields:              r.get("fields"),
+            created_at:          r.get("created_at"),
+            updated_at:          r.get("updated_at"),
+            current_state_id:      r.get("current_state_id"),
+            current_state_name:    r.get("state_name"),
+            current_state_display: r.get("state_display"),
+            current_state_color:   r.get("state_color"),
         }))
     }
 
@@ -2407,6 +2484,10 @@ impl Db {
             fields: r.get("fields"),
             created_at: r.get("created_at"),
             updated_at: r.get("updated_at"),
+            current_state_id: None,
+            current_state_name: None,
+            current_state_display: None,
+            current_state_color: None,
         }).collect())
     }
 
@@ -3822,6 +3903,213 @@ impl Db {
         }
 
         Ok(created)
+    }
+
+    // ── State Machine CRUD ───────────────────────────────────────────────────
+
+    pub async fn list_state_definitions(&self, et_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT id, name, display_name, color, description, is_initial, is_terminal, created_at
+             FROM state_definitions WHERE target_et_id = ? ORDER BY is_initial DESC, created_at ASC",
+        )
+        .bind(et_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(|r| serde_json::json!({
+            "id":           r.get::<String, _>("id"),
+            "name":         r.get::<String, _>("name"),
+            "display_name": r.get::<String, _>("display_name"),
+            "color":        r.get::<String, _>("color"),
+            "description":  r.get::<Option<String>, _>("description"),
+            "is_initial":   r.get::<i64, _>("is_initial") != 0,
+            "is_terminal":  r.get::<i64, _>("is_terminal") != 0,
+            "created_at":   r.get::<String, _>("created_at"),
+        })).collect())
+    }
+
+    pub async fn create_state_definition(&self, et_id: &str, req: &serde_json::Value) -> Result<serde_json::Value> {
+        let id = Uuid::new_v4().to_string();
+        let now = Self::now_str();
+        sqlx::query(
+            "INSERT INTO state_definitions
+                (id, target_et_id, name, display_name, color, description, is_initial, is_terminal, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(et_id)
+        .bind(req["name"].as_str().unwrap_or(""))
+        .bind(req["display_name"].as_str().unwrap_or(""))
+        .bind(req["color"].as_str().unwrap_or("#6366f1"))
+        .bind(req["description"].as_str())
+        .bind(if req["is_initial"].as_bool().unwrap_or(false) { 1i64 } else { 0 })
+        .bind(if req["is_terminal"].as_bool().unwrap_or(false) { 1i64 } else { 0 })
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(serde_json::json!({ "id": id }))
+    }
+
+    pub async fn update_state_definition(&self, id: &str, req: &serde_json::Value) -> Result<()> {
+        let display_name = req["display_name"].as_str().unwrap_or("");
+        let color        = req["color"].as_str().unwrap_or("#6366f1");
+        let is_initial   = req["is_initial"].as_bool().unwrap_or(false);
+        let is_terminal  = req["is_terminal"].as_bool().unwrap_or(false);
+        let description  = req["description"].as_str();
+        sqlx::query(
+            "UPDATE state_definitions SET display_name=?, color=?, is_initial=?, is_terminal=?, description=? WHERE id=?"
+        )
+        .bind(display_name)
+        .bind(color)
+        .bind(is_initial)
+        .bind(is_terminal)
+        .bind(description)
+        .bind(id)
+        .execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn delete_state_definition(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM state_definitions WHERE id = ?")
+            .bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn list_state_transitions(&self, et_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT t.id, t.from_state_id, t.to_state_id,
+                    f.name as from_name, f.display_name as from_display, f.color as from_color,
+                    g.name as to_name,   g.display_name as to_display,   g.color as to_color
+             FROM state_transitions t
+             JOIN state_definitions f ON t.from_state_id = f.id
+             JOIN state_definitions g ON t.to_state_id   = g.id
+             WHERE t.target_et_id = ? ORDER BY t.created_at ASC",
+        )
+        .bind(et_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(|r| serde_json::json!({
+            "id":           r.get::<String, _>("id"),
+            "from_state_id": r.get::<String, _>("from_state_id"),
+            "to_state_id":   r.get::<String, _>("to_state_id"),
+            "from_name":     r.get::<String, _>("from_name"),
+            "from_display":  r.get::<String, _>("from_display"),
+            "from_color":    r.get::<String, _>("from_color"),
+            "to_name":       r.get::<String, _>("to_name"),
+            "to_display":    r.get::<String, _>("to_display"),
+            "to_color":      r.get::<String, _>("to_color"),
+        })).collect())
+    }
+
+    pub async fn create_state_transition(&self, et_id: &str, from_id: &str, to_id: &str) -> Result<serde_json::Value> {
+        let id = Uuid::new_v4().to_string();
+        let now = Self::now_str();
+        sqlx::query(
+            "INSERT OR IGNORE INTO state_transitions (id, target_et_id, from_state_id, to_state_id, created_at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&id).bind(et_id).bind(from_id).bind(to_id).bind(&now)
+        .execute(&self.pool).await?;
+        Ok(serde_json::json!({ "id": id }))
+    }
+
+    pub async fn delete_state_transition(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM state_transitions WHERE id = ?")
+            .bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    // ── Phase 3: object state + execution record ──────────────────────────────
+
+    pub async fn get_object_current_state(&self, object_id: &str) -> Result<Option<serde_json::Value>> {
+        let row = sqlx::query(
+            "SELECT o.current_state_id, o.entity_type_id, o.fields,
+                    s.name AS state_name, s.display_name AS state_display, s.color AS state_color
+             FROM ontology_objects o
+             LEFT JOIN state_definitions s ON s.id = o.current_state_id
+             WHERE o.id = ?",
+        )
+        .bind(object_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| serde_json::json!({
+            "current_state_id":      r.get::<Option<String>, _>("current_state_id"),
+            "current_state_name":    r.get::<Option<String>, _>("state_name"),
+            "current_state_display": r.get::<Option<String>, _>("state_display"),
+            "current_state_color":   r.get::<Option<String>, _>("state_color"),
+            "entity_type_id":        r.get::<Option<String>, _>("entity_type_id"),
+            "fields":                r.get::<Option<String>, _>("fields"),
+        })))
+    }
+
+    pub async fn update_object_state(&self, object_id: &str, state_id: Option<&str>) -> Result<()> {
+        sqlx::query("UPDATE ontology_objects SET current_state_id = ? WHERE id = ?")
+            .bind(state_id)
+            .bind(object_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn record_action_execution(
+        &self,
+        action_type_id: &str,
+        object_id:       &str,
+        from_state_id:   Option<&str>,
+        to_state_id:     Option<&str>,
+        params:          &serde_json::Value,
+        result:          &str,
+        status:          &str,
+    ) -> Result<String> {
+        let id  = Uuid::new_v4().to_string();
+        let now = Self::now_str();
+        sqlx::query(
+            "INSERT INTO action_executions
+             (id, action_type_id, object_id, from_state_id, to_state_id, params, result, status, executed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(action_type_id)
+        .bind(object_id)
+        .bind(from_state_id)
+        .bind(to_state_id)
+        .bind(params.to_string())
+        .bind(result)
+        .bind(status)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn list_action_executions(&self, object_id: &str) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT e.id, e.action_type_id, e.object_id, e.from_state_id, e.to_state_id,
+                    e.params, e.result, e.status, e.executed_at,
+                    a.name AS action_name, a.display_name AS action_display,
+                    fs.display_name AS from_display, ts.display_name AS to_display
+             FROM action_executions e
+             JOIN action_types a ON a.id = e.action_type_id
+             LEFT JOIN state_definitions fs ON fs.id = e.from_state_id
+             LEFT JOIN state_definitions ts ON ts.id = e.to_state_id
+             WHERE e.object_id = ?
+             ORDER BY e.executed_at DESC",
+        )
+        .bind(object_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|r| serde_json::json!({
+            "id":             r.get::<String, _>("id"),
+            "action_name":    r.get::<String, _>("action_name"),
+            "action_display": r.get::<String, _>("action_display"),
+            "from_display":   r.get::<Option<String>, _>("from_display"),
+            "to_display":     r.get::<Option<String>, _>("to_display"),
+            "params":         serde_json::from_str::<serde_json::Value>(&r.get::<String, _>("params")).unwrap_or_default(),
+            "result":         r.get::<Option<String>, _>("result"),
+            "status":         r.get::<String, _>("status"),
+            "executed_at":    r.get::<String, _>("executed_at"),
+        })).collect())
     }
 
     // ── ActionType CRUD ───────────────────────────────────────────────────────

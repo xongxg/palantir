@@ -26,6 +26,20 @@
 
 ## 二、核心概念
 
+### 模板与实例：ActionType → Action
+
+ActionType 与 Action 的关系，和 EntityType → OntologyObject 完全对称：
+
+```
+EntityType  (Schema 层·模板)  ──▶  OntologyObject  (Browse 层·实例)
+ActionType  (Schema 层·模板)  ──▶  Action          (Object 上·执行实例)
+```
+
+- **ActionType**：在 Schema 页的 AR 上声明，描述"这类对象能做什么操作、满足什么前置条件、需要哪些参数"。
+- **Action（执行实例）**：在 Browse 页点击具体对象上的 Action 按钮，产生一次执行记录，绑定到该 Object ID。
+
+> Phase 3 执行引擎接入后，每次执行将写入 `action_executions` 表，记录：执行者、时间、入参、状态变更（`from_state → to_state`）、结果。
+
 ### Action Type 只能定义在 AR（聚合根）上
 
 AR（Aggregate Root）是业务操作的唯一入口。所有对业务实体的写操作，必须通过 AR 上定义的 Action 发起，不允许直接修改聚合内部的子实体。
@@ -457,7 +471,30 @@ L3: ActionType     → 引用 L2 的 transition，补充参数、触发方式、
 
 ---
 
-### ADR-004: 元配置挑战的应对策略
+### ADR-004: 配置中心独立于核心 Ontology 平台
+
+**决策**：行业模板管理、状态机配置向导、客户配置引导工具，独立为单独的"配置中心"系统，不内嵌在核心 Ontology 平台中。
+
+**系统边界**：
+
+| 系统 | 面向用户 | 职责 |
+|------|---------|------|
+| 核心 Ontology 平台 | 业务用户、开发者 | ET 建模、ActionType 声明、数据接入、Browse/Graph |
+| 配置中心（独立） | 实施顾问、售前 | 行业模板库、状态机向导、客户配置向导、模板发布管理 |
+
+**拆分理由**：
+- 用户群完全不同，混合 UX 会很乱
+- 模板是跨项目、跨客户资产，不应与具体 Ontology 实例耦合
+- 配置中心本身是可销售的行业解决方案包，需要独立版本和定价
+- 独立部署，迭代不影响核心平台稳定性
+
+**集成方式**：配置中心产出的模板通过 API 导入到具体项目；核心平台的 `state_definitions` + `state_transitions` 是配置中心输出的消费方。
+
+**实现时机**：P3 后期。P2 阶段先在核心平台内做简单状态机配置，架构上预留独立部署空间。
+
+---
+
+### ADR-005: 元配置挑战的应对策略
 
 **问题**：不同行业、不同客户需要输入的配置参数不同（状态名、转换规则、参数类型…），如何灵活支持而不硬编码？
 
@@ -473,6 +510,41 @@ L3: ActionType     → 引用 L2 的 transition，补充参数、触发方式、
 1. `state_definitions` + `state_transitions` 表（P2 后期）
 2. ActionType UI 改为引用状态机下拉（同步）
 3. 行业模板数据 + 导入功能（P2 末期）
+
+---
+
+### ADR-006: Action 执行引擎在 Rust 后端实现，不在前端 JS 层
+
+**决策**：ActionType 的校验、dispatch、状态转移、审计写入全部在 Rust 服务端完成。前端（TypeScript）只负责渲染可用 Action 列表和收集参数，不承载任何业务规则。
+
+**背景**：JS/TS 有 `Proxy` 特性，可在客户端对 OntologyObject 动态注入实例方法（`order.CancelOrder(params)`），实现类似"魔法绑定"的效果。但这意味着业务规则（状态校验、参数校验、权限判断）会分散到浏览器端，难以审计和管控。
+
+**Rust 的对应模式**：
+
+```
+ActionRegistry（HashMap<String, Box<dyn ActionHandler>>）
+  = JS Proxy 的服务端等价物
+```
+
+启动时注册所有 Code Mode handler；Config Mode / AI Mode 由通用 handler 解释执行；dispatch 逻辑、状态校验、审计写入统一在 `HydratedObject::execute()` 中完成。
+
+**选择 Rust 后端的原因**：
+
+1. **安全可控**：所有业务规则在服务端执行，浏览器无法绕过状态机校验，无法伪造执行记录。JS Proxy 的"魔法"暴露在客户端，攻击面更大。
+
+2. **维护成本低**：每个 `ActionHandler` 是显式的具名 struct + trait impl，grep 即可找到所有实现；handler 缺失在启动时报错，不会在运行时静默失败；ActionContext 类型系统在编译期拦截参数错误。
+
+3. **统一入口**：UI 按钮、REST API、AI Agent、Cron Job 全部走同一个 `ActionRegistry::dispatch()`，规则只维护一份。
+
+4. **职责边界清晰**：
+
+```
+前端（TypeScript） → 渲染 available_actions()，收集 params，展示结果
+                           ↓  HTTP POST /api/ontology/action-types/:id/run
+后端（Rust）        → 状态校验 → dispatch → 执行 → 状态转移 → 写审计日志
+```
+
+**影响**：Phase 3 的执行引擎完全在 `palantir-ingest-api` 或独立的 `palantir-action-engine` crate 中实现；前端不引入任何 Proxy 或动态方法注入。
 
 ---
 

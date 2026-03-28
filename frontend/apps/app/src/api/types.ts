@@ -152,6 +152,23 @@ export interface OntologyObject {
   links?: OntologyLink[]
   created_at: string
   updated_at: string
+  // Phase 3: current state machine state
+  current_state_id?:      string
+  current_state_name?:    string
+  current_state_display?: string
+  current_state_color?:   string
+}
+
+export interface ActionExecution {
+  id: string
+  action_name: string
+  action_display: string
+  from_display?: string
+  to_display?: string
+  params: Record<string, unknown>
+  result?: string
+  status: 'ok' | 'error'
+  executed_at: string
 }
 
 // ── Bounded Contexts ──────────────────────────────────────────────────────────
@@ -255,4 +272,27 @@ export interface ActionType {
   saga_def_id?: string
   status: 'draft' | 'active' | 'deprecated'
   created_at: string
+}
+
+export interface StateDef {
+  id: string
+  name: string
+  display_name: string
+  color: string
+  description?: string
+  is_initial: boolean
+  is_terminal: boolean
+  created_at: string
+}
+
+export interface StateTransition {
+  id: string
+  from_state_id: string
+  to_state_id: string
+  from_name: string
+  from_display: string
+  from_color: string
+  to_name: string
+  to_display: string
+  to_color: string
 }

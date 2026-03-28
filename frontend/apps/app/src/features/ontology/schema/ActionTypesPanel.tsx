@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { actionTypesApi } from '@/api'
-import type { ActionType, ActionTypeParam } from '@/api/types'
+import { actionTypesApi, stateMachineApi, entityTypesApi } from '@/api'
+import type { ActionType, ActionTypeParam, StateDef, EntityField } from '@/api/types'
 import { cn } from '@/lib/utils'
+
+// data_type → ActionTypeParam type
+function mapFieldType(dt: string): string {
+  if (['number', 'integer', 'decimal', 'float'].includes(dt)) return 'number'
+  if (dt === 'boolean') return 'boolean'
+  if (['date', 'datetime', 'timestamp'].includes(dt)) return 'date'
+  return 'string'
+}
 
 const LEVEL_LABEL: Record<string, string> = {
   object: '对象级', bc: 'BC 级', fold: 'Fold 级', app: '应用级（Saga）',
@@ -38,13 +46,31 @@ interface EditDialogProps {
 function EditDialog({ etId, initial, onClose, onSaved }: EditDialogProps) {
   const isNew = !initial.id
   const [form, setForm] = useState<Partial<ActionType>>({ ...emptyForm(), ...initial })
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]           = useState(false)
+  const [states, setStates]           = useState<StateDef[]>([])
+  const [etFields, setEtFields]       = useState<EntityField[]>([])
+  const [showFieldPicker, setShowFieldPicker] = useState(false)
+  const [pickerSelected, setPickerSelected]   = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    stateMachineApi.listStates(etId).then(setStates).catch(() => {})
+    entityTypesApi.list().then(ets => {
+      const et = ets.find(e => e.id === etId)
+      setEtFields(et?.fields ?? [])
+    }).catch(() => {})
+  }, [etId])
 
   // helpers for array fields
-  const setFromStates = (v: string) =>
-    setForm(f => ({ ...f, from_states: v.split(',').map(s => s.trim()).filter(Boolean) }))
   const setPersonas = (v: string) =>
     setForm(f => ({ ...f, allowed_personas: v.split(',').map(s => s.trim()).filter(Boolean) }))
+
+  function toggleFromState(stateId: string) {
+    setForm(f => {
+      const cur = f.from_states ?? []
+      const next = cur.includes(stateId) ? cur.filter(s => s !== stateId) : [...cur, stateId]
+      return { ...f, from_states: next }
+    })
+  }
 
   // params editor
   function addParam() {
@@ -147,26 +173,45 @@ function EditDialog({ etId, initial, onClose, onSaved }: EditDialogProps) {
           </div>
 
           {/* 状态机 */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">允许的起始状态（逗号分隔）</label>
-              <input
-                value={(form.from_states ?? []).join(', ')}
-                onChange={e => setFromStates(e.target.value)}
-                placeholder="pending, confirmed"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-              />
+          {states.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1.5">允许的起始状态</label>
+                <div className="space-y-1.5">
+                  {states.map(s => (
+                    <label key={s.id} className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={(form.from_states ?? []).includes(s.id)}
+                        onChange={() => toggleFromState(s.id)}
+                        className="accent-indigo-500"
+                      />
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                      <span className="text-xs text-slate-300 group-hover:text-white">{s.display_name}</span>
+                      <span className="text-[10px] text-slate-600 font-mono">({s.name})</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1.5">执行后状态</label>
+                <select
+                  value={form.to_state ?? ''}
+                  onChange={e => setForm(f => ({ ...f, to_state: e.target.value }))}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="" className="bg-slate-900">— 不改变状态 —</option>
+                  {states.map(s => (
+                    <option key={s.id} value={s.id} className="bg-slate-900">{s.display_name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">执行后状态（to_state）</label>
-              <input
-                value={form.to_state ?? ''}
-                onChange={e => setForm(f => ({ ...f, to_state: e.target.value }))}
-                placeholder="cancelled"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-              />
+          ) : (
+            <div className="bg-slate-800/40 rounded-lg px-3 py-2 text-xs text-slate-500">
+              尚未配置状态机 — 在状态机面板中添加状态后，可在此绑定状态转换。
             </div>
-          </div>
+          )}
 
           {/* 允许 Persona */}
           <div>
@@ -179,50 +224,121 @@ function EditDialog({ etId, initial, onClose, onSaved }: EditDialogProps) {
             />
           </div>
 
-          {/* 参数列表 */}
+          {/* 参数定义 */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs text-slate-400">参数定义</label>
-              <button
-                onClick={addParam}
-                className="text-xs text-indigo-400 hover:text-indigo-300"
-              >+ 添加参数</button>
+              <div className="flex items-center gap-2">
+                {etFields.length > 0 && (
+                  <button
+                    onClick={() => { setShowFieldPicker(v => !v); setPickerSelected(new Set()) }}
+                    className={cn(
+                      'text-xs border rounded px-2 py-0.5 transition-colors',
+                      showFieldPicker
+                        ? 'border-indigo-500 text-indigo-300 bg-indigo-900/20'
+                        : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                    )}
+                  >从字段选择</button>
+                )}
+                <button onClick={addParam} className="text-xs text-indigo-400 hover:text-indigo-300">
+                  + 手动添加
+                </button>
+              </div>
             </div>
+
+            {/* 字段选择面板 */}
+            {showFieldPicker && (
+              <div className="mb-3 bg-slate-800/60 border border-slate-700 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wide">选择字段作为参数</span>
+                  <button
+                    onClick={() => {
+                      const existingNames = new Set((form.params ?? []).map(p => p.name))
+                      const toAdd = etFields.filter(f => pickerSelected.has(f.id) && !existingNames.has(f.name))
+                      if (!toAdd.length) { setShowFieldPicker(false); return }
+                      setForm(f => ({
+                        ...f,
+                        params: [
+                          ...(f.params ?? []),
+                          ...toAdd.map(field => ({
+                            name: field.name,
+                            type: mapFieldType(field.data_type),
+                            required: field.is_required,
+                          })),
+                        ],
+                      }))
+                      setShowFieldPicker(false)
+                    }}
+                    disabled={!pickerSelected.size}
+                    className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded disabled:opacity-40"
+                  >添加 {pickerSelected.size > 0 ? pickerSelected.size + ' 个' : ''}</button>
+                </div>
+                <div className="max-h-44 overflow-y-auto divide-y divide-slate-700/50">
+                  {etFields
+                    .filter(f => !(form.params ?? []).some(p => p.name === f.name))
+                    .map(f => (
+                      <label key={f.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-700/40">
+                        <input
+                          type="checkbox"
+                          checked={pickerSelected.has(f.id)}
+                          onChange={() => setPickerSelected(s => {
+                            const n = new Set(s); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n
+                          })}
+                          className="accent-indigo-500 flex-shrink-0"
+                        />
+                        <span className="text-xs text-slate-200 font-mono flex-1">{f.name}</span>
+                        <span className="text-[10px] text-slate-500 bg-slate-700 px-1.5 py-0.5 rounded">{f.data_type}</span>
+                        {f.is_required && <span className="text-[10px] text-amber-400">必填</span>}
+                      </label>
+                    ))}
+                  {etFields.filter(f => !(form.params ?? []).some(p => p.name === f.name)).length === 0 && (
+                    <p className="px-3 py-3 text-xs text-slate-600">所有字段已添加为参数</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 已添加的参数列表 */}
             <div className="space-y-2">
               {(form.params ?? []).map((p, i) => (
-                <div key={i} className="flex items-center gap-2 bg-slate-800/50 px-3 py-2 rounded-lg">
-                  <input
-                    value={p.name}
-                    onChange={e => updateParam(i, { name: e.target.value })}
-                    placeholder="参数名"
-                    className="flex-1 bg-transparent text-xs text-white focus:outline-none placeholder-slate-600"
-                  />
-                  <select
-                    value={p.type}
-                    onChange={e => updateParam(i, { type: e.target.value })}
-                    className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none"
-                  >
-                    {['string', 'number', 'boolean', 'date'].map(t => (
-                      <option key={t} value={t} className="bg-slate-900">{t}</option>
-                    ))}
-                  </select>
-                  <label className="flex items-center gap-1 text-xs text-slate-400">
+                <div key={i} className="flex flex-col gap-1 bg-slate-800/50 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-2">
                     <input
-                      type="checkbox"
-                      checked={p.required}
-                      onChange={e => updateParam(i, { required: e.target.checked })}
-                      className="accent-indigo-500"
+                      value={p.name}
+                      onChange={e => updateParam(i, { name: e.target.value })}
+                      placeholder="参数名"
+                      className="flex-1 bg-transparent text-xs text-white focus:outline-none placeholder-slate-600 font-mono"
                     />
-                    必填
-                  </label>
-                  <button
-                    onClick={() => removeParam(i)}
-                    className="text-slate-600 hover:text-red-400 text-xs"
-                  >✕</button>
+                    <select
+                      value={p.type}
+                      onChange={e => updateParam(i, { type: e.target.value })}
+                      className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none"
+                    >
+                      {['string', 'number', 'boolean', 'date'].map(t => (
+                        <option key={t} value={t} className="bg-slate-900">{t}</option>
+                      ))}
+                    </select>
+                    <label className="flex items-center gap-1 text-xs text-slate-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={p.required}
+                        onChange={e => updateParam(i, { required: e.target.checked })}
+                        className="accent-indigo-500"
+                      />
+                      必填
+                    </label>
+                    <button onClick={() => removeParam(i)} className="text-slate-600 hover:text-red-400 text-xs">✕</button>
+                  </div>
+                  <input
+                    value={p.description ?? ''}
+                    onChange={e => updateParam(i, { description: e.target.value })}
+                    placeholder="说明（可选）"
+                    className="w-full bg-transparent text-xs text-slate-400 focus:outline-none placeholder-slate-600 border-t border-slate-700/50 pt-1"
+                  />
                 </div>
               ))}
-              {(form.params ?? []).length === 0 && (
-                <p className="text-xs text-slate-600 px-1">暂无参数</p>
+              {(form.params ?? []).length === 0 && !showFieldPicker && (
+                <p className="text-xs text-slate-600 px-1">暂无参数 — 可从字段选择或手动添加</p>
               )}
             </div>
           </div>
@@ -268,7 +384,7 @@ export default function ActionTypesPanel({ etId }: Props) {
     } catch (_) {} finally { setLoading(false) }
   }
 
-  useEffect(() => { if (open) load() }, [open])
+  useEffect(() => { if (open) load() }, [open, etId])
 
   async function handleSetStatus(id: string, status: string) {
     try {
@@ -295,9 +411,9 @@ export default function ActionTypesPanel({ etId }: Props) {
           className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-300 hover:bg-slate-800/40 transition-colors"
         >
           <span className="font-medium">
-            Actions
+            Action 模板
             {actions.length > 0 && (
-              <span className="ml-2 text-slate-500 font-normal">({actions.length})</span>
+              <span className="ml-2 text-slate-500 font-normal">({actions.length} 个模板)</span>
             )}
           </span>
           <div className="flex items-center gap-3">

@@ -42,6 +42,59 @@ fn db() -> &'static Db {
     DB.get().expect("DB not initialised")
 }
 
+// ── Action Execution Engine ───────────────────────────────────────────────────
+
+/// Context passed to every ActionHandler::execute call
+struct ActionContext<'a> {
+    object_id:   &'a str,
+    action_type: &'a serde_json::Value,
+    params:      &'a serde_json::Value,
+}
+
+/// Synchronous result from a handler (async via trait object is complex; handlers post-process via the engine)
+type HandlerResult = Result<String, String>; // Ok(message) | Err(reason)
+
+/// Trait for Code Mode action handlers registered at startup
+trait ActionHandler: Send + Sync {
+    fn execute(&self, ctx: &ActionContext) -> HandlerResult;
+}
+
+/// Central dispatch table: action_type.name → handler
+struct ActionRegistry {
+    handlers: HashMap<String, Box<dyn ActionHandler>>,
+}
+
+impl ActionRegistry {
+    fn new() -> Self {
+        Self { handlers: HashMap::new() }
+    }
+
+    fn register(&mut self, name: &str, handler: impl ActionHandler + 'static) {
+        self.handlers.insert(name.to_string(), Box::new(handler));
+    }
+
+    fn dispatch(&self, action_name: &str, ctx: &ActionContext) -> HandlerResult {
+        match self.handlers.get(action_name) {
+            Some(h) => h.execute(ctx),
+            // Config Mode / AI Mode: no registered handler needed,
+            // the engine handles state transition + audit; return generic ok
+            None => Ok(format!("Action '{}' 已执行（Config 模式）", action_name)),
+        }
+    }
+}
+
+static ACTION_REGISTRY: OnceLock<ActionRegistry> = OnceLock::new();
+fn registry() -> &'static ActionRegistry {
+    ACTION_REGISTRY.get_or_init(|| {
+        let mut r = ActionRegistry::new();
+        // ── Register Code Mode handlers here ────────────────────────────────
+        // Example (uncomment to enable a real handler):
+        // r.register("CancelOrder", CancelOrderHandler);
+        // ────────────────────────────────────────────────────────────────────
+        r
+    })
+}
+
 // ── Per-project in-memory state ───────────────────────────────────────────────
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -1468,6 +1521,77 @@ async fn set_et_ddd_role_handler(
 // ── P1: BC Inference ──────────────────────────────────────────────────────────
 
 /// POST /api/ontology/auto-link — scan all *_id FK columns, auto-create ontology_links
+// ── State Machine handlers ────────────────────────────────────────────────────
+
+async fn list_states_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let et_id = params.get("et_id").map(|s| s.as_str()).unwrap_or("");
+    match db().list_state_definitions(et_id).await {
+        Ok(rows) => (StatusCode::OK, Json(json!({ "states": rows }))).into_response(),
+        Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn create_state_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let et_id = params.get("et_id").map(|s| s.as_str()).unwrap_or("");
+    match db().create_state_definition(et_id, &req).await {
+        Ok(res) => (StatusCode::CREATED, Json(res)).into_response(),
+        Err(e)  => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn update_state_handler(
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    match db().update_state_definition(&id, &body).await {
+        Ok(_)  => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn delete_state_handler(Path(id): Path<String>) -> impl IntoResponse {
+    match db().delete_state_definition(&id).await {
+        Ok(_)  => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn list_transitions_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let et_id = params.get("et_id").map(|s| s.as_str()).unwrap_or("");
+    match db().list_state_transitions(et_id).await {
+        Ok(rows) => (StatusCode::OK, Json(json!({ "transitions": rows }))).into_response(),
+        Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CreateTransitionReq { from_state_id: String, to_state_id: String }
+
+async fn create_transition_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    Json(req): Json<CreateTransitionReq>,
+) -> impl IntoResponse {
+    let et_id = params.get("et_id").map(|s| s.as_str()).unwrap_or("");
+    match db().create_state_transition(et_id, &req.from_state_id, &req.to_state_id).await {
+        Ok(res) => (StatusCode::CREATED, Json(res)).into_response(),
+        Err(e)  => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+async fn delete_transition_handler(Path(id): Path<String>) -> impl IntoResponse {
+    match db().delete_state_transition(&id).await {
+        Ok(_)  => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
 // ── ActionType handlers ───────────────────────────────────────────────────────
 
 async fn list_action_types_handler(
@@ -1515,6 +1639,148 @@ async fn delete_action_type_handler(Path(id): Path<String>) -> impl IntoResponse
     match db().delete_action_type(&id).await {
         Ok(_)  => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+/// Phase 3 stub: action execution — records intent, returns pending message
+async fn run_action_type_handler(
+    Path(id): Path<String>,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let object_id = match req["object_id"].as_str() {
+        Some(s) => s.to_string(),
+        None => return (StatusCode::BAD_REQUEST, Json(json!({"error": "missing object_id"}))).into_response(),
+    };
+    let params = req.get("params").cloned().unwrap_or(json!({}));
+
+    // 1. Load ActionType declaration
+    let action_types = match db().list_action_types(None).await {
+        Ok(v) => v,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    };
+    let at = match action_types.iter().find(|a| a["id"].as_str() == Some(&id)) {
+        Some(a) => a.clone(),
+        None => return (StatusCode::NOT_FOUND, Json(json!({"error": "ActionType not found"}))).into_response(),
+    };
+
+    if at["status"].as_str() != Some("active") {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "ActionType is not active"}))).into_response();
+    }
+
+    // 2. Load object current state
+    let state_info = match db().get_object_current_state(&object_id).await {
+        Ok(v) => v.unwrap_or(json!({})),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    };
+    let mut current_state_id = state_info["current_state_id"].as_str().map(|s| s.to_string());
+
+    // 2b. If current_state_id is null, try to derive from field values (same logic as frontend)
+    if current_state_id.is_none() {
+        if let Some(et_id) = state_info["entity_type_id"].as_str() {
+            if let Ok(state_defs) = db().list_state_definitions(et_id).await {
+                // Parse object fields JSON
+                let fields: serde_json::Value = state_info["fields"]
+                    .as_str()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(json!({}));
+                // Collect all string field values
+                let field_values: Vec<String> = fields.as_object()
+                    .map(|m| m.values()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect())
+                    .unwrap_or_default();
+                // Match against state names
+                for state in &state_defs {
+                    if let Some(name) = state["name"].as_str() {
+                        if field_values.iter().any(|v| v == name) {
+                            current_state_id = state["id"].as_str().map(|s| s.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Validate from_states precondition
+    let from_states: Vec<String> = at["from_states"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect();
+
+    if !from_states.is_empty() {
+        let cur = current_state_id.as_deref().unwrap_or("");
+        if !from_states.iter().any(|s| s == cur) {
+            let current_display = state_info["current_state_display"].as_str().unwrap_or("无状态");
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({
+                "error": format!("当前状态「{}」不满足此 Action 的前置条件", current_display),
+                "current_state_id": cur,
+                "allowed_from_states": from_states,
+            }))).into_response();
+        }
+    }
+
+    // 4. Dispatch to handler (Code Mode) or use generic Config Mode path
+    let action_name = at["name"].as_str().unwrap_or("");
+    let ctx = ActionContext {
+        object_id: &object_id,
+        action_type: &at,
+        params: &params,
+    };
+    let handler_result = registry().dispatch(action_name, &ctx);
+
+    let (exec_status, message) = match &handler_result {
+        Ok(msg) => ("ok", msg.clone()),
+        Err(e)  => ("error", e.clone()),
+    };
+
+    // 5. State transition (only on success)
+    let to_state_id = at["to_state"].as_str().filter(|s| !s.is_empty()).map(|s| s.to_string());
+    if exec_status == "ok" {
+        if let Some(ref to_id) = to_state_id {
+            if let Err(e) = db().update_object_state(&object_id, Some(to_id)).await {
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response();
+            }
+        }
+    }
+
+    // 6. Write execution record (audit trail)
+    let _ = db().record_action_execution(
+        &id,
+        &object_id,
+        current_state_id.as_deref(),
+        to_state_id.as_deref(),
+        &params,
+        &message,
+        exec_status,
+    ).await;
+
+    // 7. Return result
+    if exec_status == "ok" {
+        (StatusCode::OK, Json(json!({
+            "ok": true,
+            "message": message,
+            "from_state": state_info["current_state_display"],
+            "to_state": at["to_state"],
+        }))).into_response()
+    } else {
+        (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({
+            "ok": false,
+            "error": message,
+        }))).into_response()
+    }
+}
+
+// ── Action execution history ──────────────────────────────────────────────────
+
+async fn list_action_executions_handler(
+    Path(object_id): Path<String>,
+) -> impl IntoResponse {
+    match db().list_action_executions(&object_id).await {
+        Ok(rows) => (StatusCode::OK, Json(json!({"executions": rows}))).into_response(),
+        Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 
@@ -1671,6 +1937,10 @@ async fn get_object_handler(Path(id): Path<String>) -> impl IntoResponse {
                 "id": row.id, "entity_type_id": row.entity_type_id,
                 "entity_type_name": row.entity_type_name, "label": row.label,
                 "fields": fields, "created_at": row.created_at, "updated_at": row.updated_at,
+                "current_state_id":      row.current_state_id,
+                "current_state_name":    row.current_state_name,
+                "current_state_display": row.current_state_display,
+                "current_state_color":   row.current_state_color,
                 "links": links,
             }))).into_response()
         }
@@ -1700,6 +1970,21 @@ async fn update_object_handler(
 async fn delete_object_handler(Path(id): Path<String>) -> impl IntoResponse {
     match db().delete_ontology_object(&id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetObjectStateReq {
+    state_id: String,
+}
+
+async fn set_object_state_handler(
+    Path(id): Path<String>,
+    Json(req): Json<SetObjectStateReq>,
+) -> impl IntoResponse {
+    match db().update_object_state(&id, Some(&req.state_id)).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
@@ -4403,13 +4688,21 @@ async fn main() -> anyhow::Result<()> {
                 .put(update_object_handler)
                 .delete(delete_object_handler),
         )
+        .route("/api/ontology/objects/:id/state", axum::routing::put(set_object_state_handler))
         // Ontology Links
         .route("/api/ontology/links", post(create_link_handler))
         .route("/api/ontology/links/:id", axum::routing::delete(delete_link_handler))
+        // 状态机声明层
+        .route("/api/ontology/states", get(list_states_handler).post(create_state_handler))
+        .route("/api/ontology/states/:id", axum::routing::put(update_state_handler).delete(delete_state_handler))
+        .route("/api/ontology/state-transitions", get(list_transitions_handler).post(create_transition_handler))
+        .route("/api/ontology/state-transitions/:id", axum::routing::delete(delete_transition_handler))
         // ActionType 声明层
         .route("/api/ontology/action-types", get(list_action_types_handler).post(create_action_type_handler))
         .route("/api/ontology/action-types/:id", axum::routing::put(update_action_type_handler).delete(delete_action_type_handler))
         .route("/api/ontology/action-types/:id/status", axum::routing::put(set_action_type_status_handler))
+        .route("/api/ontology/action-types/:id/run", axum::routing::post(run_action_type_handler))
+        .route("/api/ontology/objects/:id/executions", get(list_action_executions_handler))
         // Graph view
         .route("/api/ontology/graph", get(get_ontology_graph_handler))
         .route("/api/ontology/schema-links", get(list_schema_links_handler))

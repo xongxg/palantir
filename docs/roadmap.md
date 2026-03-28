@@ -208,6 +208,264 @@ Phase 5（终态）：Ontology as 操作系统
 | 业务人员参与 | 需工程师中转 | **业务分析师直接定义规则** |
 | AI 操作面 | 需手动维护 | **= AR Action 集合，自动可枚举** |
 | 业务边界 | 组织约定 | **DDD AR/BC 结构强制** |
+| 数据主权 | 云端依赖 | **完全本地部署** |
+| AI 训练成本 | 需标注 Fine-tune | **Schema 即知识库，零训练** |
+
+> 完整竞争优势分析（含客户 PPT 素材）：[competitive_advantage.md](competitive_advantage.md)
+
+---
+
+## 实现现状快照（2026-03-27）
+
+> 记录当前各 Ontology 能力层的实现状态，供演示和规划参考。
+
+### 能力矩阵
+
+| 能力 | 状态 | 后端路由 | DB 表 | 前端 UI |
+|------|------|---------|-------|--------|
+| **Action / ActionType** | ✅ 已完成 | GET/POST/PUT/DELETE `/api/ontology/action-types` + `/run` | `action_types`, `action_executions` | ActionTypesPanel（CRUD + 状态机绑定 + 参数配置 + 执行历史） |
+| **State Machine** | ✅ 已完成 | `/api/ontology/states`, `/state-transitions`, `/objects/:id/state` | `state_definitions`, `state_transitions`, `ontology_objects.current_state_id` | StateMachinePanel（拓扑图 + 贝塞尔箭头 + 从数据导入 + 编辑） |
+| **Search / Query** | ⚠️ 基础实现 | `GET /api/ontology/objects`（list + filter by et） | `ontology_objects` | Browse 页：关键词搜索 + 状态过滤 + 自动状态推断；无跨实体联合查询 |
+| **Function** | ❌ 未实现 | — | — | — |
+| **Logic / Rule** | ❌ 未实现 | — | — | — |
+| **Workflow / Saga** | ⚠️ 声明层仅存在 | — | `saga_definitions`（stub） | — |
+
+### 各能力定义与设计意图
+
+**Function**（对象计算/派生）
+- 定义：对 Ontology 对象的**只读计算**，无副作用，结果可缓存
+- 典型场景：计算订单总价、判断发票是否超期、派生风险评分
+- 与 Action 的区别：Function 不改变对象状态，Action 改变
+- 规划阶段：Phase 3（Config / AI / Code 三层执行引擎）
+
+**Logic / Rule**（条件触发规则）
+- 定义：**当…时，自动执行…** 的规则引擎，读 Ontology 状态变化，触发 Action 或通知
+- 典型场景：订单超 24 小时未确认 → 自动取消；供应商风险分 > 80 → 启动审批流
+- 与 Workflow 的区别：Logic 是单条规则（无状态、无跨时间），Workflow 是有状态的流程编排
+- 规划阶段：Phase 4（Domain Service 层）
+
+**Workflow / Saga**（跨时间流程编排）
+- 定义：协调 Logic + Action + 人工节点的**有状态编排层**，可跨天/跨周持续运行
+- 典型场景：发票提交 → 等待审批 → 通过/驳回 → 循环
+- 现状：`saga_definitions` 表已存在，执行引擎未接入（调用返回未实现提示）
+- 规划阶段：Phase 5（AR Saga + Workflow 编排引擎）
+
+**Search / Query 增强方向**
+- 当前：单实体列表 + 状态/关键词过滤
+- 近期规划：字段条件查询（见下方 Object Set 设计）
+- 中期规划：跨实体关联查询（"找出所有关联了高风险供应商的未完成合同"）
+- 远期规划：自然语言查询（AI Agent 接入，问答式检索 Ontology）
+
+### Object Set：字段条件查询设计（待实现）
+
+> 记录于 2026-03-27。来源：用户场景讨论。
+
+**核心问题**：像 *"哪些用户在早上 8 点前下单？"* 这类问题，属于 **Query**，不是 Action，也不是 Function。
+
+**能力归类**：
+
+| 问题形式 | 归属 |
+|---------|------|
+| 哪些订单在 8 点前下单？ | **Search / Object Set** |
+| 计算某张订单的预计到达时间 | Function（单对象只读计算） |
+| 订单在 8 点前下单时自动打折 | Logic / Rule（条件触发写操作） |
+| 手动触发"标记为早鸟订单" | Action |
+
+**Object Set 定义**（参照 Palantir）：
+
+一个可以保存、命名、复用的过滤条件集合，等价于一个"动态对象视图"。
+
+```
+"早鸟订单"     = Order   where created_at.hour < 8
+"高风险供应商" = Supplier where risk_score > 80
+"本月待付发票" = Invoice  where status = pending AND due_date < today()
+```
+
+**当前缺口**：
+
+- 后端仅支持 `?entity_type_id=` 过滤，无字段条件查询
+- 需要：`GET /api/ontology/objects?et_id=Order&filter=...`
+- 前端需要：查询构建 UI（选字段 → 选运算符 → 填值）
+
+**实现优先级**：Phase 3（Search 增强），先做单实体字段过滤，再做跨实体联合查询。
+
+---
+
+### Object Set × AI Agent：结合空间（2026-03-27）
+
+> 这是平台最大的差异化价值之一，值得重点投入。
+
+**核心洞察**：Ontology 已经将业务数据语义化，AI Agent 天然能理解"Order / Supplier / Invoice"的含义。两者结合后，**自然语言 → Object Set 查询** 这条路径几乎没有摩擦。
+
+**三个结合层次**：
+
+#### 层次 1：自然语言 → 查询（Query Translation）
+```
+用户问：  "哪些用户在早上 8 点前下单？"
+Agent：   解析意图 → 生成 Object Set 过滤条件
+          → Order where created_at.hour < 8
+          → 调用后端查询接口
+          → 返回结构化结果 + 摘要说明
+```
+
+#### 层次 2：自然语言 → 分析报告（Analytics）
+```
+用户问：  "本月高风险供应商有哪些，分别影响了多少合同？"
+Agent：   1. 查询 Supplier where risk_score > 80（Object Set）
+          2. 遍历每个供应商的关联 Contract（图遍历）
+          3. 汇总影响金额、合同数量
+          4. 生成自然语言摘要报告
+```
+
+#### 层次 3：自然语言 → 触发 Action（Agentic Operation）
+```
+用户说：  "把所有超期未付的发票发提醒给对应客户"
+Agent：   1. 查询 Invoice where status=pending AND due_date < today()
+          2. 对每张发票确认 Action 可用性（send_reminder）
+          3. 逐条执行 Action（或批量确认后执行）
+          4. 返回执行摘要：共处理 N 张，成功 M 张
+```
+
+**平台优势**：
+- Ontology 已语义化 → Agent 不需要"猜"字段含义，直接用 EntityType/ActionType 定义
+- AR 限制 Action 入口 → Agent 的操作面是有边界、可枚举的，**不会乱改数据**
+- ActionType 有起始状态约束 → Agent 执行前自动校验合法性，**天然防止误操作**
+- 执行历史记录完整 → Agent 的每次操作都可追溯、可审计
+
+**与 Palantir AIP 的对比**：
+
+| | Palantir AIP | 本系统（规划） |
+|--|-------------|-------------|
+| 数据基础 | Ontology | Ontology（相同） |
+| Agent 入口 | AIP Copilot | Claude API 接入 |
+| 操作面定义 | 手动维护工具列表 | **AR ActionType 集合，自动可枚举** |
+| 操作安全性 | 权限系统 | 状态机约束 + 权限（双重保障） |
+| 自然语言查询 | 已上线 | Phase 3 规划 |
+
+**实现路径**（分期）：
+
+```
+Phase 3：Object Set 后端 + 查询构建 UI
+Phase 4：Claude API 接入 → 自然语言 → Object Set（层次 1）
+Phase 4：Agent 读取 AR ActionType 清单 → 自然语言触发 Action（层次 3）
+Phase 5：多步推理 + 跨 AR 编排（层次 2 完整版）
+```
+
+---
+
+### 架构增强建议（2026-03-27）
+
+> 以下 5 条建议在 Object Set × AI Agent 讨论中形成，优先级从高到低排列。
+
+#### 建议 1：Object Set → 批量 Action（最高优先级）
+
+单对象触发 Action 已实现，但真正的业务价值在**批量**：
+
+```
+找到所有"待处理"且超过 24 小时的订单（Object Set）
+→ 对全部结果一键执行"自动取消"（Bulk Action）
+```
+
+Object Set + Bulk Action 的组合是从"工具"到"业务自动化"的关键跨越。AI Agent 层次 3（自然语言触发 Action）也依赖这个能力。
+
+**实现要点**：
+- 后端：`POST /api/ontology/action-types/:id/run-bulk`，接收 object_id 列表
+- 前端：Object Set 结果页增加"对全部执行…"下拉按钮
+- 返回：成功 N 条 / 失败 M 条的执行摘要
+
+#### 建议 2：Object Set 订阅 / 告警（轻量 Logic 替代）
+
+不需要实现完整规则引擎，只需在 Object Set 上加"监听"能力：
+
+```
+监听：Invoice where status=pending AND due_date < today()
+当有新对象进入这个集合时 → 通知财务经理
+```
+
+这是轻量版 Logic/Rule，实现成本远低于完整规则引擎，但覆盖大量真实告警场景。
+
+**实现要点**：
+- 新表：`object_set_subscriptions`（set_filter, notify_persona, channel）
+- 定时任务（或写入时 hook）：检测新进入集合的对象 → 触发通知
+- UI：Object Set 结果页增加"订阅此查询"按钮
+
+#### 建议 3：Function 结果内联到 Browse 列表
+
+Function 不只是"点击计算"，更有价值的是作为**动态列**显示在列表里：
+
+```
+Browse Order 列表
+→ 列 1: order_no  列 2: status  列 3: total_amount  列 4: [逾期天数·Function]
+```
+
+业务人员不需要打开每个对象才能看到计算结果，直接在列表扫描。
+
+**实现要点**：
+- Function 定义中增加 `show_in_list: boolean` 标记
+- Browse 列表动态追加 Function 列（客户端计算 or 后端预计算）
+- 用户可自定义显示哪些列（包括 Function 列）
+
+#### 建议 4：AI Agent 的"预览确认"模式（安全关键）
+
+Agent 执行批量操作前，必须有人工确认节点：
+
+```
+用户：把所有超期发票发提醒
+Agent：找到 23 张符合条件的发票，将对每张执行 send_reminder
+       [预览列表] INV-001（¥8500）/ INV-002（¥12800）/ ...
+       确认执行？ [执行全部] [选择执行] [取消]
+```
+
+没有预览确认，AI Agent 触发批量 Action 是危险的。这个模式也是用户建立对 Agent 信任的关键。
+
+**设计原则**：
+- Agent 永远不直接执行批量写操作，必须经过用户确认
+- 预览需展示影响范围（N 个对象）+ 关键字段摘要
+- 支持"全选执行"和"逐条勾选执行"两种模式
+- 执行结果写入 `action_executions`，完整可审计
+
+#### 建议 5：Object Set 作为 AI Agent 的上下文收窄器（架构级）
+
+核心思路：Agent 不应直接面对全量 Ontology 数据推理，而是先用 Object Set 缩小范围：
+
+```
+❌ 笨方法：把所有 Ontology 数据塞给 Agent，让它自己找
+✅ 好方法：Agent 先构建 Object Set 缩小范围，再在范围内深度推理
+```
+
+**典型工作流**：
+
+```
+用户问：本季度表现最差的客户有哪些问题？
+
+Step 1 — 收窄（Object Set）：
+  Agent → Customer where quarter_revenue < avg * 0.8
+  结果：符合条件的 12 个客户
+
+Step 2 — 深度推理（在 12 个对象内）：
+  Agent → 分析每个客户的订单历史、投诉记录、付款延迟情况
+  结果：生成结构化分析报告
+```
+
+**为什么这是正确架构**：
+- Agent 精度高：在语义确定的小集合内推理，幻觉率低
+- Token 消耗低：只传递相关对象的字段，不传全量数据
+- 结果可解释：每一步都有明确的 Object Set 作为中间产物，可展示给用户
+- 与平台深度集成：Object Set 是平台一等公民，Agent 的推理过程可被记录和重放
+
+---
+
+### 参照系：Palantir Foundry 完整能力矩阵
+
+| Palantir 能力 | 对应本系统 | 实现状态 |
+|-------------|----------|---------|
+| Object Type / Link Type | EntityType / LinkType | ✅ |
+| Action | ActionType + 执行引擎 | ✅ |
+| Function | Function（三层执行） | ❌ Phase 3 |
+| Workshop（低代码 App） | — | ❌ Phase 5+ |
+| AIP（AI 操作面） | AR Action 集合 + Claude 接入 | ⚠️ 部分 |
+| Workflow | Saga 编排引擎 | ❌ Phase 5 |
+| Permissions（RBAC/ABAC/ReBAC） | — | ❌ Phase 3 |
 
 ---
 
@@ -242,6 +500,152 @@ Phase 5（终态）：Ontology as 操作系统
 - 多租户 / 团队协作
 
 > **最高价值单个改进**：Agent 接入 LLM + 直接查询 Ontology。数据已语义化，缺的是自然语言入口——让人能问 *"有哪些高风险供应商？"* 并直接得到答案。
+
+---
+
+## 技术储备：内存计算层设计（2026-03-27）
+
+> 来源：Ontology 对象规模增长后的架构讨论。记录内存计算必要性、Geode 参考价值、Rust 原生替代方案。
+
+### 为什么需要内存计算层
+
+随着 Ontology Object 实例数量增长，以下场景会遇到性能瓶颈：
+
+| 场景 | 问题 | 触发规模 |
+|------|------|---------|
+| Object Set 字段条件查询 | 全表扫描，磁盘 IO | 十万级对象 |
+| Function 内联列（Browse 列表） | 每次渲染重复计算 | 千级对象 |
+| AI Agent 上下文构建 | 对象字段组装慢 | 实时响应要求 |
+| Graph 遍历（关联查询） | 多跳 JOIN 慢 | 百万级边 |
+| Object Set 订阅 / 告警 | 实时检测新进入集合的对象 | 高频写入场景 |
+
+**分层原则**：Schema 层（EntityType / ActionType / StateDef）数量极少，永远全量内存；Object 实例层需要智能分层缓存。
+
+---
+
+### 参考系：Apache Geode / Ignite 的设计模型
+
+Geode 的核心能力与 Ontology 平台需求高度对齐（不是巧合，Geode 本来就是为"大量业务对象的实时查询和事件驱动"设计的）：
+
+| Geode 能力 | 对应我们的需求 | 对齐度 |
+|-----------|-------------|-------|
+| 分布式内存对象存储（Region） | Ontology Object 实例存储 | ✅ |
+| OQL 查询 | Object Set 字段条件查询 | ✅ |
+| Continuous Query | Object Set 订阅 / 告警 | ✅ |
+| CacheListener 事件监听 | Logic / Rule 条件触发 | ✅ |
+| Write-through / Write-behind | 持久化到 SQLite / PostgreSQL | ✅ |
+| Near Cache | 热点对象就近缓存 | ✅ |
+| 分区 Region | 亿级对象水平分片 | ✅ |
+
+**为何不直接用 Geode / Ignite**：
+- Java / JVM 生态，与 Rust 后端集成需要 gRPC sidecar，非原生
+- Geode 已进入维护模式（社区活跃度下降）
+- 当前数据量不到触发价值的量级，引入是过度设计
+- Apache Ignite 3 有 Rust thin client，是 Phase 5 大规模时的备选
+
+---
+
+### Rust 原生替代方案
+
+#### 方案 A：NebulaGraph（图遍历专用）
+
+分布式图数据库，专门处理 Ontology 对象之间的关联查询：
+
+```ngql
+-- 查找所有关联了高风险供应商的未完成合同（多跳遍历）
+MATCH (s:Supplier)-[:SUPPLIES]->(c:Contract)
+WHERE s.risk_score > 80 AND c.status = 'active'
+RETURN s.name, c.contract_no, c.amount;
+
+-- 从某个订单出发，找到所有关联实体（1-3 跳）
+GO 1 TO 3 STEPS FROM "order-001" OVER * YIELD dst(edge);
+```
+
+| 优势 | 劣势 |
+|------|------|
+| 专为大规模图设计，亿级点边 | C++ 编写，Rust 通过客户端接入 |
+| nGQL 查询语言表达力强 | 独立部署，增加运维复杂度 |
+| 分布式水平扩展 | Phase 4+ 才需要，现在引入过早 |
+| 国内大厂生产验证充分 | |
+
+**与 DataFusion 的分工**：
+- DataFusion：单实体类型内的字段条件查询（`Order where hour < 8`）
+- NebulaGraph：跨实体类型的关联图遍历（`Order → Supplier → Contract`）
+
+#### 方案 B：DataFusion + Arrow（查询加速层，不替换存储）
+
+在现有 SQLite 之上叠加内存查询引擎，专门处理 Object Set 查询：
+
+```
+SQLite（持久化）
+    ↓ 启动时加载热点 EntityType 的对象
+Arrow RecordBatch（内存列式存储）
+    ↓
+DataFusion（SQL 查询引擎）
+    → SELECT * FROM objects WHERE hour(created_at) < 8
+    → 毫秒级返回，不走磁盘
+```
+
+**为什么 DataFusion 适合**：
+- 列式存储天然适合 Object Set 的字段扫描
+- 支持完整 SQL，Object Set 过滤条件可直接翻译
+- 已在 Delta Lake、InfluxDB 等生产系统验证
+- 叠加层设计，不破坏现有架构
+
+#### 方案 C：DashMap + tokio（自建轻量内存图）
+
+```rust
+struct OntologyMemStore {
+    objects:  DashMap<EntityTypeId, DashMap<ObjectId, Arc<OntologyObject>>>,
+    links:    DashMap<ObjectId, Vec<ObjectLink>>,
+    watchers: DashMap<String, broadcast::Sender<ObjectChangeEvent>>,
+}
+```
+
+适合 Schema 层全量缓存 + 热点对象缓存，无复杂查询需求时最轻量。
+
+#### 各方案职责分工
+
+| 层次 | 技术选型 | 职责 | 引入阶段 |
+|------|---------|------|---------|
+| Schema 缓存 | DashMap + tokio | EntityType / ActionType 全量内存 | 现在 |
+| 字段条件查询 | DataFusion + Arrow | Object Set 单实体扫描 | Phase 4 |
+| 图遍历 | NebulaGraph | 跨实体关联查询、多跳遍历 | Phase 4 |
+| 订阅 / 告警 | Redis keyspace 通知 | Object Set 变更实时推送 | Phase 4 |
+| 分布式 KV | TiKV | 亿级对象水平分片存储 | Phase 5 |
+
+**DataFusion vs NebulaGraph 的核心区别**：
+```
+DataFusion：  Order where hour(created_at) < 8
+              → 单实体类型，字段过滤，列式扫描
+
+NebulaGraph： Order → Supplier → Contract
+              → 跨实体类型，沿边遍历，图结构查询
+```
+
+---
+
+### 分阶段演进路径
+
+```
+Phase 3（现在）：
+  SQLite + 列索引，够支撑数十万对象
+  Schema 层全量内存缓存（DashMap）
+
+Phase 4（Object Set + AI Agent 接入时）：
+  引入 DataFusion + Arrow 做查询加速层
+  成本低，不影响现有架构，Object Set 查询毫秒级响应
+  Redis keyspace 通知实现 Object Set 订阅告警
+
+Phase 5（大客户 / 生产化）：
+  评估整体切换到 SurrealDB（嵌入式，Rust 原生）
+  或 Apache Ignite 3（Rust thin client，分布式，对标 Geode）
+  向量 embedding 持久化（qdrant）支持 AI Agent 语义检索
+```
+
+**结论**：DataFusion + Arrow + NebulaGraph 三层组合是首选方案——列式字段查询 + 图遍历 + Arrow 通用格式实现零拷贝层间传输，Phase 4 引入。Phase 5 大规模时引入 TiKV 替换 SQLite 底层存储。
+
+> 详细方案设计、备选方案对比、与 Palantir 官方实现的完整对标，见 [ontology_query_engine_design.md](ontology_query_engine_design.md)。
 
 ---
 
