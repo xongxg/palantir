@@ -421,6 +421,13 @@ impl Db {
         .execute(&self.pool)
         .await;
 
+        // source: 'manual' = user created, 'inferred' = derived from DataSource import
+        let _ = sqlx::query(
+            "ALTER TABLE entity_types ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+        )
+        .execute(&self.pool)
+        .await;
+
         // ── P2c: System Interface tables ───────────────────────────────────────
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS interfaces (
@@ -990,12 +997,13 @@ impl Db {
         fold_id: Option<&str>,
         ddd_role: &str,
         namespace: Option<&str>,
+        source: &str, // 'manual' | 'inferred'
     ) -> Result<EntityTypeRow> {
         let id = Uuid::new_v4().to_string();
         let now = Self::now_str();
         sqlx::query(
-            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, ddd_role, namespace, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO entity_types (id, name, display_name, color, icon, fold_id, ddd_role, namespace, source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(name)
@@ -1005,6 +1013,7 @@ impl Db {
         .bind(fold_id)
         .bind(ddd_role)
         .bind(namespace)
+        .bind(source)
         .bind(&now)
         .execute(&self.pool)
         .await?;
@@ -1025,10 +1034,20 @@ impl Db {
 
     pub async fn list_entity_types(&self) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, fold_id, bc_id, namespace,
-                    COALESCE(ddd_role, 'entity') as ddd_role,
-                    COALESCE(status, 'active') as status, created_at
-             FROM entity_types ORDER BY created_at ASC",
+            // Show ET if: manually created OR has at least one active (non-deleted) DataSource
+            "SELECT et.id, et.name, et.display_name, et.color, et.icon, et.fold_id, et.bc_id, et.namespace,
+                    COALESCE(et.ddd_role, 'entity') as ddd_role,
+                    COALESCE(et.status, 'active') as status, et.created_at
+             FROM entity_types et
+             WHERE et.source = 'manual'
+                OR EXISTS (
+                    SELECT 1 FROM object_type_mappings otm
+                    JOIN datasets d ON d.id = otm.dataset_id
+                    JOIN data_sources ds ON ds.id = d.source_id
+                    WHERE otm.entity_type_id = et.id
+                      AND ds.deleted_at IS NULL
+                )
+             ORDER BY et.created_at ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1038,10 +1057,22 @@ impl Db {
     /// List entity types belonging to a specific fold.
     pub async fn list_entity_types_for_fold(&self, fold_id: &str) -> Result<Vec<EntityTypeRow>> {
         let rows = sqlx::query(
-            "SELECT id, name, display_name, color, icon, fold_id, bc_id, namespace,
-                    COALESCE(ddd_role, 'entity') as ddd_role,
-                    COALESCE(status, 'active') as status, created_at
-             FROM entity_types WHERE fold_id = ? ORDER BY created_at ASC",
+            "SELECT et.id, et.name, et.display_name, et.color, et.icon, et.fold_id, et.bc_id, et.namespace,
+                    COALESCE(et.ddd_role, 'entity') as ddd_role,
+                    COALESCE(et.status, 'active') as status, et.created_at
+             FROM entity_types et
+             WHERE et.fold_id = ?
+               AND (
+                   et.source = 'manual'
+                   OR EXISTS (
+                       SELECT 1 FROM object_type_mappings otm
+                       JOIN datasets d ON d.id = otm.dataset_id
+                       JOIN data_sources ds ON ds.id = d.source_id
+                       WHERE otm.entity_type_id = et.id
+                         AND ds.deleted_at IS NULL
+                   )
+               )
+             ORDER BY et.created_at ASC",
         )
         .bind(fold_id)
         .fetch_all(&self.pool)
@@ -1588,13 +1619,18 @@ impl Db {
         &self,
         entity_type_id: Option<&str>,
     ) -> Result<Vec<OntologyObjectRow>> {
+        // Show object if: manually created (dataset_id IS NULL)
+        // OR its dataset's source is not deleted
         let sql = "SELECT o.id, o.entity_type_id, o.entity_type_name, o.label, o.fields,
                           o.created_at, o.updated_at, o.current_state_id,
                           s.name AS state_name, s.display_name AS state_display, s.color AS state_color
                    FROM ontology_objects o
-                   LEFT JOIN state_definitions s ON s.id = o.current_state_id";
+                   LEFT JOIN state_definitions s ON s.id = o.current_state_id
+                   LEFT JOIN datasets d ON d.id = o.dataset_id
+                   LEFT JOIN data_sources ds ON ds.id = d.source_id
+                   WHERE (o.dataset_id IS NULL OR ds.deleted_at IS NULL)";
         let rows = if let Some(et) = entity_type_id {
-            sqlx::query(&format!("{sql} WHERE o.entity_type_id = ? ORDER BY o.created_at DESC"))
+            sqlx::query(&format!("{sql} AND o.entity_type_id = ? ORDER BY o.created_at DESC"))
                 .bind(et)
                 .fetch_all(&self.pool)
                 .await?

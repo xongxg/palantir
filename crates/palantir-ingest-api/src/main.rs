@@ -1250,7 +1250,7 @@ async fn create_entity_type_handler(
         _ => (req.name.clone(), None),
     };
     match db()
-        .create_entity_type(&stored_name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref(), &req.ddd_role, namespace.as_deref())
+        .create_entity_type(&stored_name, &req.display_name, &req.color, &req.icon, req.fold_id.as_deref(), &req.ddd_role, namespace.as_deref(), "manual")
         .await
     {
         Ok(row) => (StatusCode::CREATED, Json(json!(row))).into_response(),
@@ -3737,7 +3737,7 @@ async fn promote_dataset_handler(
             let h = name.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
             PALETTE[(h as usize) % PALETTE.len()]
         };
-        match db().create_entity_type(&name, &req.new_type_name, color, "cube", req.fold_id.as_deref(), "entity", None).await {
+        match db().create_entity_type(&name, &req.new_type_name, color, "cube", req.fold_id.as_deref(), "entity", None, "inferred").await {
             Ok(t) => (t.id, t.display_name),
             Err(e) if e.to_string().contains("UNIQUE") => {
                 // Already exists — find and reuse
