@@ -1,10 +1,17 @@
 target/
 aws/
 awscliv2.zip
-# SQLite database files at repo root
+# SQLite database files
 /palantir*.db
 /palantir*.db-shm
 /palantir*.db-wal
+frontend/palantir*.db
+frontend/palantir*.db-shm
+frontend/palantir*.db-wal
+frontend/apps/app/.env.local
+
+# Platform runtime datasets (generated, not source code)
+data/platform/
 .run/
 frontend/node_modules/
 frontend/apps/*/node_modules/
