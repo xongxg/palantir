@@ -1,6 +1,0 @@
-capacity,country,id,name,region_id
-200,USA,o1,New York HQ,r1
-150,USA,o2,San Francisco,r1
-120,UK,o3,London,r2
-80,France,o4,Paris,r2
-100,Singapore,o5,Singapore,r3

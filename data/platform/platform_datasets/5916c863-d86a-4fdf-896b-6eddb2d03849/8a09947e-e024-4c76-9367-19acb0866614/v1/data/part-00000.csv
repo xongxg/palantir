@@ -1,9 +1,0 @@
-department_id,id,status,type,value,vendor_id
-d1,c1,Active,Annual,120000,v1
-d1,c2,Active,Multi-year,250000,v2
-d2,c3,Active,Annual,45000,v3
-d4,c4,Active,Annual,30000,v1
-d5,c5,Active,Annual,95000,v4
-d2,c6,Review,Annual,80000,v5
-d6,c7,Active,Annual,25000,v3
-d1,c8,Expired,Multi-year,180000,v2

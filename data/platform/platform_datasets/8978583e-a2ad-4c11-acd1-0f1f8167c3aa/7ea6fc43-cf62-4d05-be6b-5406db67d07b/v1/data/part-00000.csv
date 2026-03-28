@@ -1,9 +1,0 @@
-amount,currency,id,order_id,status
-12500,USD,inv1,or1,Paid
-8300,USD,inv2,or2,Pending
-4200,EUR,inv3,or3,Paid
-9800,GBP,inv4,or4,Pending
-6700,CAD,inv5,or6,Paid
-22000,USD,inv6,or8,Paid
-15600,USD,inv7,or9,Pending
-5400,GBP,inv8,or10,Pending

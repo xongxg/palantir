@@ -1,9 +1,0 @@
-amount,currency,id,purchase_order_id,status
-45000,USD,pay1,po1,Settled
-32000,USD,pay2,po2,Pending
-18500,EUR,pay3,po3,Settled
-89000,GBP,pay4,po4,Pending
-54000,GBP,pay5,po5,Settled
-12000,EUR,pay6,po6,Pending
-28000,CAD,pay7,po7,Settled
-19500,CAD,pay8,po8,Pending
