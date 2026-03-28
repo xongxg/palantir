@@ -5,12 +5,12 @@ awscliv2.zip
 /palantir*.db
 /palantir*.db-shm
 /palantir*.db-wal
-frontend/palantir*.db
-frontend/palantir*.db-shm
-frontend/palantir*.db-wal
 frontend/apps/app/.env.local
 
-# Platform runtime datasets (generated, not source code)
+# Runtime data directory (DB files, platform datasets)
+data/palantir*.db
+data/palantir*.db-shm
+data/palantir*.db-wal
 data/platform/
 .run/
 frontend/node_modules/

@@ -4634,7 +4634,7 @@ fn chrono_now_str() -> String {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Init SQLite
-    let db_path = std::env::var("PALANTIR_DB").unwrap_or_else(|_| "palantir.db".into());
+    let db_path = std::env::var("PALANTIR_DB").unwrap_or_else(|_| "data/palantir.db".into());
     let db_inst = Db::open(&db_path).await?;
     DB.set(Arc::new(db_inst)).ok();
 
