@@ -1816,6 +1816,9 @@ impl Db {
         &self,
     ) -> Result<(Vec<OntologyObjectRow>, Vec<OntologyLinkRow>)> {
         let objects = self.list_ontology_objects(None).await?;
+        // Build set of visible object IDs to filter edges
+        let visible_ids: std::collections::HashSet<&str> =
+            objects.iter().map(|o| o.id.as_str()).collect();
         let links = sqlx::query(
             "SELECT id, from_id, to_id, rel_type, created_at FROM ontology_links",
         )
@@ -1829,6 +1832,8 @@ impl Db {
             rel_type: r.get("rel_type"),
             created_at: r.get("created_at"),
         })
+        // Only keep edges where both endpoints are visible
+        .filter(|l| visible_ids.contains(l.from_id.as_str()) && visible_ids.contains(l.to_id.as_str()))
         .collect();
         Ok((objects, links))
     }
