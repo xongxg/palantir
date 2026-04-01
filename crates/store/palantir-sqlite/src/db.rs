@@ -3207,11 +3207,16 @@ impl Db {
                     continue;
                 }
 
-                // Rank-based direction: higher-rank entity is always the source (owner).
-                // ar_candidate = out_degree=0, referenced by AR → terminal root (highest rank)
-                // aggregate_root = most connected node → intermediate
-                // entity / VO → leaf
-                // Reverse when rank(target) > rank(source).
+                // DDD-aware rel_type + direction:
+                //
+                //   target is AR (rank >= 1)
+                //     → REFS_TO: cross-boundary reference, direction = src → tgt (FK holder points to AR)
+                //       mirrors frontend autoInferLinks: target is AR ⇒ REFS_TO
+                //
+                //   target is entity/VO (rank = 0)
+                //     → reverse direction so the AR parent becomes `from`
+                //       label = HAS_{src_entity_type_name}  (what the AR *has*)
+                //       e.g. Address.order_id → Order→Address: HAS_ADDRESS
                 let tgt_role = effective_role(tgt_et);
                 let src_role = effective_role(&src_et);
                 let role_rank = |r: &str| match r {
@@ -3219,16 +3224,22 @@ impl Db {
                     "aggregate_root" => 1,
                     _                => 0,
                 };
-                // When direction is reversed (AR owns the source entity), the rel_type label
-                // should reflect what the AR *has* — the source entity type, not the FK column base.
-                // e.g. Address.order_id → reversed to Order→Address: label = HAS_ADDRESS, not HAS_ORDER
-                let (from_id, to_id, rel_type) = if role_rank(tgt_role) > role_rank(src_role) {
+                let (from_id, to_id, rel_type) = if role_rank(tgt_role) >= 1 {
+                    // Target is AR → REFS_TO, keep FK direction (src → tgt)
+                    (src_id.clone(), tgt_id.clone(), "REFS_TO".to_string())
+                } else if role_rank(tgt_role) < role_rank(src_role) {
+                    // Target is non-AR child, src is AR → normal HAS direction
+                    let tgt_name = et_names.get(tgt_et)
+                        .map(|s| s.to_uppercase().replace(' ', "_"))
+                        .unwrap_or_else(|| base.clone());
+                    (src_id.clone(), tgt_id.clone(), format!("HAS_{}", tgt_name))
+                } else {
+                    // src is non-AR, target is non-AR, but src holds FK pointing to tgt AR parent
+                    // Reverse: AR parent (tgt) → child (src), label = HAS_{src_type}
                     let src_name = et_names.get(&src_et)
                         .map(|s| s.to_uppercase().replace(' ', "_"))
                         .unwrap_or_else(|| base.clone());
                     (tgt_id.clone(), src_id.clone(), format!("HAS_{}", src_name))
-                } else {
-                    (src_id.clone(), tgt_id.clone(), format!("HAS_{}", base))
                 };
 
                 let link_id = Uuid::new_v4().to_string();
