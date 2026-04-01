@@ -91,6 +91,9 @@ pub struct OntologyObjectRow {
     pub current_state_name:    Option<String>,
     pub current_state_display: Option<String>,
     pub current_state_color:   Option<String>,
+    // Provenance: which datasource / dataset this object was promoted from
+    pub datasource_name: Option<String>,
+    pub dataset_name:    Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

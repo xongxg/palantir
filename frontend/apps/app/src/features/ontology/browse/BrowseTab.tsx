@@ -503,6 +503,20 @@ function ObjDetail({ obj, et, allObjects, entityTypes, childToAR, onDeleted, onN
               ))}
             </div>
         }
+        {/* Provenance row */}
+        {currentObj.datasource_name && (
+          <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center gap-2">
+            <span className="text-slate-600 text-[10px] uppercase tracking-wider flex-shrink-0">来源</span>
+            <span className="ml-auto flex items-center gap-1.5">
+              <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300">
+                {currentObj.datasource_name}
+              </span>
+              {currentObj.dataset_name && (
+                <span className="text-[10px] text-slate-500 font-mono">{currentObj.dataset_name}</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* AR: Aggregate Members panel */}
@@ -683,10 +697,13 @@ interface ETTreeProps {
   entityTypes: EntityType[]
   arChildMap: Map<string, string[]>   // arEtId → childEtIds[]
   filterEtId: string | null
-  onSelect: (id: string | null) => void
+  filterSource: string | null
+  onSelect: (etId: string | null, source?: string | null) => void
   onRoleChanged: () => void
+  // etId → datasource_name → count (only ETs with multi-source have entries)
+  etSourceCounts: Map<string, Map<string, number>>
 }
-function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }: ETTreeProps) {
+function ETTree({ entityTypes, arChildMap, filterEtId, filterSource, onSelect, onRoleChanged, etSourceCounts }: ETTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const arETs      = entityTypes.filter(e => e.ddd_role === 'aggregate_root')
@@ -727,8 +744,31 @@ function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }
 
   const btnCls = (id: string | null) => cn(
     'w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors',
-    filterEtId === id ? 'bg-indigo-900/40 text-white' : 'text-slate-300 hover:bg-slate-700/40',
+    filterEtId === id && !filterSource ? 'bg-indigo-900/40 text-white' : 'text-slate-300 hover:bg-slate-700/40',
   )
+
+  // Render datasource sub-nodes for an ET when it has objects from multiple sources
+  const renderSourceNodes = (etId: string, indent: string) => {
+    const sources = etSourceCounts.get(etId)
+    if (!sources || sources.size <= 1) return null
+    return Array.from(sources.entries()).map(([src, cnt]) => {
+      const isActive = filterEtId === etId && filterSource === src
+      return (
+        <button
+          key={src}
+          onClick={() => onSelect(etId, src)}
+          className={cn(
+            `w-full text-left ${indent} py-1 rounded-lg text-[11px] transition-colors flex items-center gap-1.5`,
+            isActive ? 'bg-indigo-900/30 text-indigo-300' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/30',
+          )}
+        >
+          <span className="text-slate-600">└</span>
+          <span className="truncate font-mono">{src}</span>
+          <span className="ml-auto text-slate-600 text-[10px]">{cnt}</span>
+        </button>
+      )
+    })
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -767,15 +807,19 @@ function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }
 
             {/* Child ETs */}
             {isOpen && children.map(child => (
-              <button
-                key={child.id}
-                onClick={() => onSelect(child.id)}
-                className={cn(btnCls(child.id), 'flex items-center gap-1.5 pl-7')}
-              >
-                <span style={{ color: child.color }} className="flex-shrink-0 text-[10px]">{child.icon || '●'}</span>
-                <span className="truncate text-slate-400">{child.display_name || child.name}</span>
-              </button>
+              <div key={child.id}>
+                <button
+                  onClick={() => onSelect(child.id)}
+                  className={cn(btnCls(child.id), 'flex items-center gap-1.5 pl-7')}
+                >
+                  <span style={{ color: child.color }} className="flex-shrink-0 text-[10px]">{child.icon || '●'}</span>
+                  <span className="truncate text-slate-400">{child.display_name || child.name}</span>
+                </button>
+                {renderSourceNodes(child.id, 'pl-10')}
+              </div>
             ))}
+            {/* AR itself: source sub-nodes */}
+            {isOpen && renderSourceNodes(ar.id, 'pl-7')}
           </div>
         )
       })}
@@ -787,7 +831,8 @@ function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }
             <span className="text-[10px] text-slate-600 uppercase tracking-wider">其他</span>
           </div>
           {orphanETs.map(et => (
-            <div key={et.id} className="flex items-center gap-1 group">
+            <div key={et.id}>
+            <div className="flex items-center gap-1 group">
               <button onClick={() => onSelect(et.id)} className={cn(btnCls(et.id), 'flex items-center gap-1.5 flex-1')}>
                 <span style={{ color: et.color }} className="flex-shrink-0 text-[10px]">{et.icon || '●'}</span>
                 <span className="truncate">{et.display_name || et.name}</span>
@@ -800,6 +845,8 @@ function ETTree({ entityTypes, arChildMap, filterEtId, onSelect, onRoleChanged }
                 }}
                 className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 text-[10px] px-1 flex-shrink-0 transition-all"
               >◆</button>
+            </div>
+            {renderSourceNodes(et.id, 'pl-5')}
             </div>
           ))}
         </>
@@ -814,6 +861,7 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
   const [allObjects,    setAllObjects]    = useState<OntologyObject[]>([])
   const [selectedObj,   setSelectedObj]   = useState<OntologyObject | null>(null)
   const [filterEtId,    setFilterEtId]    = useState<string | null>(null)
+  const [filterSource,  setFilterSource]  = useState<string | null>(null)
   const [search,        setSearch]        = useState('')
   const [stateFilter,   setStateFilter]   = useState<string | null>(null)
   const [filterStates,  setFilterStates]  = useState<StateDef[]>([])
@@ -854,6 +902,9 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
     const map = new Map<string, Set<string>>()
 
     graphEdges.forEach(edge => {
+      // Only HAS edges define aggregate membership.
+      // REFS_TO = cross-BC reference — target is NOT a child of source AR.
+      if (edge.kind && edge.kind !== 'has') return
       const srcId = typeof edge.source === 'string' ? edge.source : (edge.source as any).id
       const tgtId = typeof edge.target === 'string' ? edge.target : (edge.target as any).id
       const srcET = nodeToET.get(srcId)
@@ -874,6 +925,18 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
     arChildMap.forEach((children, arId) => children.forEach(c => map.set(c, arId)))
     return map
   }, [arChildMap])
+
+  // etId → datasource_name → count  (for source sub-nodes in tree)
+  const etSourceCounts = useMemo(() => {
+    const map = new Map<string, Map<string, number>>()
+    allObjects.forEach(obj => {
+      if (!obj.datasource_name) return
+      if (!map.has(obj.entity_type_id)) map.set(obj.entity_type_id, new Map())
+      const src = map.get(obj.entity_type_id)!
+      src.set(obj.datasource_name, (src.get(obj.datasource_name) ?? 0) + 1)
+    })
+    return map
+  }, [allObjects])
 
   async function loadObjects(autoSelect = true) {
     setLoading(true)
@@ -959,6 +1022,7 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
       const q = search.toLowerCase()
       if (!obj.label.toLowerCase().includes(q) && !(obj.entity_type_name || '').toLowerCase().includes(q)) return false
     }
+    if (filterSource && obj.datasource_name !== filterSource) return false
     if (stateFilter) {
       const state = deriveObjState(obj)
       if (!state || state.id !== stateFilter) return false
@@ -977,7 +1041,9 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
           entityTypes={entityTypes.filter(e => e.display_name !== '未分类' && e.name !== 'uncategorized')}
           arChildMap={arChildMap}
           filterEtId={filterEtId}
-          onSelect={setFilterEtId}
+          filterSource={filterSource}
+          etSourceCounts={etSourceCounts}
+          onSelect={(etId, src) => { setFilterEtId(etId); setFilterSource(src ?? null) }}
           onRoleChanged={async () => {
             const ets = await entityTypesApi.list()
             setEntityTypes(ets)

@@ -1479,6 +1479,23 @@ impl Db {
     }
 
     pub async fn delete_entity_type(&self, id: &str) -> Result<()> {
+        // 1. Remove links involving any object of this entity type
+        sqlx::query(
+            "DELETE FROM ontology_links WHERE from_id IN (
+                SELECT id FROM ontology_objects WHERE entity_type_id = ?
+             ) OR to_id IN (
+                SELECT id FROM ontology_objects WHERE entity_type_id = ?
+             )",
+        )
+        .bind(id).bind(id)
+        .execute(&self.pool).await?;
+        // 2. Remove link_type_mappings that reference this entity type as target
+        sqlx::query("DELETE FROM link_type_mappings WHERE to_entity_type_id = ?")
+            .bind(id).execute(&self.pool).await?;
+        // 3. Remove objects of this entity type
+        sqlx::query("DELETE FROM ontology_objects WHERE entity_type_id = ?")
+            .bind(id).execute(&self.pool).await?;
+        // 4. Remove the entity type itself
         sqlx::query("DELETE FROM entity_types WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -1584,6 +1601,8 @@ impl Db {
             current_state_name: None,
             current_state_display: None,
             current_state_color: None,
+            datasource_name: None,
+            dataset_name:    None,
         })
     }
 
@@ -1612,6 +1631,8 @@ impl Db {
             current_state_name: None,
             current_state_display: None,
             current_state_color: None,
+            datasource_name: None,
+            dataset_name:    None,
         })
     }
 
@@ -1623,7 +1644,8 @@ impl Db {
         // OR its dataset's source is not deleted
         let sql = "SELECT o.id, o.entity_type_id, o.entity_type_name, o.label, o.fields,
                           o.created_at, o.updated_at, o.current_state_id,
-                          s.name AS state_name, s.display_name AS state_display, s.color AS state_color
+                          s.name AS state_name, s.display_name AS state_display, s.color AS state_color,
+                          ds.name AS datasource_name, d.name AS dataset_name
                    FROM ontology_objects o
                    LEFT JOIN state_definitions s ON s.id = o.current_state_id
                    LEFT JOIN datasets d ON d.id = o.dataset_id
@@ -1653,6 +1675,8 @@ impl Db {
                 current_state_name:    r.get("state_name"),
                 current_state_display: r.get("state_display"),
                 current_state_color:   r.get("state_color"),
+                datasource_name:     r.try_get("datasource_name").ok(),
+                dataset_name:        r.try_get("dataset_name").ok(),
             })
             .collect())
     }
@@ -1661,9 +1685,12 @@ impl Db {
         let row = sqlx::query(
             "SELECT o.id, o.entity_type_id, o.entity_type_name, o.label, o.fields,
                     o.created_at, o.updated_at, o.current_state_id,
-                    s.name AS state_name, s.display_name AS state_display, s.color AS state_color
+                    s.name AS state_name, s.display_name AS state_display, s.color AS state_color,
+                    ds.name AS datasource_name, d.name AS dataset_name
              FROM ontology_objects o
              LEFT JOIN state_definitions s ON s.id = o.current_state_id
+             LEFT JOIN datasets d ON d.id = o.dataset_id
+             LEFT JOIN data_sources ds ON ds.id = d.source_id
              WHERE o.id = ?",
         )
         .bind(id)
@@ -1681,6 +1708,8 @@ impl Db {
             current_state_name:    r.get("state_name"),
             current_state_display: r.get("state_display"),
             current_state_color:   r.get("state_color"),
+            datasource_name: r.try_get("datasource_name").ok(),
+            dataset_name:    r.try_get("dataset_name").ok(),
         }))
     }
 
@@ -2064,8 +2093,37 @@ impl Db {
     /// 软删除：设置 deleted_at，不物理删除
     pub async fn delete_data_source(&self, id: &str) -> Result<()> {
         let now = Self::now_str();
+        // Soft-delete the data source
         sqlx::query("UPDATE data_sources SET deleted_at = ? WHERE id = ?")
             .bind(&now).bind(id).execute(&self.pool).await?;
+        // Clean up ontology_links derived from this source's datasets
+        sqlx::query(
+            "DELETE FROM ontology_links WHERE from_id IN (
+                SELECT oo.id FROM ontology_objects oo
+                JOIN datasets d ON oo.dataset_id = d.id
+                WHERE d.datasource_id = ?
+             ) OR to_id IN (
+                SELECT oo.id FROM ontology_objects oo
+                JOIN datasets d ON oo.dataset_id = d.id
+                WHERE d.datasource_id = ?
+             )",
+        )
+        .bind(id).bind(id)
+        .execute(&self.pool).await?;
+        // Clean up link_type_mappings for this source's datasets
+        sqlx::query(
+            "DELETE FROM link_type_mappings WHERE dataset_id IN (
+                SELECT id FROM datasets WHERE datasource_id = ?
+             )",
+        )
+        .bind(id).execute(&self.pool).await?;
+        // Clean up promoted objects from this source's datasets
+        sqlx::query(
+            "DELETE FROM ontology_objects WHERE dataset_id IN (
+                SELECT id FROM datasets WHERE datasource_id = ?
+             )",
+        )
+        .bind(id).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -2529,6 +2587,8 @@ impl Db {
             current_state_name: None,
             current_state_display: None,
             current_state_color: None,
+            datasource_name: None,
+            dataset_name:    None,
         }).collect())
     }
 
@@ -2759,6 +2819,20 @@ impl Db {
         links: &[LinkTypeMappingInput],
     ) -> Result<()> {
         let now = Self::now_str();
+        // Delete old mappings — and clean up any ontology_links that were derived from them,
+        // so stale links don't linger when the user changes rel_type in the import UI.
+        // The next promote / auto_detect will recreate links with the new types.
+        sqlx::query(
+            "DELETE FROM ontology_links WHERE id IN (
+                SELECT ol.id FROM ontology_links ol
+                JOIN ontology_objects src ON ol.from_id = src.id
+                JOIN link_type_mappings ltm ON ltm.dataset_id = src.dataset_id
+                WHERE ltm.dataset_id = ?
+             )",
+        )
+        .bind(dataset_id)
+        .execute(&self.pool)
+        .await?;
         sqlx::query("DELETE FROM link_type_mappings WHERE dataset_id = ?")
             .bind(dataset_id)
             .execute(&self.pool)

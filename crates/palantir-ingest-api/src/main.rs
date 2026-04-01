@@ -2178,6 +2178,8 @@ async fn get_object_handler(Path(id): Path<String>) -> impl IntoResponse {
                 "current_state_name":    row.current_state_name,
                 "current_state_display": row.current_state_display,
                 "current_state_color":   row.current_state_color,
+                "datasource_name": row.datasource_name,
+                "dataset_name":    row.dataset_name,
                 "links": links,
             }))).into_response()
         }
@@ -2836,7 +2838,7 @@ async fn update_source_handler(
 
 async fn delete_source_handler(Path(id): Path<String>) -> impl IntoResponse {
     match db().delete_data_source(&id).await {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }

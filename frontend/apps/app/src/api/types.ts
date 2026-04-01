@@ -157,6 +157,9 @@ export interface OntologyObject {
   current_state_name?:    string
   current_state_display?: string
   current_state_color?:   string
+  // Provenance
+  datasource_name?: string
+  dataset_name?:    string
 }
 
 export interface ActionExecution {
@@ -242,6 +245,8 @@ export interface GraphEdge {
   source: string
   target: string
   rel_type: string
+  kind?: string  // 'has' | 'refs_to' | 'belongs_to' | 'similar_to'
+  label?: string
 }
 
 export interface OntologyGraph {
