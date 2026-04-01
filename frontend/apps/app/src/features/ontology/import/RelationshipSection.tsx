@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 
 interface Props { entityTypeId: string }
 
-const REL_TYPES = ['HAS', 'BELONGS_TO', 'REFERENCES', 'LINKS_TO']
+const REL_TYPES = ['HAS', 'BELONGS_TO', 'REFS_TO']
 
 export default function RelationshipSection({ entityTypeId }: Props) {
   const { columns, entityTypes, links, addLink, removeLink, updateLink } = useImportStore()

@@ -110,12 +110,12 @@
 
   <!-- Left: dataset list -->
   <div style="width:280px;flex-shrink:0;border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden;">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700/60">
-      <div>
-        <p class="text-sm font-semibold text-white">Raw Datasets</p>
-        <p class="text-xs text-slate-500 mt-0.5">Select a dataset to promote</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #334155;flex-shrink:0;">
+      <p style="font-size:13px;font-weight:600;color:#fff;">Raw Datasets</p>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button id="import-promote-all-btn" onclick="importPromoteAll()" class="btn-primary btn-sm" title="将所有已配置映射的 Dataset Promote 到 Ontology">Promote All</button>
+        <button onclick="loadDatasets()" class="btn-ghost btn-sm">↻</button>
       </div>
-      <button onclick="loadDatasets()" class="btn-ghost btn-sm">↻</button>
     </div>
     <div id="import-ds-list" class="flex-1 overflow-y-auto p-3 space-y-1.5">
       <p class="text-xs text-slate-500 px-2 py-4 text-center">Loading…</p>
@@ -268,8 +268,6 @@
             <tr class="text-xs text-slate-500 border-b border-slate-700/60 bg-slate-800/40">
               <th class="text-left px-4 py-2.5">字段名</th>
               <th class="text-left px-4 py-2.5">类型</th>
-              <th class="text-left px-4 py-2.5">分类</th>
-              <th class="text-left px-4 py-2.5">必填</th>
               <th class="px-4 py-2.5 w-10"></th>
             </tr>
           </thead>
@@ -1127,7 +1125,12 @@ function makeLinkRow(fkCol, etId, relType) {
     <select class="promote-link-fk" style="flex:1;font-size:12px">${colOpts}</select>
     <span style="font-size:11px;color:#475569;flex-shrink:0;">→</span>
     <select class="promote-link-et" style="flex:1;font-size:12px">${etOpts}</select>
-    <input placeholder="HAS" value="${escHtml(relType||'HAS')}" class="promote-link-rel" style="width:60px;font-size:12px" />
+    <select class="promote-link-rel" style="width:100px;font-size:12px" title="关系语义">
+      <option value="has"        ${(relType||'has')==='has'        ?'selected':''}>has（拥有）</option>
+      <option value="refs_to"    ${(relType||'has')==='refs_to'    ?'selected':''}>refs_to（引用）</option>
+      <option value="belongs_to" ${(relType||'has')==='belongs_to' ?'selected':''}>belongs_to（归属）</option>
+      <option value="similar_to" ${(relType||'has')==='similar_to' ?'selected':''}>similar_to（相似）</option>
+    </select>
     <button onclick="this.parentElement.remove()" class="btn-danger" style="padding:3px 7px;font-size:11px;">✕</button>`;
   return row;
 }
@@ -1364,8 +1367,6 @@ function renderFieldsTable() {
     tr.innerHTML = `
       <td class="px-4 py-2.5 font-mono text-indigo-300 text-sm">${escHtml(f.name)}</td>
       <td class="px-4 py-2.5 text-slate-300 text-sm">${f.data_type}</td>
-      <td class="px-4 py-2.5"><span class="tag badge-${f.classification}">${f.classification}</span></td>
-      <td class="px-4 py-2.5 text-slate-400 text-sm">${f.is_required ? '✓' : ''}</td>
       <td class="px-4 py-2.5 text-right">
         <button onclick="deleteField('${f.id}')" class="btn-danger">×</button>
       </td>`;
@@ -1441,6 +1442,25 @@ async function promoteAll() {
     btn.textContent = '✗ 网络错误';
   } finally {
     setTimeout(() => { btn.disabled = false; btn.textContent = '↺ Promote All'; }, 3000);
+  }
+}
+
+async function importPromoteAll() {
+  const btn = document.getElementById('import-promote-all-btn');
+  btn.disabled = true; btn.textContent = 'Promoting…';
+  try {
+    const res = await fetch('/api/ontology/promote-all', { method: 'POST' });
+    const d   = await res.json();
+    if (d.ok) {
+      btn.textContent = `✓ ${d.promoted_datasets} promoted`;
+      await loadDatasets();
+    } else {
+      btn.textContent = '✗ Failed';
+    }
+  } catch(e) {
+    btn.textContent = '✗ Error';
+  } finally {
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Promote All'; }, 3000);
   }
 }
 
@@ -1977,14 +1997,25 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
     return nodeBCId[s] && nodeBCId[t] && nodeBCId[s] === nodeBCId[t];
   }
   const edgeLayer = g.append('g');
+  // kind → visual style map (mirrors rel_kind constants)
+  const edgeStyle = {
+    'has':        { stroke: '#388bfd', opacity: 0.50, width: 1,   dash: null,  marker: 'arr-intra' },
+    'belongs_to': { stroke: '#34d399', opacity: 0.55, width: 1,   dash: null,  marker: 'arr-intra' },
+    'refs_to':    { stroke: '#f97316', opacity: 0.65, width: 1.5, dash: '6,3', marker: 'arr-cross' },
+    'similar_to': { stroke: '#a78bfa', opacity: 0.55, width: 1.5, dash: '4,4', marker: 'arr-cross' },
+  };
+  function es(d, prop) {
+    const s = edgeStyle[d.kind] || { stroke: '#64748b', opacity: 0.4, width: 1, dash: '3,3', marker: 'arr-cross' };
+    return s[prop];
+  }
   const edgeSel = edgeLayer.selectAll('line').data(validEdges).join('line')
     .attr('class','graph-link')
-    .attr('stroke',         d => edgeIsIntra(d) ? '#388bfd' : '#f97316')
-    .attr('stroke-opacity', d => edgeIsIntra(d) ? 0.45 : 0.6)
-    .attr('stroke-width',   d => edgeIsIntra(d) ? 1 : 1.5)
-    .attr('stroke-dasharray', d => edgeIsIntra(d) ? null : '6,3')
-    .attr('marker-end', d => `url(#${edgeIsIntra(d) ? 'arr-intra' : 'arr-cross'})`);
-  edgeSel.append('title').text(d => d.label || 'HAS');
+    .attr('stroke',           d => es(d,'stroke'))
+    .attr('stroke-opacity',   d => es(d,'opacity'))
+    .attr('stroke-width',     d => es(d,'width'))
+    .attr('stroke-dasharray', d => es(d,'dash'))
+    .attr('marker-end',       d => `url(#${es(d,'marker')})`);
+  edgeSel.append('title').text(d => `${d.label || d.kind} [${d.action_category || ''}]`);
 
   // ── BC cross-link arcs between hull centroids — v0.1 style ───────────────
   // Derive BC-pair cross-links from instance-level cross-BC edges
@@ -2220,9 +2251,9 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   });
 
   // ── Legend (fixed to SVG) ─────────────────────────────────────────────────
-  const legendBg = svg.append('g').attr('transform',`translate(${W-190},10)`);
-  legendBg.append('rect').attr('width',178).attr('height',130)
-    .attr('fill','#161b22').attr('fill-opacity',0.85)
+  const legendBg = svg.append('g').attr('transform',`translate(${W-200},10)`);
+  legendBg.append('rect').attr('width',188).attr('height',178)
+    .attr('fill','#161b22').attr('fill-opacity',0.88)
     .attr('stroke','#30363d').attr('stroke-width',1)
     .attr('rx',8);
   const legend = legendBg.append('g').attr('transform','translate(12,12)');
@@ -2243,12 +2274,14 @@ function renderGraph(nodes, edges, folds = [], etSummary = []) {
   });
   // Relationship header
   legend.append('text').attr('y',78).attr('font-size',10).attr('fill','#8b949e')
-    .attr('font-weight',600).attr('letter-spacing','1px').text('RELATIONSHIP');
+    .attr('font-weight',600).attr('letter-spacing','1px').text('RELATIONSHIP KIND');
   [
-    { label:'Intra-BC', color:'#388bfd', dash:null },
-    { label:'Cross-BC', color:'#f97316', dash:'6,3' },
+    { label:'has  (Integration)',    color:'#388bfd', dash:null  },
+    { label:'belongs to  (Logic)',   color:'#34d399', dash:null  },
+    { label:'refs to  (Workflow)',   color:'#f97316', dash:'6,3' },
+    { label:'similar to  (Search)', color:'#a78bfa', dash:'4,4' },
   ].forEach((item, i) => {
-    const y = 94 + i * 18;
+    const y = 94 + i * 20;
     legend.append('line').attr('x1',0).attr('y1',y).attr('x2',16).attr('y2',y)
       .attr('stroke',item.color).attr('stroke-width',1.5)
       .attr('stroke-dasharray',item.dash||null);

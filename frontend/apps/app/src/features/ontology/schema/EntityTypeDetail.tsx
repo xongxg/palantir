@@ -408,7 +408,7 @@ export default function EntityTypeDetail() {
   }
 
   return (
-    <div className="p-6 max-w-3xl space-y-5">
+    <div className="p-6 max-w-4xl space-y-5">
       {/* Breaking change modal */}
       {breakingInfo && (
         <BreakingChangeModal

@@ -21,7 +21,7 @@ export default function SchemaTab({ projectId }: Props) {
   useEffect(() => { reload() }, [])
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex w-full h-full overflow-hidden">
       {/* Left: ET list + BC inference toggle */}
       <div className="w-60 flex-shrink-0 border-r border-slate-800 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto min-h-0">

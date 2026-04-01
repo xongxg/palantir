@@ -114,11 +114,64 @@ struct LiveEntity {
     properties: serde_json::Map<String, serde_json::Value>,
 }
 
+/// Semantic relationship kinds — mirrors v0.1 `RelationshipKind`.
+/// Maps directly to DDD concepts and Action categories.
+///
+/// | kind        | DDD meaning              | Action category |
+/// |-------------|--------------------------|-----------------|
+/// | has         | AR/Entity owns child     | Integration     |
+/// | belongs_to  | Entity → grouping dim    | Logic           |
+/// | refs_to     | cross-BC reference       | Workflow        |
+/// | similar_to  | same-type similarity     | Search          |
+mod rel_kind {
+    pub const HAS:        &str = "has";
+    pub const BELONGS_TO: &str = "belongs_to";
+    pub const REFS_TO:    &str = "refs_to";
+    pub const SIMILAR_TO: &str = "similar_to";
+
+    pub fn label(kind: &str) -> &'static str {
+        match kind {
+            HAS        => "has",
+            BELONGS_TO => "belongs to",
+            REFS_TO    => "refs to",
+            SIMILAR_TO => "similar to",
+            _          => "links to",
+        }
+    }
+
+    pub fn action_category(kind: &str) -> &'static str {
+        match kind {
+            HAS        => "Integration",
+            BELONGS_TO => "Logic",
+            REFS_TO    => "Workflow",
+            SIMILAR_TO => "Search",
+            _          => "Unknown",
+        }
+    }
+
+    /// Normalize legacy uppercase values from DB.
+    pub fn normalize(kind: &str) -> &'static str {
+        match kind {
+            "HAS" | "has"               => HAS,
+            "BELONGS_TO" | "belongs_to" => BELONGS_TO,
+            "REFS_TO"    | "refs_to"    => REFS_TO,
+            "LINKED_TO"  | "linked_to"  => REFS_TO, // v0.1 LinkedTo = refs_to
+            "SIMILAR_TO" | "similar_to" => SIMILAR_TO,
+            _                           => Box::leak(kind.to_string().into_boxed_str()), // preserve unknown kinds
+        }
+    }
+}
+
 #[derive(Clone, Serialize)]
 struct LiveRel {
     from: String,
     to: String,
+    /// Semantic kind: "has" | "belongs_to" | "refs_to" | "similar_to"
     kind: String,
+    /// Human-readable label for graph display
+    label: String,
+    /// Action category: Integration | Logic | Workflow | Search
+    action_category: String,
 }
 
 #[derive(Default)]
@@ -940,15 +993,16 @@ async fn apply_live_events(project_id: &str, events: Vec<OntologyEvent>) {
                 g.entities.remove(&id.0);
             }
             OntologyEvent::Link { from, to, rel, .. } => {
-                g.relationships.push(LiveRel {
-                    from: from.0,
-                    to: to.0,
-                    kind: rel,
-                });
+                let kind = rel_kind::normalize(&rel).to_string();
+                let label = rel_kind::label(&kind).to_string();
+                let action_category = rel_kind::action_category(&kind).to_string();
+                g.relationships.push(LiveRel { from: from.0, to: to.0, kind, label, action_category });
             }
         }
     }
     infer_belongs_to_locked(g);
+    reclassify_refs_to(g);
+    assign_ddd_concepts(g);
 }
 
 async fn live_ontology(Query(params): Query<HashMap<String, String>>) -> impl IntoResponse {
@@ -976,11 +1030,10 @@ async fn live_ontology(Query(params): Query<HashMap<String, String>>) -> impl In
                     );
                 }
                 for r in rel_rows {
-                    g.relationships.push(LiveRel {
-                        from: r.from_id,
-                        to: r.to_id,
-                        kind: r.kind,
-                    });
+                    let kind = rel_kind::normalize(&r.kind).to_string();
+                    let label = rel_kind::label(&kind).to_string();
+                    let action_category = rel_kind::action_category(&kind).to_string();
+                    g.relationships.push(LiveRel { from: r.from_id, to: r.to_id, kind, label, action_category });
                 }
             }
         }
@@ -1005,6 +1058,8 @@ async fn live_ontology(Query(params): Query<HashMap<String, String>>) -> impl In
     let mut gs = LIVE_GRAPHS.write().await;
     let g = gs.entry(pid.clone()).or_default();
     infer_belongs_to_locked(g);
+    reclassify_refs_to(g);
+    assign_ddd_concepts(g);
     let entities: Vec<_> = g.entities.values().cloned().collect();
     let relationships = g.relationships.clone();
     drop(gs);
@@ -1101,12 +1156,14 @@ fn infer_belongs_to_locked(g: &mut LiveGraph) {
                 properties: serde_json::Map::new(),
             });
         for e in ids {
-            let rel = (e.clone(), group_id.clone(), "BELONGS_TO".into());
+            let rel = (e.clone(), group_id.clone(), rel_kind::BELONGS_TO.into());
             if !existing.contains(&rel) {
                 g.relationships.push(LiveRel {
                     from: e,
                     to: group_id.clone(),
-                    kind: "BELONGS_TO".into(),
+                    kind: rel_kind::BELONGS_TO.into(),
+                    label: rel_kind::label(rel_kind::BELONGS_TO).into(),
+                    action_category: rel_kind::action_category(rel_kind::BELONGS_TO).into(),
                 });
                 existing.insert(rel);
             }
@@ -1114,39 +1171,217 @@ fn infer_belongs_to_locked(g: &mut LiveGraph) {
     }
 }
 
+/// BC detection + cross-link derivation — mirrors v0.1 `BoundedContextDetector`.
+///
+/// Algorithm (same as v0.1):
+///   1. Union-Find on `has` edges → connected components = BC clusters
+///   2. AR = node that owns children AND is not itself owned within the same cluster
+///   3. Cross-cluster `has`/`refs_to` edges → Context Map cross-links
 fn compute_contexts(
     entities: &[LiveEntity],
     relationships: &[LiveRel],
 ) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
-    let mut types: HashMap<String, usize> = HashMap::new();
-    for e in entities {
-        if e.ddd_concept != "Value Object" {
-            types.entry(e.r#type.clone()).or_insert(0);
-        }
-    }
-    let bcs: Vec<_> = types
-        .keys()
-        .map(|t| json!({"name": t, "entity_types": [t], "internal_links": 0, "cohesion": 0.0}))
-        .collect();
-    let id_type: HashMap<_, _> = entities
+    use std::collections::HashMap;
+
+    // --- build entity-type → object-id index ---
+    let id_type: HashMap<String, String> = entities
         .iter()
+        .filter(|e| e.ddd_concept != "Value Object")
         .map(|e| (e.id.clone(), e.r#type.clone()))
         .collect();
-    let mut agg: HashMap<(String, String, String), usize> = HashMap::new();
-    for r in relationships {
-        if r.kind != "HAS" {
-            continue;
+
+    // --- Union-Find on `has` edges (instance level → type level) ---
+    let core_types: Vec<String> = {
+        let mut s: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for r in relationships {
+            if r.kind == rel_kind::HAS {
+                if let (Some(ft), Some(tt)) = (id_type.get(&r.from), id_type.get(&r.to)) {
+                    s.insert(ft.clone()); s.insert(tt.clone());
+                }
+            }
         }
-        if let (Some(a), Some(b)) = (id_type.get(&r.from), id_type.get(&r.to)) {
-            if a != b {
-                *agg.entry((a.clone(), b.clone(), "HAS".into())).or_insert(0) += 1;
+        // include lone entity types not connected by HAS
+        for e in entities {
+            if e.ddd_concept != "Value Object" { s.insert(e.r#type.clone()); }
+        }
+        s.into_iter().collect()
+    };
+
+    let mut parent: HashMap<String, String> =
+        core_types.iter().map(|t| (t.clone(), t.clone())).collect();
+
+    fn find(parent: &mut HashMap<String, String>, x: &str) -> String {
+        let p = parent.get(x).cloned().unwrap_or_else(|| x.to_string());
+        if p == x { return x.to_string(); }
+        let root = find(parent, &p);
+        parent.insert(x.to_string(), root.clone());
+        root
+    }
+
+    for r in relationships {
+        if r.kind == rel_kind::HAS {
+            if let (Some(ft), Some(tt)) = (id_type.get(&r.from), id_type.get(&r.to)) {
+                let ra = find(&mut parent, ft);
+                let rb = find(&mut parent, tt);
+                if ra != rb { parent.insert(ra, rb); }
             }
         }
     }
-    let cross: Vec<_> = agg.into_iter()
-        .map(|((from_bc, to_bc, via), cnt)| json!({"from_bc": from_bc, "to_bc": to_bc, "via_type": via, "count": cnt}))
+
+    // --- group by cluster root ---
+    let mut clusters: HashMap<String, Vec<String>> = HashMap::new();
+    for t in &core_types {
+        let root = find(&mut parent, t);
+        clusters.entry(root).or_default().push(t.clone());
+    }
+
+    // --- per-cluster: count internal HAS edges, identify AR ---
+    let total_has = relationships.iter().filter(|r| r.kind == rel_kind::HAS).count();
+
+    let mut bcs: Vec<serde_json::Value> = clusters
+        .into_values()
+        .map(|mut types| {
+            types.sort();
+            // count internal HAS (type-level, deduplicated)
+            let internal = relationships.iter().filter(|r| {
+                r.kind == rel_kind::HAS
+                    && id_type.get(&r.from).map_or(false, |ft| types.contains(ft))
+                    && id_type.get(&r.to).map_or(false, |tt| types.contains(tt))
+            }).count();
+            let cohesion = if total_has > 0 { internal as f64 / total_has as f64 } else { 0.0 };
+
+            // AR = type that owns children (has outbound HAS) AND is not owned within this BC
+            let ar_name = types.iter().find(|t| {
+                let owns = relationships.iter().any(|r| {
+                    r.kind == rel_kind::HAS && id_type.get(&r.from).map_or(false, |ft| ft == *t)
+                });
+                let owned_in_bc = relationships.iter().any(|r| {
+                    r.kind == rel_kind::HAS
+                        && id_type.get(&r.to).map_or(false, |tt| tt == *t)
+                        && id_type.get(&r.from).map_or(false, |ft| types.contains(ft))
+                });
+                owns && !owned_in_bc
+            }).cloned().unwrap_or_else(|| types[0].clone());
+
+            json!({
+                "name": ar_name,
+                "entity_types": types,
+                "internal_links": internal,
+                "cohesion": (cohesion * 100.0).round() / 100.0,
+                "aggregate_root": ar_name,
+            })
+        })
         .collect();
+    bcs.sort_by(|a, b| {
+        b["internal_links"].as_u64().unwrap_or(0)
+            .cmp(&a["internal_links"].as_u64().unwrap_or(0))
+    });
+
+    // --- Context Map cross-links: BC pairs connected by `has` or `refs_to` ---
+    // Build type → BC-name index
+    let type_bc: HashMap<String, String> = bcs.iter().flat_map(|bc| {
+        let bc_name = bc["name"].as_str().unwrap_or("").to_string();
+        bc["entity_types"].as_array().unwrap_or(&vec![]).iter()
+            .filter_map(|v| v.as_str())
+            .map(move |et| (et.to_string(), bc_name.clone()))
+            .collect::<Vec<_>>()
+    }).collect();
+
+    let mut cross_agg: HashMap<(String, String, String), usize> = HashMap::new();
+    for r in relationships {
+        if r.kind != rel_kind::HAS && r.kind != rel_kind::REFS_TO { continue; }
+        if let (Some(ft), Some(tt)) = (id_type.get(&r.from), id_type.get(&r.to)) {
+            if let (Some(fbc), Some(tbc)) = (type_bc.get(ft), type_bc.get(tt)) {
+                if fbc != tbc {
+                    *cross_agg.entry((fbc.clone(), tbc.clone(), r.kind.clone())).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+    let cross: Vec<_> = cross_agg.into_iter()
+        .map(|((from_bc, to_bc, via), cnt)|
+            json!({"from_bc": from_bc, "to_bc": to_bc, "via_type": via, "count": cnt}))
+        .collect();
+
     (bcs, cross)
+}
+
+/// After BC detection, reclassify FK edges that cross BC boundaries:
+/// `has` (tentative) → `refs_to` (cross-BC reference, Workflow category).
+fn reclassify_refs_to(g: &mut LiveGraph) {
+    // build entity → BC cluster using the same Union-Find result
+    let entities: Vec<_> = g.entities.values().cloned().collect();
+    let (bcs, _) = compute_contexts(&entities, &g.relationships);
+
+    let mut entity_bc: HashMap<String, String> = HashMap::new();
+    for bc in &bcs {
+        let bc_name = bc["name"].as_str().unwrap_or("").to_string();
+        if let Some(arr) = bc["entity_types"].as_array() {
+            for et in arr {
+                if let Some(et_str) = et.as_str() {
+                    for e in &entities {
+                        if e.r#type == et_str {
+                            entity_bc.insert(e.id.clone(), bc_name.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for r in g.relationships.iter_mut() {
+        if r.kind == rel_kind::HAS {
+            let from_bc = entity_bc.get(&r.from);
+            let to_bc   = entity_bc.get(&r.to);
+            if let (Some(fbc), Some(tbc)) = (from_bc, to_bc) {
+                if fbc != tbc {
+                    r.kind            = rel_kind::REFS_TO.into();
+                    r.label           = rel_kind::label(rel_kind::REFS_TO).into();
+                    r.action_category = rel_kind::action_category(rel_kind::REFS_TO).into();
+                }
+            }
+        }
+    }
+}
+
+/// Reassign `ddd_concept` based on graph topology — mirrors v0.1 `classify_objects`.
+///
+/// Rules:
+///   - Value Object: created by `infer_belongs_to_locked`, kept as-is
+///   - Aggregate Root: owns children via `has` AND is not owned within same BC
+///   - Entity: everything else in a `has` cluster
+fn assign_ddd_concepts(g: &mut LiveGraph) {
+    let entities: Vec<_> = g.entities.values().cloned().collect();
+    let (bcs, _) = compute_contexts(&entities, &g.relationships);
+
+    // type → BC entity-type list
+    let mut bc_members: HashMap<String, Vec<String>> = HashMap::new();
+    for bc in &bcs {
+        let bc_name = bc["name"].as_str().unwrap_or("").to_string();
+        if let Some(arr) = bc["entity_types"].as_array() {
+            for et in arr {
+                if let Some(s) = et.as_str() {
+                    bc_members.entry(bc_name.clone()).or_default().push(s.to_string());
+                }
+            }
+        }
+    }
+
+    // type → AR flag
+    let ar_types: std::collections::HashSet<String> = bcs.iter()
+        .filter_map(|bc| bc["aggregate_root"].as_str())
+        .map(|s| s.to_string())
+        .collect();
+
+    // update ddd_concept on each entity
+    for e in g.entities.values_mut() {
+        if e.ddd_concept == "Value Object" { continue; } // keep VO
+        if ar_types.contains(&e.r#type) {
+            e.ddd_concept = "Aggregate Root".into();
+        } else {
+            e.ddd_concept = "Entity".into();
+        }
+    }
 }
 
 async fn discover_links(project_id: &str) {
@@ -1163,12 +1398,14 @@ async fn discover_links(project_id: &str) {
             if k.ends_with("_id") {
                 if let Some(s) = v.as_str() {
                     if ids.contains(s) {
-                        let rel = (s.to_string(), eid.clone(), "HAS".into());
+                        let rel = (s.to_string(), eid.clone(), rel_kind::HAS.into());
                         if !existing.contains(&rel) {
                             g.relationships.push(LiveRel {
                                 from: s.to_string(),
                                 to: eid.clone(),
-                                kind: "HAS".into(),
+                                kind: rel_kind::HAS.into(),
+                                label: rel_kind::label(rel_kind::HAS).into(),
+                                action_category: rel_kind::action_category(rel_kind::HAS).into(),
                             });
                             existing.insert(rel);
                         }
@@ -2058,12 +2295,22 @@ async fn get_ontology_graph_handler(
 
     // Edges = actual instance-level ontology links
     let edges: Vec<serde_json::Value> = if let Ok((_, links)) = db().get_ontology_graph().await {
-        links.iter().map(|l| json!({
-            "source": l.from_id,
-            "target": l.to_id,
-            "label":  l.rel_type,
-            "kind":   "INSTANCE",
-        })).collect()
+        links.iter().map(|l| {
+            // Normalize rel_type to semantic kind for frontend edge coloring
+            let kind = match l.rel_type.to_lowercase().as_str() {
+                k if k.starts_with("has") => "has",
+                "refs_to" | "ref_to"      => "refs_to",
+                "belongs_to"              => "belongs_to",
+                "similar_to"              => "similar_to",
+                _                         => "has",
+            };
+            json!({
+                "source": l.from_id,
+                "target": l.to_id,
+                "label":  l.rel_type,
+                "kind":   kind,
+            })
+        }).collect()
     } else {
         vec![]
     };
@@ -3975,6 +4222,8 @@ struct SaveDatasetMappingReq {
     /// Fold (sub-business BC) to assign the ET to; null = shared/common
     #[serde(default)]
     fold_id: Option<String>,
+    #[serde(default)]
+    links: Vec<LinkTypeMappingInput>,
 }
 async fn save_dataset_mapping_handler(
     Path(dataset_id): Path<String>,
@@ -3986,6 +4235,8 @@ async fn save_dataset_mapping_handler(
         let fid = if fold_id.is_empty() { None } else { Some(fold_id.as_str()) };
         let _ = db().update_entity_type_fold(&req.entity_type_id, fid).await;
     }
+    // Save link type mappings (always overwrite, even if empty — clears old ones)
+    let _ = db().save_link_type_mappings(&dataset_id, &req.links).await;
     match db().save_object_type_mapping(&dataset_id, &req.entity_type_id, &req.primary_key_col, &mapping_str, &req.sync_mode).await {
         Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
@@ -4015,13 +4266,14 @@ async fn update_dataset_sync_mode_handler(
     }
 }
 
-/// GET /api/datasets/:id/mapping — return saved promote mapping for a dataset
+/// GET /api/datasets/:id/mapping — return saved promote mapping + link type mappings
 async fn get_dataset_mapping_handler(Path(dataset_id): Path<String>) -> impl IntoResponse {
-    match db().get_object_type_mapping(&dataset_id).await {
-        Ok(Some(m)) => (StatusCode::OK, Json(json!({"ok": true, "mapping": m}))).into_response(),
-        Ok(None)    => (StatusCode::OK, Json(json!({"ok": true, "mapping": null}))).into_response(),
-        Err(e)      => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
-    }
+    let mapping = match db().get_object_type_mapping(&dataset_id).await {
+        Ok(m) => m,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    };
+    let links = db().get_link_type_mappings(&dataset_id).await.unwrap_or_default();
+    (StatusCode::OK, Json(json!({"ok": true, "mapping": mapping, "links": links}))).into_response()
 }
 
 // ── S3 / Object-store helpers ─────────────────────────────────────────────────

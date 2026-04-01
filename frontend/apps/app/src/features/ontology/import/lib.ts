@@ -24,25 +24,47 @@ export function guessPk(columns: ColumnDef[]): string {
   return col?.name ?? columns[0]?.name ?? ''
 }
 
-/** Auto-infer FK relationships from _id suffix columns */
+/** Auto-infer FK relationships from _id suffix columns, using DDD roles + BC to pick rel_type.
+ *
+ * Rules (DDD decision tree):
+ *   target is non-AR                          → HAS       (aggregate member, same boundary)
+ *   target is AR, same BC (same namespace)    → BELONGS_TO (same BC, different aggregate)
+ *   target is AR, different/unknown BC        → REFS_TO    (cross-BC, only ID reference)
+ */
 export function autoInferLinks(
   columns: ColumnDef[],
   entityTypes: EntityType[],
   selfEtId: string,
 ): LinkRow[] {
+  const selfET = entityTypes.find(et => et.id === selfEtId)
+  const selfBC = selfET?.namespace ?? ''
+
   const links: LinkRow[] = []
   for (const col of columns) {
     if (col.ignored) continue
     const name = col.name.toLowerCase()
     if (!name.endsWith('_id') || name === 'id') continue
-    const stem = name.slice(0, -3) // strip _id
+    const stem = name.slice(0, -3)
     const match = entityTypes.find(et => {
       if (et.id === selfEtId) return false
       const ename = (et.name || '').toLowerCase().replace(/[_\s-]+/g, '')
       const dname = (et.display_name || '').toLowerCase().replace(/[_\s-]+/g, '')
       return ename === stem || dname === stem || ename.startsWith(stem) || stem.startsWith(ename)
     })
-    if (match) links.push({ fkCol: col.name, toEntityTypeId: match.id, relType: 'HAS' })
+    if (!match) continue
+
+    const targetIsAR = match.ddd_role === 'aggregate_root'
+    const targetBC = match.namespace ?? ''
+
+    let relType: string
+    if (!targetIsAR) {
+      relType = 'HAS'
+    } else if (selfBC && targetBC && selfBC === targetBC) {
+      relType = 'BELONGS_TO'  // same BC, different aggregate
+    } else {
+      relType = 'REFS_TO'     // cross-BC or BC unknown → safe default
+    }
+    links.push({ fkCol: col.name, toEntityTypeId: match.id, relType })
   }
   return links
 }

@@ -2862,9 +2862,11 @@ impl Db {
             .fetch_all(&self.pool)
             .await?;
 
-            // Check if target ET is AR (and source is not) → reverse direction so AR → child
+            // Rank-based: ar_candidate (rank=2) > aggregate_root (rank=1) > entity (rank=0).
+            // Reverse when target outranks source so higher-rank entity is always the source (owner).
             let to_et_role = et_roles.get(to_et).map(|s| s.as_str()).unwrap_or("entity");
-            let reverse = to_et_role == "aggregate_root" && src_et_role != "aggregate_root";
+            let role_rank = |r: &str| match r { "ar_candidate" => 2_i32, "aggregate_root" => 1, _ => 0 };
+            let reverse = role_rank(to_et_role) > role_rank(src_et_role);
 
             for src in &src_rows {
                 let src_id: String = src.get("id");
@@ -3107,7 +3109,9 @@ impl Db {
 
         // Clear all previously auto-detected links before re-running
         // Covers both HAS_* (auto_detect) and 'HAS' (resolve_links default rel_type)
-        sqlx::query("DELETE FROM ontology_links WHERE rel_type LIKE 'HAS%'")
+        // Clear all auto-detected AND resolve_links 'has' entries so direction is rebuilt cleanly.
+        // User-configured refs_to / belongs_to / similar_to are kept.
+        sqlx::query("DELETE FROM ontology_links WHERE rel_type LIKE 'HAS%' OR rel_type = 'has'")
             .execute(&self.pool).await?;
 
         // Pass 0: infer and persist DDD roles from FK out-degree (AR = most outgoing refs)
@@ -3174,14 +3178,20 @@ impl Db {
                 let base = col.trim_end_matches("_id").to_uppercase();
                 let rel_type = format!("HAS_{}", base);
 
-                // If target is AR or ar_candidate: reverse so AR → child
-                // ar_candidate is a potential root of an external BC and should also be source
+                // Rank-based direction: higher-rank entity is always the source (owner).
+                // ar_candidate = out_degree=0, referenced by AR → terminal root (highest rank)
+                // aggregate_root = most connected node → intermediate
+                // entity / VO → leaf
+                // Reverse when rank(target) > rank(source).
                 let tgt_role = effective_role(tgt_et);
                 let src_role = effective_role(&src_et);
-                let tgt_is_root = tgt_role == "aggregate_root" || tgt_role == "ar_candidate";
-                let src_is_root = src_role == "aggregate_root" || src_role == "ar_candidate";
-                let (from_id, to_id) = if tgt_is_root && !src_is_root {
-                    (tgt_id.clone(), src_id.clone())
+                let role_rank = |r: &str| match r {
+                    "ar_candidate"   => 2_i32,
+                    "aggregate_root" => 1,
+                    _                => 0,
+                };
+                let (from_id, to_id) = if role_rank(tgt_role) > role_rank(src_role) {
+                    (tgt_id.clone(), src_id.clone()) // target outranks source → reverse
                 } else {
                     (src_id.clone(), tgt_id.clone())
                 };

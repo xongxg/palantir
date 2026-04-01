@@ -223,6 +223,7 @@ export default function GraphTab({ projectId }: Props) {
     const nodeBCId: Record<string, string> = {}
     bcs.forEach(bc => bc.ids.forEach(id => { nodeBCId[id] = bc.id }))
 
+
     // Node radius
     // Build ET type → color map: use DB color if distinct, else deterministic hash
     const etColorMap: Record<string, string> = {}
@@ -840,7 +841,7 @@ export default function GraphTab({ projectId }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full overflow-hidden bg-slate-950">
+    <div ref={containerRef} className="flex flex-col w-full h-full overflow-hidden bg-slate-950">
       <Controls
         frozen={frozen} labels={labels} hulls={hulls}
         onFreeze={handleFreeze} onLabels={handleLabels} onHulls={handleHulls}

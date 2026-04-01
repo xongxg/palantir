@@ -17,10 +17,9 @@ export const projectsApi = {
 // ── Datasets ──────────────────────────────────────────────────────────────────
 export const datasetsApi = {
   list:      ()           => api.get<{ datasets: Dataset[] }>('/api/datasets').then(r => r.datasets),
-  getMapping: (id: string) => api.get<{ mapping: DatasetMapping | null }>(`/api/datasets/${id}/mapping`),
-  saveMapping: (id: string, body: Partial<DatasetMapping> & { fold_id?: string }) =>
+  getMapping: (id: string) => api.get<{ mapping: DatasetMapping | null; links: LinkTypeMapping[] }>(`/api/datasets/${id}/mapping`),
+  saveMapping: (id: string, body: Partial<DatasetMapping> & { fold_id?: string; links?: { from_fk_col: string; to_entity_type_id: string; rel_type: string }[] }) =>
     api.post<void>(`/api/datasets/${id}/mapping`, body),
-  getLinks:  (id: string)  => api.get<{ mappings: LinkTypeMapping[] }>(`/api/datasets/${id}/mapping`),
   records:   (id: string, limit = 3) =>
     api.get<{ records: Record<string, unknown>[] }>(`/api/datasets/${id}/records?limit=${limit}`),
   promote:   (id: string, body: {

@@ -37,7 +37,7 @@ export default function OntologyPage() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         {tab === 'import' && <ImportTab />}
         {tab === 'schema' && <SchemaTab />}
         {tab === 'browse' && <BrowseTab projectId="" />}

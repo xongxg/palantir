@@ -32,20 +32,25 @@ export default function ImportTab() {
     let skipped = 0
     for (const ds of datasets) {
       try {
-        const { mapping } = await datasetsApi.getMapping(ds.id)
+        const { mapping, links } = await datasetsApi.getMapping(ds.id) as { mapping: any, links?: any[] }
         if (!mapping?.entity_type_id) { skipped++; continue }
         const fm = mapping.field_mapping
           ? (typeof mapping.field_mapping === 'string'
               ? JSON.parse(mapping.field_mapping as unknown as string)
               : mapping.field_mapping)
           : undefined
+        const savedLinks = (links ?? []).map((l: any) => ({
+          from_fk_col: l.from_fk_col,
+          to_entity_type_id: l.to_entity_type_id,
+          rel_type: l.rel_type,
+        }))
         const result = await datasetsApi.promote(ds.id, {
           entity_type_id: mapping.entity_type_id,
           new_entity_type: undefined,
           sync_mode: mapping.sync_mode ?? 'snapshot',
           primary_key_col: mapping.primary_key_col ?? undefined,
           field_mapping: fm && Object.keys(fm).length ? fm : undefined,
-          links: [],
+          links: savedLinks,
         })
         total += result.promoted
       } catch {
@@ -70,28 +75,20 @@ export default function ImportTab() {
     selectDataset(ds.id)
   }
 
-  const configuredCount = datasets.filter(d => d.entity_type_id != null).length
-
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Left: Dataset list */}
       <div className="w-72 flex-shrink-0 border-r border-slate-800 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
-          <div>
-            <p className="text-sm font-semibold text-white">Raw Datasets</p>
-            <p className="text-xs text-slate-500 mt-0.5">Select a dataset to promote</p>
-          </div>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 flex-shrink-0">
+          <p className="text-sm font-semibold text-white">Raw Datasets</p>
           <div className="flex items-center gap-2">
-            {datasets.length > 1 && (
-              <button
-                onClick={handlePromoteAll}
-                disabled={promotingAll}
-                className="text-xs px-2 py-1 rounded bg-indigo-700/60 hover:bg-indigo-600/80 text-indigo-200 disabled:opacity-50 transition-colors"
-                title="将所有已配置映射的 Dataset 一起 Promote，确保 DDD 角色推断完备"
-              >
-                {promotingAll ? '…' : configuredCount > 0 ? `全部 Promote (${configuredCount})` : '全部 Promote'}
-              </button>
-            )}
+            <button
+              onClick={handlePromoteAll}
+              disabled={promotingAll || datasets.length === 0}
+              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 transition-colors"
+            >
+              {promotingAll ? 'Promoting…' : 'Promote All'}
+            </button>
             <button
               onClick={load}
               className="text-slate-500 hover:text-slate-300 transition-colors text-sm"

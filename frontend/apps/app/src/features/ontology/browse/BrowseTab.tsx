@@ -216,7 +216,7 @@ function AddLinkDialog({ fromObj, allObjects, onClose, onAdded }: AddLinkProps) 
           <label className="block">
             <span className="text-xs text-slate-400 mb-1 block">关系类型</span>
             <input value={relType} onChange={e => setRelType(e.target.value)}
-              placeholder="HAS / BELONGS_TO / ..."
+              placeholder="HAS / BELONGS_TO / REFS_TO"
               autoFocus
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
@@ -964,7 +964,7 @@ export default function BrowseTab({ projectId }: { projectId: string }) {
   })
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex w-full h-full overflow-hidden">
       {/* Col 1: AR-centric ET tree */}
       <div className="w-48 flex-shrink-0 border-r border-slate-800 flex flex-col overflow-hidden">
         <div className="px-3 py-2.5 border-b border-slate-800 flex-shrink-0">
