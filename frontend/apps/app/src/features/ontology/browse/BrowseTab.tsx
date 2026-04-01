@@ -368,11 +368,12 @@ function ObjDetail({ obj, et, allObjects, entityTypes, childToAR, onDeleted, onN
   const outgoing = links.filter(l => l.from_id === obj.id)
   const incoming = links.filter(l => l.from_id !== obj.id)
 
-  // For AR objects: outgoing links = aggregate members, grouped by ET
+  // For AR objects: only HAS_* outgoing links = aggregate members (REFS_TO is cross-BC, not a member)
+  const isHasLink = (relType: string) => relType?.toUpperCase().startsWith('HAS')
   const membersByET = useMemo(() => {
     if (!isAR) return new Map<string, typeof outgoing>()
     const map = new Map<string, typeof outgoing>()
-    outgoing.forEach(l => {
+    outgoing.filter(l => isHasLink(l.rel_type)).forEach(l => {
       const etName = l.other_et_name || '?'
       if (!map.has(etName)) map.set(etName, [])
       map.get(etName)!.push(l)
@@ -380,8 +381,10 @@ function ObjDetail({ obj, et, allObjects, entityTypes, childToAR, onDeleted, onN
     return map
   }, [isAR, outgoing])
 
-  // For non-AR: incoming links from AR objects = "归属聚合根"
+  // For non-AR: incoming HAS_* links from AR objects = "归属聚合根"
+  // REFS_TO incoming means this object is referenced cross-BC, not owned by that AR
   const arIncoming = incoming.filter(l => {
+    if (!isHasLink(l.rel_type)) return false
     const srcEt = entityTypes.find(e => e.name === l.other_et_name || e.display_name === l.other_et_name)
     return srcEt?.ddd_role === 'aggregate_root'
   })

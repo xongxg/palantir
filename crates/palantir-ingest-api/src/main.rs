@@ -4190,6 +4190,9 @@ async fn auto_promote_if_mapped(dataset_id: &str) {
     // Resolve FK links after promoting
     let links = db().resolve_links_for_dataset(dataset_id).await.unwrap_or(0);
     if links > 0 { eprintln!("[auto-promote] {} links resolved for dataset {}", links, dataset_id); }
+    // Re-run auto_detect so DDD-aware rel_types (REFS_TO / HAS_*) are rebuilt cleanly.
+    // This clears stale HAS_* links and recreates them with correct types.
+    let _ = db().auto_detect_links().await;
 }
 
 /// POST /api/ontology/promote-all — re-promote all datasets that have a saved mapping
@@ -4208,6 +4211,8 @@ async fn promote_all_handler() -> impl IntoResponse {
     for dataset_id in &dataset_ids {
         total_links += db().resolve_links_for_dataset(dataset_id).await.unwrap_or(0);
     }
+    // Pass 3: rebuild DDD-aware rel_types (clears stale HAS_*, assigns REFS_TO where needed)
+    let _ = db().auto_detect_links().await;
     eprintln!("[promote-all] {} datasets promoted, {} links resolved", total, total_links);
     (StatusCode::OK, Json(json!({"ok": true, "promoted_datasets": total, "links_resolved": total_links}))).into_response()
 }
