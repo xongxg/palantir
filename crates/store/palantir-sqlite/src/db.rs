@@ -2864,9 +2864,12 @@ impl Db {
 
             // Rank-based: ar_candidate (rank=2) > aggregate_root (rank=1) > entity (rank=0).
             // Reverse when target outranks source so higher-rank entity is always the source (owner).
+            // Exception: REFS_TO is a cross-BC reference — always stored as source→target (no reversal),
+            // because the entity that holds the FK is the one that references the other BC.
             let to_et_role = et_roles.get(to_et).map(|s| s.as_str()).unwrap_or("entity");
             let role_rank = |r: &str| match r { "ar_candidate" => 2_i32, "aggregate_root" => 1, _ => 0 };
-            let reverse = role_rank(to_et_role) > role_rank(src_et_role);
+            let is_refs_to = matches!(rel.to_lowercase().as_str(), "refs_to" | "ref_to");
+            let reverse = !is_refs_to && role_rank(to_et_role) > role_rank(src_et_role);
 
             for src in &src_rows {
                 let src_id: String = src.get("id");
@@ -3119,7 +3122,7 @@ impl Db {
 
         // Load effective ddd_roles (now includes inferred values persisted above)
         let et_rows = sqlx::query(
-            "SELECT id, ddd_role FROM entity_types",
+            "SELECT id, ddd_role, COALESCE(display_name, name, id) as et_name FROM entity_types",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -3127,6 +3130,26 @@ impl Db {
             .iter()
             .map(|r| (r.get("id"), r.get("ddd_role")))
             .collect();
+        // id → display name (used for rel_type label when direction is reversed)
+        let et_names: std::collections::HashMap<String, String> = et_rows
+            .iter()
+            .map(|r| (r.get::<String, _>("id"), r.get::<String, _>("et_name")))
+            .collect();
+
+        // User-defined non-HAS mappings: (src_et_id, fk_col, to_et_id) that auto-detect must skip.
+        // These are already resolved by resolve_links_for_dataset; auto-detect must not overwrite.
+        let user_override_keys: std::collections::HashSet<(String, String, String)> = sqlx::query(
+            "SELECT otm.entity_type_id as src_et, ltm.from_fk_col, ltm.to_entity_type_id
+             FROM link_type_mappings ltm
+             JOIN object_type_mappings otm ON ltm.dataset_id = otm.dataset_id
+             WHERE ltm.rel_type NOT IN ('HAS', 'has')",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| (r.get("src_et"), r.get("from_fk_col"), r.get("to_entity_type_id")))
+        .collect();
 
         // All promoted objects with their fields
         let objs = sqlx::query(
@@ -3176,7 +3199,13 @@ impl Db {
                 if tgt_id == &src_id { continue }
 
                 let base = col.trim_end_matches("_id").to_uppercase();
-                let rel_type = format!("HAS_{}", base);
+
+                // Skip FK columns that have a user-defined non-HAS mapping (REFS_TO / BELONGS_TO).
+                // Those links are already resolved by resolve_links_for_dataset.
+                if user_override_keys.contains(&(src_et.clone(), col.clone(), tgt_et.clone())) {
+                    skipped += 1;
+                    continue;
+                }
 
                 // Rank-based direction: higher-rank entity is always the source (owner).
                 // ar_candidate = out_degree=0, referenced by AR → terminal root (highest rank)
@@ -3190,10 +3219,16 @@ impl Db {
                     "aggregate_root" => 1,
                     _                => 0,
                 };
-                let (from_id, to_id) = if role_rank(tgt_role) > role_rank(src_role) {
-                    (tgt_id.clone(), src_id.clone()) // target outranks source → reverse
+                // When direction is reversed (AR owns the source entity), the rel_type label
+                // should reflect what the AR *has* — the source entity type, not the FK column base.
+                // e.g. Address.order_id → reversed to Order→Address: label = HAS_ADDRESS, not HAS_ORDER
+                let (from_id, to_id, rel_type) = if role_rank(tgt_role) > role_rank(src_role) {
+                    let src_name = et_names.get(&src_et)
+                        .map(|s| s.to_uppercase().replace(' ', "_"))
+                        .unwrap_or_else(|| base.clone());
+                    (tgt_id.clone(), src_id.clone(), format!("HAS_{}", src_name))
                 } else {
-                    (src_id.clone(), tgt_id.clone())
+                    (src_id.clone(), tgt_id.clone(), format!("HAS_{}", base))
                 };
 
                 let link_id = Uuid::new_v4().to_string();
