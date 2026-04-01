@@ -13,6 +13,10 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/palantir-pipeline/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/palantir-persistence/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/palantir-storage/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/palantir-dataset/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/palantir-source-adapter/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/store/palantir-meta-store/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/store/palantir-sqlite/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
